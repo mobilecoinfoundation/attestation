@@ -1,0 +1,16 @@
+[package]
+name = "mc-attestation-verifier"
+version = "0.1.0"
+authors = ["MobileCoin"]
+# See https://crates.io/category_slugs for valid categories
+categories = ["authentication", "no-std"]
+description = "SGX Enclave Attestation Report Verification"
+edition = "2021"
+# See https://crates.io/keywords for the common keywords
+keywords = ["no-std", "security"]
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/mobilecoinfoundation/attestation"
+rust-version = "1.62.1"
+
+[dependencies]

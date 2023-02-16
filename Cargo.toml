@@ -1,0 +1,26 @@
+[workspace]
+members = [
+    "verifier",
+]
+
+# We need to explicitly specify resolver 2.
+# We shouldn't have to per https://doc.rust-lang.org/edition-guide/rust-2021/default-cargo-resolver.html, but that does not appear to be the case
+resolver = "2"
+
+[profile.release]
+lto = "thin"
+
+[workspace.metadata.release]
+shared-version = true
+dev-version-ext = "beta.0"
+consolidate-commits = true
+consolidate-pushes = true
+tag-name = "v{{version}}"
+
+# The file names in this key are relative to the each crate that gets released.
+# So we only need one `README.md` entry if all the README's follow a
+# common format and are always next to the Cargo.toml for their respective
+# package.
+pre-release-replacements = [
+    {file="README.md", search="mc-attestation-[a-z-]+/[0-9.]+", replace="{{crate_name}}/{{version}}"},
+]
