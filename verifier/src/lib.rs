@@ -2,55 +2,41 @@
 
 #![doc = include_str!("../README.md")]
 #![deny(missing_docs, missing_debug_implementations, unsafe_code)]
+#![no_std]
 
-use std::fmt::{Debug, Formatter};
+use core::fmt::Debug;
 
-type Result<T> = std::result::Result<T, VerificationError>;
+type Result<T> = core::result::Result<T, VerificationError>;
 
 #[derive(Debug, Eq, PartialEq)]
-/// Failed to verify: {0}.
-pub struct VerificationError(String);
+/// Failed to verify.
+pub struct VerificationError;
 
-impl<S: Into<String>> From<S> for VerificationError {
-    fn from(message: S) -> Self {
-        Self(message.into())
-    }
-}
-
-/// A verification step. These can chained together using the [`Or`] and [`And`]
+/// A verifier. These can chained together using the [`Or`] and [`And`]
 /// types.
-pub trait VerificationStep {
-    /// Performs a verification operation for the [`VerificationStep`].
-    ///
-    /// When verification fails the [`VerificationError`] should contain a
-    /// message communicating the cause of the failure.
+pub trait Verifier: Debug {
+    /// Performs a verification operation for the [`Verifier`].
     fn verify(&self) -> Result<()>;
 }
 
-impl Debug for dyn VerificationStep {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("VerificationStep").finish()
-    }
-}
-
-/// Will perform a logical and operation for the [`VerificationStep::verify()`]
+/// Will perform a logical and operation for the [`Verifier::verify()`]
 /// operation.
 ///
-/// This is will be a short circuiting operation. If the `left` side fails
-/// the `right` side will *not* be exercised.
+/// This is will be a long operation. If the `left` side fails
+/// the `right` side will *still* be exercised.
 #[derive(Debug)]
 pub struct And<L, R> {
     left: L,
     right: R,
 }
 
-impl<L: VerificationStep, R: VerificationStep> And<L, R> {
+impl<L: Verifier, R: Verifier> And<L, R> {
     /// Create a new [`And`] instance
     ///
     /// # Arguments:
-    /// * `left` - The left, or first, [`VerificationStep`] to perform. If this
-    ///    fails the `right` will not be attempted.
-    /// * `right` - The right, or second, [`VerificationStep`] to perform.
+    /// * `left` - The left, or first, [`Verifier`] to perform. If this
+    ///    fails the `right` will *still* be attempted.
+    /// * `right` - The right, or second, [`Verifier`] to perform.
     pub fn new(left: L, right: R) -> Self {
         Self { left, right }
     }
@@ -66,31 +52,36 @@ impl<L: VerificationStep, R: VerificationStep> And<L, R> {
     }
 }
 
-impl<L: VerificationStep, R: VerificationStep> VerificationStep for And<L, R> {
+impl<L: Verifier, R: Verifier> Verifier for And<L, R> {
     fn verify(&self) -> Result<()> {
-        self.left.verify()?;
-        self.right.verify()
+        let result_l = self.left.verify();
+        let result_r = self.right.verify();
+        match (result_l, result_r) {
+            (Ok(_), Ok(_)) => Ok(()),
+            (Err(e), _) => Err(e),
+            (_, Err(e)) => Err(e),
+        }
     }
 }
 
-/// Will perform a logical or operation for the [`VerificationStep::verify()`]
+/// Will perform a logical or operation for the [`Verifier::verify()`]
 /// operation.
 ///
-/// This is will be a short circuiting operation. If the `left` side succeeds
-/// the `right` side will *not* be exercised.
+/// This is will be a long operation. If the `left` side succeeds
+/// the `right` side will *still* be exercised.
 #[derive(Debug)]
 pub struct Or<L, R> {
     left: L,
     right: R,
 }
 
-impl<L: VerificationStep, R: VerificationStep> Or<L, R> {
+impl<L: Verifier, R: Verifier> Or<L, R> {
     /// Create a new [`Or`] instance
     ///
     /// # Arguments:
-    /// * `left` - The left, or first, [`VerificationStep`] to perform. If this
-    ///    succeeds the `right` will not be attempted.
-    /// * `right` - The right, or second, [`VerificationStep`] to perform.
+    /// * `left` - The left, or first, [`Verifier`] to perform. If this
+    ///    succeeds the `right` will *still* be attempted.
+    /// * `right` - The right, or second, [`Verifier`] to perform.
     pub fn new(left: L, right: R) -> Self {
         Self { left, right }
     }
@@ -106,60 +97,64 @@ impl<L: VerificationStep, R: VerificationStep> Or<L, R> {
     }
 }
 
-impl<L: VerificationStep, R: VerificationStep> VerificationStep for Or<L, R> {
+impl<L: Verifier, R: Verifier> Verifier for Or<L, R> {
     fn verify(&self) -> Result<()> {
-        self.left.verify().or_else(|_| self.right.verify())
+        let result_l = self.left.verify();
+        let result_r = self.right.verify();
+        match (result_l, result_r) {
+            (Err(e), Err(_)) => Err(e),
+            _ => Ok(()),
+        }
     }
 }
 
-/// Will always succeed for the [`VerificationStep::verify()`] operation.
+/// Will always succeed for the [`Verifier::verify()`] operation.
 #[derive(Debug, Eq, PartialEq)]
 pub struct AlwaysTrue;
 
-impl VerificationStep for AlwaysTrue {
+impl Verifier for AlwaysTrue {
     fn verify(&self) -> Result<()> {
         Ok(())
     }
 }
 
-/// Will always fail for the [`VerificationStep::verify()`] operation.
+/// Will always fail for the [`Verifier::verify()`] operation.
 #[derive(Debug, Eq, PartialEq)]
 pub struct AlwaysFalse;
 
-impl VerificationStep for AlwaysFalse {
+impl Verifier for AlwaysFalse {
     fn verify(&self) -> Result<()> {
-        Err(VerificationError::from("AlwaysFalse"))
+        Err(VerificationError)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::Cell;
+    use core::cell::Cell;
 
+    #[derive(Debug, Eq, PartialEq)]
     pub struct Node {
         pub succeed: bool,
-        pub message: String,
         pub verified_called: Cell<bool>,
     }
 
     impl Node {
-        pub fn new(succeed: bool, message: impl Into<String>) -> Self {
+        pub fn new(succeed: bool) -> Self {
             Self {
                 succeed,
-                message: message.into(),
                 verified_called: Cell::new(false),
             }
         }
     }
 
-    impl VerificationStep for Node {
+    impl Verifier for Node {
         fn verify(&self) -> Result<()> {
             self.verified_called.replace(true);
             if self.succeed {
                 Ok(())
             } else {
-                Err(VerificationError::from(self.message.clone()))
+                Err(VerificationError)
             }
         }
     }
@@ -171,54 +166,52 @@ mod tests {
     }
 
     #[test]
-    fn and_short_circuits() {
-        let and = And::new(Node::new(false, "First"), Node::new(true, "Second"));
-        assert_eq!(and.verify(), Err(VerificationError::from("First")));
-        assert!(!and.right().verified_called.get());
+    fn and_fails_at_left() {
+        let and = And::new(Node::new(false), Node::new(true));
+        assert_eq!(and.verify(), Err(VerificationError));
+        assert!(and.left().verified_called.get());
+        assert!(and.right().verified_called.get());
     }
 
     #[test]
-    fn and_fails_on_tail() {
-        let and = And::new(Node::new(true, "First"), Node::new(false, "Second"));
-        assert_eq!(and.verify(), Err(VerificationError::from("Second")));
+    fn and_fails_at_right() {
+        let and = And::new(Node::new(true), Node::new(false));
+        assert_eq!(and.verify(), Err(VerificationError));
         assert!(and.left().verified_called.get());
+        assert!(and.right().verified_called.get());
     }
 
     #[test]
     fn or_fails_for_both_failing() {
         let or = Or::new(AlwaysFalse, AlwaysFalse);
-        assert_eq!(or.verify(), Err(VerificationError::from("AlwaysFalse")));
+        assert_eq!(or.verify(), Err(VerificationError));
     }
 
     #[test]
-    fn or_short_circuits() {
-        let or = Or::new(Node::new(true, "First"), Node::new(false, "Second"));
-        assert_eq!(or.verify(), Ok(()));
-        assert!(!or.right().verified_called.get());
-    }
-
-    #[test]
-    fn or_is_true_when_tail_is_true() {
-        let or = Or::new(Node::new(false, "First"), Node::new(true, "Second"));
+    fn or_succeeds_when_left_is_false() {
+        let or = Or::new(Node::new(false), Node::new(true));
         assert_eq!(or.verify(), Ok(()));
         assert!(or.left().verified_called.get());
+        assert!(or.right().verified_called.get());
+    }
+
+    #[test]
+    fn or_succeeds_when_right_is_false() {
+        let or = Or::new(Node::new(true), Node::new(false));
+        assert_eq!(or.verify(), Ok(()));
+        assert!(or.left().verified_called.get());
+        assert!(or.right().verified_called.get());
     }
 
     #[test]
     fn composing_or_and_and() {
-        let or = Or::new(
-            And::new(Node::new(true, "First"), Node::new(false, "Second")),
-            Node::new(true, "Third"),
-        );
+        let or = Or::new(And::new(Node::new(true), Node::new(false)), Node::new(true));
         assert_eq!(or.verify(), Ok(()));
     }
 
     #[test]
     fn composing_and_and_or() {
-        let and = And::new(
-            Or::new(Node::new(true, "First"), Node::new(false, "Second")),
-            Node::new(true, "Third"),
-        );
+        let and = And::new(Or::new(Node::new(true), Node::new(false)), Node::new(true));
         assert_eq!(and.verify(), Ok(()));
     }
 }
