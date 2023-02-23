@@ -7,35 +7,9 @@
 use core::fmt::Debug;
 use subtle::CtOption;
 
-/// A trait for types that can be converted into a [`Result`].
-pub trait IntoResult<T, E> {
-    /// Convert `self` into a [`Result`]
-    fn into_result(self) -> Result<T, E>;
-}
-
-/// Convert an `CtOption<T>` which could contain `Some(Error)` into a
-/// `Result<(), E>`.
-///
-/// This is *not* constant time.
-impl<T: IntoResult<(), E>, E> IntoResult<(), E> for CtOption<T> {
-    fn into_result(self) -> Result<(), E> {
-        let option: Option<T> = self.into();
-        match option {
-            None => Ok(()),
-            Some(e) => e.into_result(),
-        }
-    }
-}
-
 /// Failed to verify.
 #[derive(Debug, Eq, PartialEq)]
 pub struct VerificationError;
-
-impl IntoResult<(), VerificationError> for VerificationError {
-    fn into_result(self) -> Result<(), Self> {
-        Err(self)
-    }
-}
 
 /// A verifier. These can chained together using the [`Or`] and [`And`]
 /// types.
@@ -46,41 +20,24 @@ pub trait Verifier: Debug {
     /// Performs a verification operation for the [`Verifier`].
     ///
     /// In order to accommodate constant time operations this returns a
-    /// [`CtOption`] instead of a [`Result`]. One should use the non constant
-    /// time [`IntoResult::into_result()`] on this returned value. To determine
-    /// if verification succeeded or not.
+    /// [`CtOption`] instead of a [`Result`].
     fn verify(&self) -> CtOption<Self::Error>;
 }
 
 /// An error that occurs during an `and` operation.
-///
-/// One should use the [`IntoResult::into_result()`] to determine if this is a
-/// failure or not.
 #[derive(Debug)]
 pub struct AndError<L, R> {
-    left: CtOption<L>,
-    right: CtOption<R>,
+    _left: CtOption<L>,
+    _right: CtOption<R>,
 }
 
 impl<L, R> AndError<L, R> {
     /// Create a new instance
-    ///
-    /// Both the results of `left` and `right` can be `None`. Calling
-    /// [`IntoResult::into_result()`] on this instance will determine if this is
-    /// a failure or not.
     pub fn new(left: CtOption<L>, right: CtOption<R>) -> Self {
-        Self { left, right }
-    }
-}
-
-impl<L, R> IntoResult<(), VerificationError> for AndError<L, R>
-where
-    L: IntoResult<(), VerificationError>,
-    R: IntoResult<(), VerificationError>,
-{
-    fn into_result(self) -> Result<(), VerificationError> {
-        self.left.into_result()?;
-        self.right.into_result()
+        Self {
+            _left: left,
+            _right: right,
+        }
     }
 }
 
@@ -120,45 +77,26 @@ impl<L, R> And<L, R> {
 impl<L: Verifier, R: Verifier> Verifier for And<L, R> {
     type Error = AndError<L::Error, R::Error>;
     fn verify(&self) -> CtOption<Self::Error> {
-        CtOption::new(
-            AndError::new(self.left.verify(), self.right.verify()),
-            1.into(),
-        )
+        let left_err = self.left.verify();
+        let right_err = self.right.verify();
+        let is_some = left_err.is_some() | right_err.is_some();
+        CtOption::new(AndError::new(left_err, right_err), is_some)
     }
 }
 
 /// An error that occurs during an `or` operation.
-///
-/// One should use the [`IntoResult::into_result()`] to determine if this is a
-/// failure or not.
 #[derive(Debug)]
 pub struct OrError<L, R> {
-    left: CtOption<L>,
-    right: CtOption<R>,
+    _left: CtOption<L>,
+    _right: CtOption<R>,
 }
 
 impl<L, R> OrError<L, R> {
     /// Create a new instance
-    ///
-    /// Both the results of `left` and `right` can be `None`. Calling
-    /// [`IntoResult::into_result()`] on this instance will determine if this is
-    /// a failure or not.
     pub fn new(left: CtOption<L>, right: CtOption<R>) -> Self {
-        Self { left, right }
-    }
-}
-
-impl<L, R> IntoResult<(), VerificationError> for OrError<L, R>
-where
-    L: IntoResult<(), VerificationError>,
-    R: IntoResult<(), VerificationError>,
-{
-    fn into_result(self) -> Result<(), VerificationError> {
-        let left = self.left.into_result();
-        let right = self.right.into_result();
-        match (left, right) {
-            (Err(_), Err(_)) => Err(VerificationError),
-            _ => Ok(()),
+        Self {
+            _left: left,
+            _right: right,
         }
     }
 }
@@ -199,10 +137,10 @@ impl<L, R> Or<L, R> {
 impl<L: Verifier, R: Verifier> Verifier for Or<L, R> {
     type Error = OrError<L::Error, R::Error>;
     fn verify(&self) -> CtOption<Self::Error> {
-        CtOption::new(
-            OrError::new(self.left.verify(), self.right.verify()),
-            1.into(),
-        )
+        let left_err = self.left.verify();
+        let right_err = self.right.verify();
+        let is_some = left_err.is_some() & right_err.is_some();
+        CtOption::new(OrError::new(left_err, right_err), is_some)
     }
 }
 
@@ -217,12 +155,6 @@ impl Verifier for AlwaysTrue {
     }
 }
 
-impl IntoResult<(), VerificationError> for AlwaysTrue {
-    fn into_result(self) -> Result<(), VerificationError> {
-        Ok(())
-    }
-}
-
 /// Will always fail for the [`Verifier::verify()`] operation.
 #[derive(Debug, Eq, PartialEq)]
 pub struct AlwaysFalse;
@@ -231,12 +163,6 @@ impl Verifier for AlwaysFalse {
     type Error = VerificationError;
     fn verify(&self) -> CtOption<Self::Error> {
         CtOption::new(VerificationError, 1.into())
-    }
-}
-
-impl IntoResult<(), VerificationError> for AlwaysFalse {
-    fn into_result(self) -> Result<(), VerificationError> {
-        Err(VerificationError)
     }
 }
 
@@ -273,14 +199,14 @@ mod tests {
     fn and_succeeds() {
         let and = And::new(AlwaysTrue, AlwaysTrue);
         let verification = and.verify();
-        assert_eq!(verification.into_result(), Ok(()));
+        assert_eq!(verification.is_none().unwrap_u8(), 1);
     }
 
     #[test]
     fn and_fails_at_left() {
         let and = And::new(Node::new(false), Node::new(true));
         let verification = and.verify();
-        assert_eq!(verification.into_result(), Err(VerificationError));
+        assert_eq!(verification.is_some().unwrap_u8(), 1);
         assert!(and.left().verified_called.get());
         assert!(and.right().verified_called.get());
     }
@@ -289,7 +215,7 @@ mod tests {
     fn and_fails_at_right() {
         let and = And::new(Node::new(true), Node::new(false));
         let verification = and.verify();
-        assert_eq!(verification.into_result(), Err(VerificationError));
+        assert_eq!(verification.is_some().unwrap_u8(), 1);
         assert!(and.left().verified_called.get());
         assert!(and.right().verified_called.get());
     }
@@ -298,14 +224,14 @@ mod tests {
     fn or_fails_for_both_failing() {
         let or = Or::new(AlwaysFalse, AlwaysFalse);
         let verification = or.verify();
-        assert_eq!(verification.into_result(), Err(VerificationError));
+        assert_eq!(verification.is_some().unwrap_u8(), 1);
     }
 
     #[test]
     fn or_succeeds_when_left_is_false() {
         let or = Or::new(Node::new(false), Node::new(true));
         let verification = or.verify();
-        assert_eq!(verification.into_result(), Ok(()));
+        assert_eq!(verification.is_none().unwrap_u8(), 1);
         assert!(or.left().verified_called.get());
         assert!(or.right().verified_called.get());
     }
@@ -314,7 +240,7 @@ mod tests {
     fn or_succeeds_when_right_is_false() {
         let or = Or::new(Node::new(true), Node::new(false));
         let verification = or.verify();
-        assert_eq!(verification.into_result(), Ok(()));
+        assert_eq!(verification.is_none().unwrap_u8(), 1);
         assert!(or.left().verified_called.get());
         assert!(or.right().verified_called.get());
     }
@@ -323,13 +249,13 @@ mod tests {
     fn composing_or_and_and() {
         let or = Or::new(And::new(Node::new(true), Node::new(false)), Node::new(true));
         let verification = or.verify();
-        assert_eq!(verification.into_result(), Ok(()));
+        assert_eq!(verification.is_none().unwrap_u8(), 1);
     }
 
     #[test]
     fn composing_and_and_or() {
         let and = And::new(Or::new(Node::new(true), Node::new(false)), Node::new(true));
         let verification = and.verify();
-        assert_eq!(verification.into_result(), Ok(()));
+        assert_eq!(verification.is_none().unwrap_u8(), 1);
     }
 }
