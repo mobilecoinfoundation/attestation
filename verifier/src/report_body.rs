@@ -2,8 +2,8 @@
 
 //! Verifiers which operate on the [`ReportBody`]
 
-use crate::{VerificationError, Verifier};
-use mc_sgx_core_types::{Attributes, ReportBody};
+use crate::{And, AndError, VerificationError, Verifier};
+use mc_sgx_core_types::{Attributes, ConfigId, ReportBody};
 use subtle::CtOption;
 
 /// Verify the report body is as expected.
@@ -29,10 +29,15 @@ impl<'a> ReportBodyVerifier<'a> {
 }
 
 impl Verifier for ReportBodyVerifier<'_> {
-    type Error = VerificationError;
+    type Error = AndError<VerificationError, VerificationError>;
 
     fn verify(&self) -> CtOption<Self::Error> {
-        AttributesVerifier::new(self.expected_report_body.attributes(), self.report_body).verify()
+        let attributes_verifier =
+            AttributesVerifier::new(self.expected_report_body.attributes(), self.report_body);
+        let config_id_verifier =
+            ConfigIdVerifier::new(self.expected_report_body.config_id(), self.report_body);
+        let and_verifier = And::new(attributes_verifier, config_id_verifier);
+        and_verifier.verify()
     }
 }
 
@@ -67,6 +72,41 @@ impl Verifier for AttributesVerifier<'_> {
         let is_some = if expected == actual { 0 } else { 1 };
         CtOption::new(
             VerificationError::AttributeMismatch { expected, actual },
+            is_some.into(),
+        )
+    }
+}
+
+/// Verify the [`ConfigId`] is as expected.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct ConfigIdVerifier<'a> {
+    expected_id: ConfigId,
+    report_body: &'a ReportBody,
+}
+
+impl<'a> ConfigIdVerifier<'a> {
+    /// Create a new [`ConfigIdVerifier`] instance.
+    ///
+    /// # Arguments:
+    /// * `expected_id` - The expected id.
+    /// * `report_body` - The report body containing config id that conforms
+    ///    to the `expected_id`.
+    pub fn new(expected_id: ConfigId, report_body: &'a ReportBody) -> Self {
+        Self {
+            expected_id,
+            report_body,
+        }
+    }
+}
+impl Verifier for ConfigIdVerifier<'_> {
+    type Error = VerificationError;
+    fn verify(&self) -> CtOption<Self::Error> {
+        let expected = self.expected_id.clone();
+        let actual = self.report_body.config_id();
+        // TODO - This should be a constant time comparison.
+        let is_some = if expected == actual { 0 } else { 1 };
+        CtOption::new(
+            VerificationError::ConfigIdMismatch { expected, actual },
             is_some.into(),
         )
     }
@@ -135,10 +175,20 @@ mod test {
     }
 
     #[test]
-    fn report_body_fail() {
+    fn report_body_fails_due_to_attributes() {
         let report_body = ReportBody::from(&REPORT_BODY_SRC);
         let mut report_body_src = REPORT_BODY_SRC;
         report_body_src.attributes.flags = 0;
+        let report_body_src: ReportBody = report_body_src.into();
+        let verifier = ReportBodyVerifier::new(report_body_src.clone(), &report_body);
+        assert_eq!(verifier.verify().is_some().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn report_body_fails_due_to_config_id() {
+        let report_body = ReportBody::from(&REPORT_BODY_SRC);
+        let mut report_body_src = REPORT_BODY_SRC;
+        report_body_src.config_id[0] = 0;
         let report_body_src: ReportBody = report_body_src.into();
         let verifier = ReportBodyVerifier::new(report_body_src.clone(), &report_body);
         assert_eq!(verifier.verify().is_some().unwrap_u8(), 1);
@@ -158,6 +208,24 @@ mod test {
         let mut attributes: Attributes = REPORT_BODY_SRC.attributes.into();
         attributes = attributes.set_flags(0);
         let verifier = AttributesVerifier::new(attributes, &report_body);
+
+        assert_eq!(verifier.verify().is_some().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn config_id_success() {
+        let report_body = ReportBody::from(&REPORT_BODY_SRC);
+        let verifier = ConfigIdVerifier::new(REPORT_BODY_SRC.config_id.into(), &report_body);
+
+        assert_eq!(verifier.verify().is_none().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn config_id_fail() {
+        let report_body = ReportBody::from(&REPORT_BODY_SRC);
+        let mut config_id: ConfigId = REPORT_BODY_SRC.config_id.into();
+        config_id.as_mut()[0] = 0;
+        let verifier = ConfigIdVerifier::new(config_id, &report_body);
 
         assert_eq!(verifier.verify().is_some().unwrap_u8(), 1);
     }
