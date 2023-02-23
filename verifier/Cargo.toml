@@ -3,7 +3,7 @@ name = "mc-attestation-verifier"
 version = "0.1.0"
 authors = ["MobileCoin"]
 # See https://crates.io/category_slugs for valid categories
-categories = ["authentication", "no-std"]
+categories = ["authentication", "no-std", "no-std::no-alloc"]
 description = "SGX Enclave Attestation Report Verification"
 edition = "2021"
 # See https://crates.io/keywords for the common keywords
@@ -15,7 +15,7 @@ rust-version = "1.62.1"
 
 [dependencies]
 mc-sgx-core-types = "0.4.2"
-subtle = "2.4.0"
+subtle = { version = "2.4.0", default-features = false }
 
 [dev-dependencies]
 mc-sgx-core-sys-types = "0.4.2"
