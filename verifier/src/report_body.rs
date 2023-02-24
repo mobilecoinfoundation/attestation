@@ -25,8 +25,8 @@ impl Verifier<ReportBody> for ReportBodyVerifierKind {
 
     fn verify(&self, evidence: &ReportBody) -> CtOption<Self::Error> {
         match self {
-            Self::AttributesVerifier(verifier) => verifier.verify(evidence),
-            Self::ConfigIdVerifier(verifier) => verifier.verify(evidence),
+            Self::AttributesVerifier(verifier) => verifier.verify(&evidence.attributes()),
+            Self::ConfigIdVerifier(verifier) => verifier.verify(&evidence.config_id()),
             Self::AlwaysTrue(verifier) => verifier.verify(evidence),
         }
     }
@@ -86,11 +86,11 @@ impl AttributesVerifier {
     }
 }
 
-impl Verifier<ReportBody> for AttributesVerifier {
+impl Verifier<Attributes> for AttributesVerifier {
     type Error = VerificationError;
-    fn verify(&self, evidence: &ReportBody) -> CtOption<Self::Error> {
+    fn verify(&self, evidence: &Attributes) -> CtOption<Self::Error> {
         let expected = self.expected_attributes;
-        let actual = evidence.attributes();
+        let actual = *evidence;
         // TODO - This should be a constant time comparison.
         let is_some = if expected == actual { 0 } else { 1 };
         CtOption::new(
@@ -117,11 +117,11 @@ impl ConfigIdVerifier {
         Self { expected_id }
     }
 }
-impl Verifier<ReportBody> for ConfigIdVerifier {
+impl Verifier<ConfigId> for ConfigIdVerifier {
     type Error = VerificationError;
-    fn verify(&self, evidence: &ReportBody) -> CtOption<Self::Error> {
+    fn verify(&self, evidence: &ConfigId) -> CtOption<Self::Error> {
         let expected = self.expected_id.clone();
-        let actual = evidence.config_id();
+        let actual = evidence.clone();
         // TODO - This should be a constant time comparison.
         let is_some = if expected == actual { 0 } else { 1 };
         CtOption::new(
@@ -136,6 +136,7 @@ mod test {
     use super::*;
     use mc_sgx_core_sys_types::{
         sgx_attributes_t, sgx_cpu_svn_t, sgx_measurement_t, sgx_report_body_t, sgx_report_data_t,
+        SGX_CONFIGID_SIZE,
     };
 
     const REPORT_BODY_SRC: sgx_report_body_t = sgx_report_body_t {
@@ -221,37 +222,39 @@ mod test {
 
     #[test]
     fn attributes_success() {
-        let report_body = ReportBody::from(&REPORT_BODY_SRC);
-        let verifier = AttributesVerifier::new(REPORT_BODY_SRC.attributes.into());
+        let attributes = Attributes::default()
+            .set_flags(1)
+            .set_extended_features_mask(2);
+        let verifier = AttributesVerifier::new(attributes.clone());
 
-        assert_eq!(verifier.verify(&report_body).is_none().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&attributes).is_none().unwrap_u8(), 1);
     }
 
     #[test]
     fn attributes_fail() {
-        let report_body = ReportBody::from(&REPORT_BODY_SRC);
-        let mut attributes: Attributes = REPORT_BODY_SRC.attributes.into();
-        attributes = attributes.set_flags(0);
-        let verifier = AttributesVerifier::new(attributes);
+        let mut attributes = Attributes::default()
+            .set_flags(1)
+            .set_extended_features_mask(2);
+        let verifier = AttributesVerifier::new(attributes.clone());
 
-        assert_eq!(verifier.verify(&report_body).is_some().unwrap_u8(), 1);
+        attributes = attributes.set_flags(0);
+        assert_eq!(verifier.verify(&attributes).is_some().unwrap_u8(), 1);
     }
 
     #[test]
     fn config_id_success() {
-        let report_body = ReportBody::from(&REPORT_BODY_SRC);
-        let verifier = ConfigIdVerifier::new(REPORT_BODY_SRC.config_id.into());
+        let config_id = ConfigId::from([3u8; SGX_CONFIGID_SIZE]);
+        let verifier = ConfigIdVerifier::new(config_id.clone());
 
-        assert_eq!(verifier.verify(&report_body).is_none().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&config_id).is_none().unwrap_u8(), 1);
     }
 
     #[test]
     fn config_id_fail() {
-        let report_body = ReportBody::from(&REPORT_BODY_SRC);
-        let mut config_id: ConfigId = REPORT_BODY_SRC.config_id.into();
-        config_id.as_mut()[0] = 0;
-        let verifier = ConfigIdVerifier::new(config_id);
+        let mut config_id = ConfigId::from([4u8; SGX_CONFIGID_SIZE]);
+        let verifier = ConfigIdVerifier::new(config_id.clone());
+        config_id.as_mut()[0] = 1;
 
-        assert_eq!(verifier.verify(&report_body).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&config_id).is_some().unwrap_u8(), 1);
     }
 }
