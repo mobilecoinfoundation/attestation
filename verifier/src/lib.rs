@@ -4,12 +4,26 @@
 #![deny(missing_docs, missing_debug_implementations, unsafe_code)]
 #![no_std]
 
+mod report_body;
+pub use report_body::{AttributesVerifier, ReportBodyVerifier};
+
 use core::fmt::Debug;
+use mc_sgx_core_types::Attributes;
 use subtle::CtOption;
 
 /// Failed to verify.
 #[derive(Debug, Eq, PartialEq)]
-pub struct VerificationError;
+pub enum VerificationError {
+    /// A general error.
+    General,
+    /// The attributes did not match expected:{expected} actual:{actual}
+    AttributeMismatch {
+        /// The expected attributes
+        expected: Attributes,
+        /// The actual attributes that were present
+        actual: Attributes,
+    },
+}
 
 /// A verifier. These can chained together using the [`Or`] and [`And`]
 /// types.
@@ -151,7 +165,7 @@ pub struct AlwaysTrue;
 impl Verifier for AlwaysTrue {
     type Error = VerificationError;
     fn verify(&self) -> CtOption<Self::Error> {
-        CtOption::new(VerificationError, 0.into())
+        CtOption::new(VerificationError::General, 0.into())
     }
 }
 
@@ -162,7 +176,7 @@ pub struct AlwaysFalse;
 impl Verifier for AlwaysFalse {
     type Error = VerificationError;
     fn verify(&self) -> CtOption<Self::Error> {
-        CtOption::new(VerificationError, 1.into())
+        CtOption::new(VerificationError::General, 1.into())
     }
 }
 
@@ -191,7 +205,7 @@ mod tests {
         fn verify(&self) -> CtOption<Self::Error> {
             self.verified_called.replace(true);
             let succeed = if self.succeed { 0 } else { 1 };
-            CtOption::new(VerificationError, succeed.into())
+            CtOption::new(VerificationError::General, succeed.into())
         }
     }
 
