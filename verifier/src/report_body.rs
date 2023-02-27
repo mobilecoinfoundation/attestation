@@ -24,16 +24,35 @@ pub trait Accessor<T>: Debug {
     fn get(&self) -> T;
 }
 
-impl Accessor<Attributes> for ReportBody {
-    fn get(&self) -> Attributes {
-        self.attributes()
-    }
+/// Macro to generate boilerplate for implementing [`Accessor`] for a member of
+/// [`ReportBody`].
+///
+/// Will create [`Accessor`] implementations for both `ReportBody` and the
+/// underlying member type
+///
+/// # Arguments
+/// * `member_type` - The type of the member
+/// * `accessor_method` - The method on `ReportBody` that returns the member
+macro_rules! report_body_member_accessors {
+    ($($member_type:ty, $accessor_method:ident;)*) => {$(
+        impl Accessor<$member_type> for ReportBody {
+            fn get(&self) -> $member_type {
+                self.$accessor_method()
+            }
+        }
+
+        impl Accessor<$member_type> for $member_type {
+            fn get(&self) -> $member_type {
+                self.clone()
+            }
+        }
+    )*}
 }
 
-impl Accessor<Attributes> for Attributes {
-    fn get(&self) -> Attributes {
-        *self
-    }
+report_body_member_accessors! {
+    Attributes, attributes;
+    ConfigId, config_id;
+    ConfigSvn, config_svn;
 }
 
 /// Verify the attributes are as expected.
@@ -70,18 +89,6 @@ impl<T: Accessor<Attributes>> Verifier<T> for AttributesVerifier {
     }
 }
 
-impl Accessor<ConfigId> for ReportBody {
-    fn get(&self) -> ConfigId {
-        self.config_id()
-    }
-}
-
-impl Accessor<ConfigId> for ConfigId {
-    fn get(&self) -> ConfigId {
-        self.clone()
-    }
-}
-
 /// Verify the [`ConfigId`] is as expected.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ConfigIdVerifier {
@@ -111,18 +118,6 @@ impl<T: Accessor<ConfigId>> Verifier<T> for ConfigIdVerifier {
             VerificationError::ConfigIdMismatch { expected, actual },
             is_some.into(),
         )
-    }
-}
-
-impl Accessor<ConfigSvn> for ReportBody {
-    fn get(&self) -> ConfigSvn {
-        self.config_svn()
-    }
-}
-
-impl Accessor<ConfigSvn> for ConfigSvn {
-    fn get(&self) -> ConfigSvn {
-        self.clone()
     }
 }
 
