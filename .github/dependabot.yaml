@@ -19,3 +19,8 @@ updates:
     prefix: "chore(deps)"
   reviewers:
     - "mobilecoinfoundation/coredev"
+  ignore:
+    # See https://github.com/dtolnay/rust-toolchain/issues/45 tags aren't used
+    # by rust-toolchain. Using a branch name will cause dependabot to suggest
+    # which ever branch happens to be the newest
+    - dependency-name: "rust-toolchain"
