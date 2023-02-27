@@ -5,7 +5,7 @@
 #![no_std]
 
 mod report_body;
-pub use report_body::{AttributesVerifier, ReportBodyVerifier};
+pub use report_body::{AttributesVerifier, ConfigIdVerifier};
 
 use core::fmt::Debug;
 use mc_sgx_core_types::{Attributes, ConfigId};
