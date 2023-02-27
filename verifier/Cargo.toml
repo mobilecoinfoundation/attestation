@@ -14,3 +14,4 @@ repository = "https://github.com/mobilecoinfoundation/attestation"
 rust-version = "1.62.1"
 
 [dependencies]
+subtle = "2.4.0"
