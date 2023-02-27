@@ -4,7 +4,7 @@
 
 use crate::{VerificationError, Verifier};
 use core::fmt::Debug;
-use mc_sgx_core_types::{Attributes, ConfigId, ConfigSvn, ReportBody};
+use mc_sgx_core_types::{Attributes, ConfigId, ConfigSvn, IsvSvn, ReportBody};
 use subtle::{ConstantTimeLess, CtOption};
 
 /// Trait for getting access to the type `T` that needs to be verified.
@@ -53,6 +53,7 @@ report_body_field_accessors! {
     Attributes, attributes;
     ConfigId, config_id;
     ConfigSvn, config_svn;
+    IsvSvn, isv_svn;
 }
 
 /// Verify the attributes are as expected.
@@ -147,6 +148,37 @@ impl<T: Accessor<ConfigSvn>> Verifier<T> for ConfigSvnVerifier {
         let is_some = actual.as_ref().ct_lt(expected.as_ref());
         CtOption::new(
             VerificationError::ConfigSvnTooSmall { expected, actual },
+            is_some,
+        )
+    }
+}
+
+/// Verify the [`IsvSvn`] is as expected.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct IsvSvnVerifier {
+    expected_svn: IsvSvn,
+}
+
+impl IsvSvnVerifier {
+    /// Create a new [`IsvSvnVerifier`] instance.
+    ///
+    /// # Arguments:
+    /// * `expected_svn` - The expected svn.
+    pub fn new(expected_svn: IsvSvn) -> Self {
+        Self { expected_svn }
+    }
+}
+
+impl<T: Accessor<IsvSvn>> Verifier<T> for IsvSvnVerifier {
+    type Error = VerificationError;
+
+    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
+        let expected = self.expected_svn.clone();
+        let actual = evidence.get();
+
+        let is_some = actual.as_ref().ct_lt(expected.as_ref());
+        CtOption::new(
+            VerificationError::IsvSvnTooSmall { expected, actual },
             is_some,
         )
     }
@@ -308,5 +340,25 @@ mod test {
         let config_svn = ConfigSvn::from(9);
 
         assert_eq!(verifier.verify(&config_svn).is_some().unwrap_u8(), 1);
+    }
+
+    #[parameterized(
+    equal = { 25, 25 },
+    greater = { 17, 16 },
+    much_greater = { 100, 50 },
+    )]
+    fn isv_svn_succeeds(actual: u16, expected: u16) {
+        let verifier = IsvSvnVerifier::new(expected.into());
+        let isv_svn = IsvSvn::from(actual);
+
+        assert_eq!(verifier.verify(&isv_svn).is_none().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn isv_svn_fails_less_than_expected() {
+        let verifier = IsvSvnVerifier::new(10.into());
+        let isv_svn = IsvSvn::from(9);
+
+        assert_eq!(verifier.verify(&isv_svn).is_some().unwrap_u8(), 1);
     }
 }
