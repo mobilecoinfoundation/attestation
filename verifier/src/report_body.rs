@@ -29,7 +29,7 @@ pub trait Accessor<T>: Debug {
 
 /// [`Accessor`] for returning Self, i.e. T -> T
 macro_rules! self_accessor {
-    ($($type:ty,)*) => {$(
+    ($($type:ty),*) => {$(
         impl Accessor<$type> for $type {
             fn get(&self) -> $type {
                 self.clone()
@@ -67,7 +67,7 @@ report_body_field_accessors! {
     MiscellaneousSelect, miscellaneous_select;
 }
 
-self_accessor!(MrEnclave, MrSigner,);
+self_accessor!(MrEnclave, MrSigner);
 
 /// Verify the attributes are as expected.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
