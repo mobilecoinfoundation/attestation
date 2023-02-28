@@ -5,7 +5,7 @@
 use crate::{VerificationError, Verifier};
 use core::fmt::Debug;
 use mc_sgx_core_types::{
-    Attributes, ConfigId, ConfigSvn, IsvSvn, Measurement, MiscellaneousSelect, MrEnclave,
+    Attributes, ConfigId, ConfigSvn, IsvSvn, Measurement, MiscellaneousSelect, MrEnclave, MrSigner,
     ReportBody,
 };
 use subtle::{ConstantTimeLess, CtOption};
@@ -29,7 +29,7 @@ pub trait Accessor<T>: Debug {
 
 /// [`Accessor`] for returning Self, i.e. T -> T
 macro_rules! self_accessor {
-    ($($type:ty)*) => {$(
+    ($($type:ty,)*) => {$(
         impl Accessor<$type> for $type {
             fn get(&self) -> $type {
                 self.clone()
@@ -67,7 +67,7 @@ report_body_field_accessors! {
     MiscellaneousSelect, miscellaneous_select;
 }
 
-self_accessor!(MrEnclave);
+self_accessor!(MrEnclave, MrSigner,);
 
 /// Verify the attributes are as expected.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -234,17 +234,17 @@ impl<T: Accessor<MiscellaneousSelect>> Verifier<T> for MiscellaneousSelectVerifi
 /// Verify the [`MrEnclave`] is as expected.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MrEnclaveVerifier {
-    expected_measurement: MrEnclave,
+    expected_mr_enclave: MrEnclave,
 }
 
 impl MrEnclaveVerifier {
     /// Create a new [`MrEnclaveVerifier`] instance.
     ///
     /// # Arguments:
-    /// * `expected_measurement` - The expected measurement.
-    pub fn new(expected_measurement: MrEnclave) -> Self {
+    /// * `expected_mr_enclave` - The expected MRENCLAVE measurement.
+    pub fn new(expected_mr_enclave: MrEnclave) -> Self {
         Self {
-            expected_measurement,
+            expected_mr_enclave,
         }
     }
 }
@@ -262,13 +262,54 @@ impl<T: Accessor<MrEnclave>> Verifier<T> for MrEnclaveVerifier {
     type Error = VerificationError;
 
     fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
-        let expected = self.expected_measurement;
+        let expected = self.expected_mr_enclave;
         let actual = evidence.get();
 
         // TODO - This should be a constant time comparison.
         let is_some = if expected == actual { 0 } else { 1 };
         CtOption::new(
             VerificationError::MrEnclaveMismatch { expected, actual },
+            is_some.into(),
+        )
+    }
+}
+
+/// Verify the [`MrSigner`] is as expected.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MrSignerVerifier {
+    expected_mr_signer: MrSigner,
+}
+
+impl MrSignerVerifier {
+    /// Create a new [`MrSignerVerifier`] instance.
+    ///
+    /// # Arguments:
+    /// * `expected_mr_signer` - The expected MRSIGNER.
+    pub fn new(expected_mr_signer: MrSigner) -> Self {
+        Self { expected_mr_signer }
+    }
+}
+
+impl Accessor<MrSigner> for ReportBody {
+    fn get(&self) -> MrSigner {
+        let Measurement::MrSigner(mr_signer) = self.mr_signer() else {
+            panic!("`mr_signer()` should return a Measurement::MrSigner");
+        };
+        mr_signer
+    }
+}
+
+impl<T: Accessor<MrSigner>> Verifier<T> for MrSignerVerifier {
+    type Error = VerificationError;
+
+    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
+        let expected = self.expected_mr_signer;
+        let actual = evidence.get();
+
+        // TODO - This should be a constant time comparison.
+        let is_some = if expected == actual { 0 } else { 1 };
+        CtOption::new(
+            VerificationError::MrSignerMismatch { expected, actual },
             is_some.into(),
         )
     }
@@ -398,6 +439,23 @@ mod test {
     }
 
     #[test]
+    fn report_body_fails_due_to_mr_signer() {
+        let report_body = ReportBody::from(&REPORT_BODY_SRC);
+        let Measurement::MrSigner(mut mr_signer) = report_body.mr_signer() else {
+            panic!("mr_signer is not an MrSigner measurement");
+        };
+        let bytes: &mut [u8] = mr_signer.as_mut();
+        bytes[0] += 1;
+        let verifier = And::new(
+            AttributesVerifier::new(report_body.attributes()),
+            And::new(
+                ConfigIdVerifier::new(report_body.config_id()),
+                MrSignerVerifier::new(mr_signer),
+            ),
+        );
+        assert_eq!(verifier.verify(&report_body).is_some().unwrap_u8(), 1);
+    }
+    #[test]
     fn attributes_success() {
         let attributes = Attributes::from(REPORT_BODY_SRC.attributes);
         let verifier = AttributesVerifier::new(attributes);
@@ -510,5 +568,23 @@ mod test {
         bytes[0] = 0;
 
         assert_eq!(verifier.verify(&mr_enclave).is_some().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn mr_signer_success() {
+        let mr_signer = MrSigner::from(REPORT_BODY_SRC.mr_signer);
+        let verifier = MrSignerVerifier::new(mr_signer.clone());
+
+        assert_eq!(verifier.verify(&mr_signer).is_none().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn mr_signer_fails() {
+        let mut mr_signer = MrSigner::from(REPORT_BODY_SRC.mr_signer);
+        let verifier = MrSignerVerifier::new(mr_signer.clone());
+        let bytes: &mut [u8] = mr_signer.as_mut();
+        bytes[0] = 1;
+
+        assert_eq!(verifier.verify(&mr_signer).is_some().unwrap_u8(), 1);
     }
 }
