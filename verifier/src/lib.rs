@@ -8,7 +8,7 @@ mod report_body;
 pub use report_body::{AttributesVerifier, ReportBodyVerifier};
 
 use core::fmt::Debug;
-use mc_sgx_core_types::Attributes;
+use mc_sgx_core_types::{Attributes, ConfigId};
 use subtle::CtOption;
 
 /// Failed to verify.
@@ -22,6 +22,13 @@ pub enum VerificationError {
         expected: Attributes,
         /// The actual attributes that were present
         actual: Attributes,
+    },
+    /// The config id did not match expected:{expected} actual:{actual}
+    ConfigIdMismatch {
+        /// The expected attributes
+        expected: ConfigId,
+        /// The actual attributes that were present
+        actual: ConfigId,
     },
 }
 
