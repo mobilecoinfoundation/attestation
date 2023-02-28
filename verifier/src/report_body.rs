@@ -6,7 +6,7 @@ use crate::{VerificationError, Verifier};
 use core::fmt::Debug;
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, IsvSvn, Measurement, MiscellaneousSelect, MrEnclave, MrSigner,
-    ReportBody,
+    ReportBody, ReportData,
 };
 use subtle::{ConstantTimeLess, CtOption};
 
@@ -65,6 +65,7 @@ report_body_field_accessors! {
     ConfigSvn, config_svn;
     IsvSvn, isv_svn;
     MiscellaneousSelect, miscellaneous_select;
+    ReportData, report_data;
 }
 
 self_accessor!(MrEnclave, MrSigner);
@@ -310,6 +311,40 @@ impl<T: Accessor<MrSigner>> Verifier<T> for MrSignerVerifier {
         let is_some = if expected == actual { 0 } else { 1 };
         CtOption::new(
             VerificationError::MrSignerMismatch { expected, actual },
+            is_some.into(),
+        )
+    }
+}
+
+/// Verify the [`ReportData`] is as expected.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReportDataVerifier {
+    expected_report_data: ReportData,
+}
+
+impl ReportDataVerifier {
+    /// Create a new [`ReportDataVerifier`] instance.
+    ///
+    /// # Arguments:
+    /// * `expected_report_data` - The expected report data.
+    pub fn new(expected_report_data: ReportData) -> Self {
+        Self {
+            expected_report_data,
+        }
+    }
+}
+
+impl<T: Accessor<ReportData>> Verifier<T> for ReportDataVerifier {
+    type Error = VerificationError;
+
+    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
+        let expected = self.expected_report_data.clone();
+        let actual = evidence.get();
+
+        // TODO - This should be a constant time comparison.
+        let is_some = if expected == actual { 0 } else { 1 };
+        CtOption::new(
+            VerificationError::ReportDataMismatch { expected, actual },
             is_some.into(),
         )
     }
@@ -586,5 +621,23 @@ mod test {
         bytes[0] = 1;
 
         assert_eq!(verifier.verify(&mr_signer).is_some().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn report_data_success() {
+        let report_data = ReportData::from(REPORT_BODY_SRC.report_data);
+        let verifier = ReportDataVerifier::new(report_data.clone());
+
+        assert_eq!(verifier.verify(&report_data).is_none().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn report_data_fails() {
+        let mut report_data = ReportData::from(REPORT_BODY_SRC.report_data);
+        let verifier = ReportDataVerifier::new(report_data.clone());
+        let bytes: &mut [u8] = report_data.as_mut();
+        bytes[0] = 1;
+
+        assert_eq!(verifier.verify(&report_data).is_some().unwrap_u8(), 1);
     }
 }
