@@ -19,3 +19,4 @@ subtle = { version = "2.4.0", default-features = false }
 
 [dev-dependencies]
 mc-sgx-core-sys-types = "0.4.2"
+yare = "1.0.2"

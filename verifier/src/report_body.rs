@@ -4,8 +4,8 @@
 
 use crate::{VerificationError, Verifier};
 use core::fmt::Debug;
-use mc_sgx_core_types::{Attributes, ConfigId, ReportBody};
-use subtle::CtOption;
+use mc_sgx_core_types::{Attributes, ConfigId, ConfigSvn, ReportBody};
+use subtle::{ConstantTimeLess, CtOption};
 
 /// Trait for getting access to the type `T` that needs to be verified.
 ///
@@ -114,6 +114,49 @@ impl<T: Accessor<ConfigId>> Verifier<T> for ConfigIdVerifier {
     }
 }
 
+impl Accessor<ConfigSvn> for ReportBody {
+    fn get(&self) -> ConfigSvn {
+        self.config_svn()
+    }
+}
+
+impl Accessor<ConfigSvn> for ConfigSvn {
+    fn get(&self) -> ConfigSvn {
+        self.clone()
+    }
+}
+
+/// Verify the [`ConfigSvn`] is as expected.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct ConfigSvnVerifier {
+    expected_svn: ConfigSvn,
+}
+
+impl ConfigSvnVerifier {
+    /// Create a new [`ConfigSvnVerifier`] instance.
+    ///
+    /// # Arguments:
+    /// * `expected_svn` - The expected svn.
+    pub fn new(expected_svn: ConfigSvn) -> Self {
+        Self { expected_svn }
+    }
+}
+
+impl<T: Accessor<ConfigSvn>> Verifier<T> for ConfigSvnVerifier {
+    type Error = VerificationError;
+
+    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
+        let expected = self.expected_svn.clone();
+        let actual = evidence.get();
+
+        let is_some = actual.as_ref().ct_lt(expected.as_ref());
+        CtOption::new(
+            VerificationError::ConfigSvnTooSmall { expected, actual },
+            is_some,
+        )
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -121,6 +164,7 @@ mod test {
     use mc_sgx_core_sys_types::{
         sgx_attributes_t, sgx_cpu_svn_t, sgx_measurement_t, sgx_report_body_t, sgx_report_data_t,
     };
+    use yare::parameterized;
 
     const REPORT_BODY_SRC: sgx_report_body_t = sgx_report_body_t {
         cpu_svn: sgx_cpu_svn_t {
@@ -204,6 +248,20 @@ mod test {
     }
 
     #[test]
+    fn report_body_fails_due_to_config_security_version() {
+        let report_body = ReportBody::from(&REPORT_BODY_SRC);
+        let expected_config_svn = *report_body.config_svn().as_mut() + 1;
+        let verifier = And::new(
+            AttributesVerifier::new(report_body.attributes()),
+            And::new(
+                ConfigIdVerifier::new(report_body.config_id()),
+                ConfigSvnVerifier::new(expected_config_svn.into()),
+            ),
+        );
+        assert_eq!(verifier.verify(&report_body).is_some().unwrap_u8(), 1);
+    }
+
+    #[test]
     fn attributes_success() {
         let attributes = Attributes::from(REPORT_BODY_SRC.attributes);
         let verifier = AttributesVerifier::new(attributes);
@@ -235,5 +293,25 @@ mod test {
         config_id.as_mut()[0] = 2;
 
         assert_eq!(verifier.verify(&config_id).is_some().unwrap_u8(), 1);
+    }
+
+    #[parameterized(
+        equal = { 10, 10 },
+        greater = { 12, 11 },
+        much_greater = { 20, 1 },
+    )]
+    fn config_svn_succeeds(actual: u16, expected: u16) {
+        let verifier = ConfigSvnVerifier::new(expected.into());
+        let config_svn = ConfigSvn::from(actual);
+
+        assert_eq!(verifier.verify(&config_svn).is_none().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn config_svn_fails_less_than_expected() {
+        let verifier = ConfigSvnVerifier::new(10.into());
+        let config_svn = ConfigSvn::from(9);
+
+        assert_eq!(verifier.verify(&config_svn).is_some().unwrap_u8(), 1);
     }
 }
