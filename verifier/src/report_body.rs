@@ -24,32 +24,32 @@ pub trait Accessor<T>: Debug {
     fn get(&self) -> T;
 }
 
-/// Macro to generate boilerplate for implementing [`Accessor`] for a member of
+/// Macro to generate boilerplate for implementing [`Accessor`] for a field of
 /// [`ReportBody`].
 ///
 /// Will create [`Accessor`] implementations for both `ReportBody` and the
-/// underlying member type
+/// underlying field type
 ///
 /// # Arguments
-/// * `member_type` - The type of the member
-/// * `accessor_method` - The method on `ReportBody` that returns the member
-macro_rules! report_body_member_accessors {
-    ($($member_type:ty, $accessor_method:ident;)*) => {$(
-        impl Accessor<$member_type> for ReportBody {
-            fn get(&self) -> $member_type {
+/// * `field_type` - The type of the field in `ReportBody` to be accessed
+/// * `accessor_method` - The method on `ReportBody` that returns the field
+macro_rules! report_body_field_accessors {
+    ($($field_type:ty, $accessor_method:ident;)*) => {$(
+        impl Accessor<$field_type> for ReportBody {
+            fn get(&self) -> $field_type {
                 self.$accessor_method()
             }
         }
 
-        impl Accessor<$member_type> for $member_type {
-            fn get(&self) -> $member_type {
+        impl Accessor<$field_type> for $field_type {
+            fn get(&self) -> $field_type {
                 self.clone()
             }
         }
     )*}
 }
 
-report_body_member_accessors! {
+report_body_field_accessors! {
     Attributes, attributes;
     ConfigId, config_id;
     ConfigSvn, config_svn;
