@@ -5,7 +5,7 @@
 #![no_std]
 
 mod report_body;
-pub use report_body::{AttributesVerifier, ReportBodyVerifier};
+pub use report_body::{AttributesVerifier, ConfigIdVerifier};
 
 use core::fmt::Debug;
 use mc_sgx_core_types::{Attributes, ConfigId};
@@ -34,15 +34,31 @@ pub enum VerificationError {
 
 /// A verifier. These can chained together using the [`Or`] and [`And`]
 /// types.
-pub trait Verifier: Debug {
+pub trait Verifier<T>: Debug {
     /// The error that this verification will return in failure cases.
     type Error;
 
-    /// Performs a verification operation for the [`Verifier`].
+    /// Performs a verification operation on `evidence`.
     ///
     /// In order to accommodate constant time operations this returns a
     /// [`CtOption`] instead of a [`Result`].
-    fn verify(&self) -> CtOption<Self::Error>;
+    fn verify(&self, evidence: &T) -> CtOption<Self::Error>;
+
+    /// Or this verifier with another.
+    fn or<U, V: Verifier<U>>(self, other: V) -> Or<Self, V>
+    where
+        Self: Sized,
+    {
+        Or::new(self, other)
+    }
+
+    /// And this verifier with another.
+    fn and<U, V: Verifier<U>>(self, other: V) -> And<Self, V>
+    where
+        Self: Sized,
+    {
+        And::new(self, other)
+    }
 }
 
 /// An error that occurs during an `and` operation.
@@ -95,11 +111,11 @@ impl<L, R> And<L, R> {
     }
 }
 
-impl<L: Verifier, R: Verifier> Verifier for And<L, R> {
+impl<T, L: Verifier<T>, R: Verifier<T>> Verifier<T> for And<L, R> {
     type Error = AndError<L::Error, R::Error>;
-    fn verify(&self) -> CtOption<Self::Error> {
-        let left_err = self.left.verify();
-        let right_err = self.right.verify();
+    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
+        let left_err = self.left.verify(evidence);
+        let right_err = self.right.verify(evidence);
         let is_some = left_err.is_some() | right_err.is_some();
         CtOption::new(AndError::new(left_err, right_err), is_some)
     }
@@ -155,34 +171,34 @@ impl<L, R> Or<L, R> {
     }
 }
 
-impl<L: Verifier, R: Verifier> Verifier for Or<L, R> {
+impl<T, L: Verifier<T>, R: Verifier<T>> Verifier<T> for Or<L, R> {
     type Error = OrError<L::Error, R::Error>;
-    fn verify(&self) -> CtOption<Self::Error> {
-        let left_err = self.left.verify();
-        let right_err = self.right.verify();
+    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
+        let left_err = self.left.verify(evidence);
+        let right_err = self.right.verify(evidence);
         let is_some = left_err.is_some() & right_err.is_some();
         CtOption::new(OrError::new(left_err, right_err), is_some)
     }
 }
 
 /// Will always succeed for the [`Verifier::verify()`] operation.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Default)]
 pub struct AlwaysTrue;
 
-impl Verifier for AlwaysTrue {
+impl<T> Verifier<T> for AlwaysTrue {
     type Error = VerificationError;
-    fn verify(&self) -> CtOption<Self::Error> {
+    fn verify(&self, _evidence: &T) -> CtOption<Self::Error> {
         CtOption::new(VerificationError::General, 0.into())
     }
 }
 
 /// Will always fail for the [`Verifier::verify()`] operation.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Default)]
 pub struct AlwaysFalse;
 
-impl Verifier for AlwaysFalse {
+impl<T> Verifier<T> for AlwaysFalse {
     type Error = VerificationError;
-    fn verify(&self) -> CtOption<Self::Error> {
+    fn verify(&self, _evidence: &T) -> CtOption<Self::Error> {
         CtOption::new(VerificationError::General, 1.into())
     }
 }
@@ -191,6 +207,10 @@ impl Verifier for AlwaysFalse {
 mod tests {
     use super::*;
     use core::cell::Cell;
+
+    // The `And` and `Or` logic tests below don't care about the evidence, but
+    // they need to be provided something.
+    const NO_EVIDENCE: &Option<usize> = &None;
 
     #[derive(Debug, Eq, PartialEq)]
     pub struct Node {
@@ -207,9 +227,9 @@ mod tests {
         }
     }
 
-    impl Verifier for Node {
+    impl<T> Verifier<T> for Node {
         type Error = VerificationError;
-        fn verify(&self) -> CtOption<Self::Error> {
+        fn verify(&self, _evidence: &T) -> CtOption<Self::Error> {
             self.verified_called.replace(true);
             let succeed = if self.succeed { 0 } else { 1 };
             CtOption::new(VerificationError::General, succeed.into())
@@ -219,14 +239,14 @@ mod tests {
     #[test]
     fn and_succeeds() {
         let and = And::new(AlwaysTrue, AlwaysTrue);
-        let verification = and.verify();
+        let verification = and.verify(NO_EVIDENCE);
         assert_eq!(verification.is_none().unwrap_u8(), 1);
     }
 
     #[test]
     fn and_fails_at_left() {
         let and = And::new(Node::new(false), Node::new(true));
-        let verification = and.verify();
+        let verification = and.verify(NO_EVIDENCE);
         assert_eq!(verification.is_some().unwrap_u8(), 1);
         assert!(and.left().verified_called.get());
         assert!(and.right().verified_called.get());
@@ -235,7 +255,7 @@ mod tests {
     #[test]
     fn and_fails_at_right() {
         let and = And::new(Node::new(true), Node::new(false));
-        let verification = and.verify();
+        let verification = and.verify(NO_EVIDENCE);
         assert_eq!(verification.is_some().unwrap_u8(), 1);
         assert!(and.left().verified_called.get());
         assert!(and.right().verified_called.get());
@@ -244,14 +264,14 @@ mod tests {
     #[test]
     fn or_fails_for_both_failing() {
         let or = Or::new(AlwaysFalse, AlwaysFalse);
-        let verification = or.verify();
+        let verification = or.verify(NO_EVIDENCE);
         assert_eq!(verification.is_some().unwrap_u8(), 1);
     }
 
     #[test]
     fn or_succeeds_when_left_is_false() {
         let or = Or::new(Node::new(false), Node::new(true));
-        let verification = or.verify();
+        let verification = or.verify(NO_EVIDENCE);
         assert_eq!(verification.is_none().unwrap_u8(), 1);
         assert!(or.left().verified_called.get());
         assert!(or.right().verified_called.get());
@@ -260,7 +280,7 @@ mod tests {
     #[test]
     fn or_succeeds_when_right_is_false() {
         let or = Or::new(Node::new(true), Node::new(false));
-        let verification = or.verify();
+        let verification = or.verify(NO_EVIDENCE);
         assert_eq!(verification.is_none().unwrap_u8(), 1);
         assert!(or.left().verified_called.get());
         assert!(or.right().verified_called.get());
@@ -269,14 +289,14 @@ mod tests {
     #[test]
     fn composing_or_and_and() {
         let or = Or::new(And::new(Node::new(true), Node::new(false)), Node::new(true));
-        let verification = or.verify();
+        let verification = or.verify(NO_EVIDENCE);
         assert_eq!(verification.is_none().unwrap_u8(), 1);
     }
 
     #[test]
     fn composing_and_and_or() {
         let and = And::new(Or::new(Node::new(true), Node::new(false)), Node::new(true));
-        let verification = and.verify();
+        let verification = and.verify(NO_EVIDENCE);
         assert_eq!(verification.is_none().unwrap_u8(), 1);
     }
 }

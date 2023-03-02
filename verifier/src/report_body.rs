@@ -2,72 +2,65 @@
 
 //! Verifiers which operate on the [`ReportBody`]
 
-use crate::{And, AndError, VerificationError, Verifier};
+use crate::{VerificationError, Verifier};
+use core::fmt::Debug;
 use mc_sgx_core_types::{Attributes, ConfigId, ReportBody};
 use subtle::CtOption;
 
-/// Verify the report body is as expected.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct ReportBodyVerifier<'a> {
-    expected_report_body: ReportBody,
-    report_body: &'a ReportBody,
+/// Trait for getting access to the type `T` that needs to be verified.
+///
+/// The intent is to implement this for a higher level type that contains the
+/// `T`
+///
+/// ```ignore
+/// use mc_attestation_verifier::ConfigIdVerifier;
+/// impl Accessor<Contained> for Container {
+///     fn get(&self) -> Contained {
+///         self.some_method()
+///     }
+/// }
+/// ```
+pub trait Accessor<T>: Debug {
+    fn get(&self) -> T;
 }
 
-impl<'a> ReportBodyVerifier<'a> {
-    /// Create a new [`ReportBodyVerifier`] instance.
-    ///
-    /// # Arguments:
-    /// * `expected_report_body` - The expected report body.
-    /// * `report_body` - The report body to verify conforms to the
-    ///   `expected_report_body`.
-    pub fn new(expected_report_body: ReportBody, report_body: &'a ReportBody) -> Self {
-        Self {
-            expected_report_body,
-            report_body,
-        }
+impl Accessor<Attributes> for ReportBody {
+    fn get(&self) -> Attributes {
+        self.attributes()
     }
 }
 
-impl Verifier for ReportBodyVerifier<'_> {
-    type Error = AndError<VerificationError, VerificationError>;
-
-    fn verify(&self) -> CtOption<Self::Error> {
-        let attributes_verifier =
-            AttributesVerifier::new(self.expected_report_body.attributes(), self.report_body);
-        let config_id_verifier =
-            ConfigIdVerifier::new(self.expected_report_body.config_id(), self.report_body);
-        let and_verifier = And::new(attributes_verifier, config_id_verifier);
-        and_verifier.verify()
+impl Accessor<Attributes> for Attributes {
+    fn get(&self) -> Attributes {
+        *self
     }
 }
 
 /// Verify the attributes are as expected.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct AttributesVerifier<'a> {
+pub struct AttributesVerifier {
     expected_attributes: Attributes,
-    report_body: &'a ReportBody,
 }
 
-impl<'a> AttributesVerifier<'a> {
+impl AttributesVerifier {
     /// Create a new [`AttributesVerifier`] instance.
     ///
     /// # Arguments:
     /// * `expected_attributes` - The expected attributes.
     /// * `report_body` - The report body containing attributes that conforms
     ///    to the `expected_attributes`.
-    pub fn new(expected_attributes: Attributes, report_body: &'a ReportBody) -> Self {
+    pub fn new(expected_attributes: Attributes) -> Self {
         Self {
             expected_attributes,
-            report_body,
         }
     }
 }
 
-impl Verifier for AttributesVerifier<'_> {
+impl<T: Accessor<Attributes>> Verifier<T> for AttributesVerifier {
     type Error = VerificationError;
-    fn verify(&self) -> CtOption<Self::Error> {
+    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
         let expected = self.expected_attributes;
-        let actual = self.report_body.attributes();
+        let actual = evidence.get();
         // TODO - This should be a constant time comparison.
         let is_some = if expected == actual { 0 } else { 1 };
         CtOption::new(
@@ -77,32 +70,41 @@ impl Verifier for AttributesVerifier<'_> {
     }
 }
 
-/// Verify the [`ConfigId`] is as expected.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct ConfigIdVerifier<'a> {
-    expected_id: ConfigId,
-    report_body: &'a ReportBody,
+impl Accessor<ConfigId> for ReportBody {
+    fn get(&self) -> ConfigId {
+        self.config_id()
+    }
 }
 
-impl<'a> ConfigIdVerifier<'a> {
+impl Accessor<ConfigId> for ConfigId {
+    fn get(&self) -> ConfigId {
+        self.clone()
+    }
+}
+
+/// Verify the [`ConfigId`] is as expected.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct ConfigIdVerifier {
+    expected_id: ConfigId,
+}
+
+impl ConfigIdVerifier {
     /// Create a new [`ConfigIdVerifier`] instance.
     ///
     /// # Arguments:
     /// * `expected_id` - The expected id.
     /// * `report_body` - The report body containing config id that conforms
     ///    to the `expected_id`.
-    pub fn new(expected_id: ConfigId, report_body: &'a ReportBody) -> Self {
-        Self {
-            expected_id,
-            report_body,
-        }
+    pub fn new(expected_id: ConfigId) -> Self {
+        Self { expected_id }
     }
 }
-impl Verifier for ConfigIdVerifier<'_> {
+
+impl<T: Accessor<ConfigId>> Verifier<T> for ConfigIdVerifier {
     type Error = VerificationError;
-    fn verify(&self) -> CtOption<Self::Error> {
+    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
         let expected = self.expected_id.clone();
-        let actual = self.report_body.config_id();
+        let actual = evidence.get();
         // TODO - This should be a constant time comparison.
         let is_some = if expected == actual { 0 } else { 1 };
         CtOption::new(
@@ -115,6 +117,7 @@ impl Verifier for ConfigIdVerifier<'_> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::And;
     use mc_sgx_core_sys_types::{
         sgx_attributes_t, sgx_cpu_svn_t, sgx_measurement_t, sgx_report_body_t, sgx_report_data_t,
     };
@@ -170,63 +173,67 @@ mod test {
     #[test]
     fn report_body_succeeds() {
         let report_body = ReportBody::from(&REPORT_BODY_SRC);
-        let verifier = ReportBodyVerifier::new(REPORT_BODY_SRC.into(), &report_body);
-        assert_eq!(verifier.verify().is_none().unwrap_u8(), 1);
+        let verifier = And::new(
+            AttributesVerifier::new(report_body.attributes()),
+            ConfigIdVerifier::new(report_body.config_id()),
+        );
+        assert_eq!(verifier.verify(&report_body).is_none().unwrap_u8(), 1);
     }
 
     #[test]
     fn report_body_fails_due_to_attributes() {
         let report_body = ReportBody::from(&REPORT_BODY_SRC);
-        let mut report_body_src = REPORT_BODY_SRC;
-        report_body_src.attributes.flags = 0;
-        let report_body_src: ReportBody = report_body_src.into();
-        let verifier = ReportBodyVerifier::new(report_body_src.clone(), &report_body);
-        assert_eq!(verifier.verify().is_some().unwrap_u8(), 1);
+        let attributes = report_body.attributes().set_flags(0);
+        let verifier = And::new(
+            AttributesVerifier::new(attributes),
+            ConfigIdVerifier::new(report_body.config_id()),
+        );
+        assert_eq!(verifier.verify(&report_body).is_some().unwrap_u8(), 1);
     }
 
     #[test]
     fn report_body_fails_due_to_config_id() {
         let report_body = ReportBody::from(&REPORT_BODY_SRC);
-        let mut report_body_src = REPORT_BODY_SRC;
-        report_body_src.config_id[0] = 0;
-        let report_body_src: ReportBody = report_body_src.into();
-        let verifier = ReportBodyVerifier::new(report_body_src.clone(), &report_body);
-        assert_eq!(verifier.verify().is_some().unwrap_u8(), 1);
+        let mut config_id = report_body.config_id();
+        config_id.as_mut()[0] = 0;
+        let verifier = And::new(
+            AttributesVerifier::new(report_body.attributes()),
+            ConfigIdVerifier::new(config_id),
+        );
+        assert_eq!(verifier.verify(&report_body).is_some().unwrap_u8(), 1);
     }
 
     #[test]
     fn attributes_success() {
-        let report_body = ReportBody::from(&REPORT_BODY_SRC);
-        let verifier = AttributesVerifier::new(REPORT_BODY_SRC.attributes.into(), &report_body);
+        let attributes = Attributes::from(REPORT_BODY_SRC.attributes);
+        let verifier = AttributesVerifier::new(attributes);
 
-        assert_eq!(verifier.verify().is_none().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&attributes).is_none().unwrap_u8(), 1);
     }
 
     #[test]
     fn attributes_fail() {
-        let report_body = ReportBody::from(&REPORT_BODY_SRC);
-        let mut attributes: Attributes = REPORT_BODY_SRC.attributes.into();
+        let mut attributes = Attributes::from(REPORT_BODY_SRC.attributes);
+        let verifier = AttributesVerifier::new(attributes);
         attributes = attributes.set_flags(0);
-        let verifier = AttributesVerifier::new(attributes, &report_body);
 
-        assert_eq!(verifier.verify().is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&attributes).is_some().unwrap_u8(), 1);
     }
 
     #[test]
     fn config_id_success() {
-        let report_body = ReportBody::from(&REPORT_BODY_SRC);
-        let verifier = ConfigIdVerifier::new(REPORT_BODY_SRC.config_id.into(), &report_body);
+        let config_id = ConfigId::from(REPORT_BODY_SRC.config_id);
+        let verifier = ConfigIdVerifier::new(config_id.clone());
 
-        assert_eq!(verifier.verify().is_none().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&config_id).is_none().unwrap_u8(), 1);
     }
 
     #[test]
     fn config_id_fail() {
-        let report_body = ReportBody::from(&REPORT_BODY_SRC);
-        let mut config_id: ConfigId = REPORT_BODY_SRC.config_id.into();
-        config_id.as_mut()[0] = 0;
-        let verifier = ConfigIdVerifier::new(config_id, &report_body);
+        let mut config_id = ConfigId::from(REPORT_BODY_SRC.config_id);
+        let verifier = ConfigIdVerifier::new(config_id.clone());
+        config_id.as_mut()[0] = 2;
 
-        assert_eq!(verifier.verify().is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&config_id).is_some().unwrap_u8(), 1);
     }
 }
