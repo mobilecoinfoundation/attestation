@@ -250,13 +250,12 @@ mod test {
     #[test]
     fn report_body_fails_due_to_config_security_version() {
         let report_body = ReportBody::from(&REPORT_BODY_SRC);
-        let mut expected_config_svn = report_body.config_svn();
-        *expected_config_svn.as_mut() += 1;
+        let expected_config_svn = *report_body.config_svn().as_mut() + 1;
         let verifier = And::new(
             AttributesVerifier::new(report_body.attributes()),
             And::new(
                 ConfigIdVerifier::new(report_body.config_id()),
-                ConfigSvnVerifier::new(expected_config_svn),
+                ConfigSvnVerifier::new(expected_config_svn.into()),
             ),
         );
         assert_eq!(verifier.verify(&report_body).is_some().unwrap_u8(), 1);
@@ -297,9 +296,9 @@ mod test {
     }
 
     #[parameterized(
-    equal = { 10, 10 },
-    greater = { 12, 11 },
-    much_greater = { 20, 1 },
+        equal = { 10, 10 },
+        greater = { 12, 11 },
+        much_greater = { 20, 1 },
     )]
     fn config_svn_succeeds(actual: u16, expected: u16) {
         let verifier = ConfigSvnVerifier::new(expected.into());
