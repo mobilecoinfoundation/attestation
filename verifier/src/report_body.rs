@@ -78,11 +78,6 @@ pub struct AttributesVerifier {
 
 impl AttributesVerifier {
     /// Create a new [`AttributesVerifier`] instance.
-    ///
-    /// # Arguments:
-    /// * `expected_attributes` - The expected attributes.
-    /// * `report_body` - The report body containing attributes that conforms
-    ///    to the `expected_attributes`.
     pub fn new(expected_attributes: Attributes) -> Self {
         Self {
             expected_attributes,
@@ -112,11 +107,6 @@ pub struct ConfigIdVerifier {
 
 impl ConfigIdVerifier {
     /// Create a new [`ConfigIdVerifier`] instance.
-    ///
-    /// # Arguments:
-    /// * `expected_id` - The expected id.
-    /// * `report_body` - The report body containing config id that conforms
-    ///    to the `expected_id`.
     pub fn new(expected_id: ConfigId) -> Self {
         Self { expected_id }
     }
@@ -145,8 +135,8 @@ pub struct ConfigSvnVerifier {
 impl ConfigSvnVerifier {
     /// Create a new [`ConfigSvnVerifier`] instance.
     ///
-    /// # Arguments:
-    /// * `expected_svn` - The expected svn.
+    /// Verifies that `expected_svn` is less than the svn found in evidence
+    /// during `verify()`.
     pub fn new(expected_svn: ConfigSvn) -> Self {
         Self { expected_svn }
     }
@@ -176,8 +166,8 @@ pub struct IsvSvnVerifier {
 impl IsvSvnVerifier {
     /// Create a new [`IsvSvnVerifier`] instance.
     ///
-    /// # Arguments:
-    /// * `expected_svn` - The expected svn.
+    /// Verifies that `expected_svn` is less than the svn found in evidence
+    /// during `verify()`.
     pub fn new(expected_svn: IsvSvn) -> Self {
         Self { expected_svn }
     }
@@ -206,9 +196,6 @@ pub struct MiscellaneousSelectVerifier {
 
 impl MiscellaneousSelectVerifier {
     /// Create a new [`MiscellaneousSelectVerifier`] instance.
-    ///
-    /// # Arguments:
-    /// * `expected_misc_select` - The expected miscellaneous select.
     pub fn new(expected_misc_select: MiscellaneousSelect) -> Self {
         Self {
             expected_misc_select,
@@ -240,9 +227,6 @@ pub struct MrEnclaveVerifier {
 
 impl MrEnclaveVerifier {
     /// Create a new [`MrEnclaveVerifier`] instance.
-    ///
-    /// # Arguments:
-    /// * `expected_mr_enclave` - The expected MRENCLAVE measurement.
     pub fn new(expected_mr_enclave: MrEnclave) -> Self {
         Self {
             expected_mr_enclave,
@@ -283,9 +267,6 @@ pub struct MrSignerVerifier {
 
 impl MrSignerVerifier {
     /// Create a new [`MrSignerVerifier`] instance.
-    ///
-    /// # Arguments:
-    /// * `expected_mr_signer` - The expected MRSIGNER.
     pub fn new(expected_mr_signer: MrSigner) -> Self {
         Self { expected_mr_signer }
     }
@@ -324,9 +305,6 @@ pub struct ReportDataVerifier {
 
 impl ReportDataVerifier {
     /// Create a new [`ReportDataVerifier`] instance.
-    ///
-    /// # Arguments:
-    /// * `expected_report_data` - The expected report data.
     pub fn new(expected_report_data: ReportData) -> Self {
         Self {
             expected_report_data,
