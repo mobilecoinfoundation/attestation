@@ -14,9 +14,11 @@ repository = "https://github.com/mobilecoinfoundation/attestation"
 rust-version = "1.62.1"
 
 [dependencies]
+displaydoc = { version = "0.2.1", default-features = false }
 mc-sgx-core-types = "0.4.2"
 subtle = { version = "2.4.0", default-features = false }
 
 [dev-dependencies]
 mc-sgx-core-sys-types = "0.4.2"
+textwrap = "0.16.0"
 yare = "1.0.2"
