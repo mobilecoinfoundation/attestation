@@ -7,11 +7,11 @@
 mod report_body;
 pub use report_body::{
     AttributesVerifier, ConfigIdVerifier, ConfigSvnVerifier, IsvSvnVerifier,
-    MiscellaneousSelectVerifier,
+    MiscellaneousSelectVerifier, MrEnclaveVerifier,
 };
 
 use core::fmt::Debug;
-use mc_sgx_core_types::{Attributes, ConfigId, ConfigSvn, IsvSvn, MiscellaneousSelect};
+use mc_sgx_core_types::{Attributes, ConfigId, ConfigSvn, IsvSvn, MiscellaneousSelect, MrEnclave};
 use subtle::CtOption;
 
 /// Failed to verify.
@@ -53,6 +53,13 @@ pub enum VerificationError {
         expected: MiscellaneousSelect,
         /// The actual selections that were present
         actual: MiscellaneousSelect,
+    },
+    /// The MRENCLAVE measurement did not match expected:{expected} actual:{actual}
+    MrEnclaveMismatch {
+        /// The expected measurement
+        expected: MrEnclave,
+        /// The actual measurement that was present
+        actual: MrEnclave,
     },
 }
 

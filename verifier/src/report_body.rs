@@ -4,7 +4,10 @@
 
 use crate::{VerificationError, Verifier};
 use core::fmt::Debug;
-use mc_sgx_core_types::{Attributes, ConfigId, ConfigSvn, IsvSvn, MiscellaneousSelect, ReportBody};
+use mc_sgx_core_types::{
+    Attributes, ConfigId, ConfigSvn, IsvSvn, Measurement, MiscellaneousSelect, MrEnclave,
+    ReportBody,
+};
 use subtle::{ConstantTimeLess, CtOption};
 
 /// Trait for getting access to the type `T` that needs to be verified.
@@ -24,6 +27,17 @@ pub trait Accessor<T>: Debug {
     fn get(&self) -> T;
 }
 
+/// [`Accessor`] for returning Self, i.e. T -> T
+macro_rules! self_accessor {
+    ($($type:ty)*) => {$(
+        impl Accessor<$type> for $type {
+            fn get(&self) -> $type {
+                self.clone()
+            }
+        }
+    )*}
+}
+
 /// Macro to generate boilerplate for implementing [`Accessor`] for a field of
 /// [`ReportBody`].
 ///
@@ -41,11 +55,7 @@ macro_rules! report_body_field_accessors {
             }
         }
 
-        impl Accessor<$field_type> for $field_type {
-            fn get(&self) -> $field_type {
-                self.clone()
-            }
-        }
+        self_accessor! {$field_type}
     )*}
 }
 
@@ -56,6 +66,8 @@ report_body_field_accessors! {
     IsvSvn, isv_svn;
     MiscellaneousSelect, miscellaneous_select;
 }
+
+self_accessor!(MrEnclave);
 
 /// Verify the attributes are as expected.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -219,6 +231,49 @@ impl<T: Accessor<MiscellaneousSelect>> Verifier<T> for MiscellaneousSelectVerifi
     }
 }
 
+/// Verify the [`MrEnclave`] is as expected.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MrEnclaveVerifier {
+    expected_measurement: MrEnclave,
+}
+
+impl MrEnclaveVerifier {
+    /// Create a new [`MrEnclaveVerifier`] instance.
+    ///
+    /// # Arguments:
+    /// * `expected_measurement` - The expected measurement.
+    pub fn new(expected_measurement: MrEnclave) -> Self {
+        Self {
+            expected_measurement,
+        }
+    }
+}
+
+impl Accessor<MrEnclave> for ReportBody {
+    fn get(&self) -> MrEnclave {
+        let Measurement::MrEnclave(mr_enclave) = self.mr_enclave() else {
+            panic!("`mr_enclave()` should return a Measurement::MrEnclave");
+        };
+        mr_enclave
+    }
+}
+
+impl<T: Accessor<MrEnclave>> Verifier<T> for MrEnclaveVerifier {
+    type Error = VerificationError;
+
+    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
+        let expected = self.expected_measurement;
+        let actual = evidence.get();
+
+        // TODO - This should be a constant time comparison.
+        let is_some = if expected == actual { 0 } else { 1 };
+        CtOption::new(
+            VerificationError::MrEnclaveMismatch { expected, actual },
+            is_some.into(),
+        )
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -226,6 +281,7 @@ mod test {
     use mc_sgx_core_sys_types::{
         sgx_attributes_t, sgx_cpu_svn_t, sgx_measurement_t, sgx_report_body_t, sgx_report_data_t,
     };
+    use mc_sgx_core_types::Measurement;
     use yare::parameterized;
 
     const REPORT_BODY_SRC: sgx_report_body_t = sgx_report_body_t {
@@ -318,6 +374,24 @@ mod test {
             And::new(
                 ConfigIdVerifier::new(report_body.config_id()),
                 ConfigSvnVerifier::new(expected_config_svn.into()),
+            ),
+        );
+        assert_eq!(verifier.verify(&report_body).is_some().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn report_body_fails_due_to_mr_enclave() {
+        let report_body = ReportBody::from(&REPORT_BODY_SRC);
+        let Measurement::MrEnclave(mut mr_enclave) = report_body.mr_enclave() else {
+            panic!("mr_enclave is not an MrEnclave measurement");
+        };
+        let bytes: &mut [u8] = mr_enclave.as_mut();
+        bytes[0] += 1;
+        let verifier = And::new(
+            AttributesVerifier::new(report_body.attributes()),
+            And::new(
+                ConfigIdVerifier::new(report_body.config_id()),
+                MrEnclaveVerifier::new(mr_enclave),
             ),
         );
         assert_eq!(verifier.verify(&report_body).is_some().unwrap_u8(), 1);
@@ -418,5 +492,23 @@ mod test {
             verifier.verify(&miscellaneous_select).is_some().unwrap_u8(),
             1
         );
+    }
+
+    #[test]
+    fn mr_encalve_success() {
+        let mr_enclave = MrEnclave::from(REPORT_BODY_SRC.mr_enclave);
+        let verifier = MrEnclaveVerifier::new(mr_enclave.clone());
+
+        assert_eq!(verifier.verify(&mr_enclave).is_none().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn mr_enclave_fails() {
+        let mut mr_enclave = MrEnclave::from(REPORT_BODY_SRC.mr_enclave);
+        let verifier = MrEnclaveVerifier::new(mr_enclave.clone());
+        let bytes: &mut [u8] = mr_enclave.as_mut();
+        bytes[0] = 0;
+
+        assert_eq!(verifier.verify(&mr_enclave).is_some().unwrap_u8(), 1);
     }
 }
