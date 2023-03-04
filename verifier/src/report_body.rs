@@ -4,7 +4,7 @@
 
 use crate::{VerificationError, Verifier};
 use core::fmt::Debug;
-use mc_sgx_core_types::{Attributes, ConfigId, ConfigSvn, IsvSvn, ReportBody};
+use mc_sgx_core_types::{Attributes, ConfigId, ConfigSvn, IsvSvn, MiscellaneousSelect, ReportBody};
 use subtle::{ConstantTimeLess, CtOption};
 
 /// Trait for getting access to the type `T` that needs to be verified.
@@ -54,6 +54,7 @@ report_body_field_accessors! {
     ConfigId, config_id;
     ConfigSvn, config_svn;
     IsvSvn, isv_svn;
+    MiscellaneousSelect, miscellaneous_select;
 }
 
 /// Verify the attributes are as expected.
@@ -180,6 +181,40 @@ impl<T: Accessor<IsvSvn>> Verifier<T> for IsvSvnVerifier {
         CtOption::new(
             VerificationError::IsvSvnTooSmall { expected, actual },
             is_some,
+        )
+    }
+}
+
+/// Verify the [`MiscellaneousSelect`] is as expected.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct MiscellaneousSelectVerifier {
+    expected_misc_select: MiscellaneousSelect,
+}
+
+impl MiscellaneousSelectVerifier {
+    /// Create a new [`MiscellaneousSelectVerifier`] instance.
+    ///
+    /// # Arguments:
+    /// * `expected_misc_select` - The expected miscellaneous select.
+    pub fn new(expected_misc_select: MiscellaneousSelect) -> Self {
+        Self {
+            expected_misc_select,
+        }
+    }
+}
+
+impl<T: Accessor<MiscellaneousSelect>> Verifier<T> for MiscellaneousSelectVerifier {
+    type Error = VerificationError;
+
+    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
+        let expected = self.expected_misc_select.clone();
+        let actual = evidence.get();
+
+        // TODO - This should be a constant time comparison.
+        let is_some = if expected == actual { 0 } else { 1 };
+        CtOption::new(
+            VerificationError::MiscellaneousSelectMismatch { expected, actual },
+            is_some.into(),
         )
     }
 }
@@ -360,5 +395,28 @@ mod test {
         let isv_svn = IsvSvn::from(9);
 
         assert_eq!(verifier.verify(&isv_svn).is_some().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn miscellaneous_select_success() {
+        let miscellaneous_select = MiscellaneousSelect::from(REPORT_BODY_SRC.misc_select);
+        let verifier = MiscellaneousSelectVerifier::new(miscellaneous_select.clone());
+
+        assert_eq!(
+            verifier.verify(&miscellaneous_select).is_none().unwrap_u8(),
+            1
+        );
+    }
+
+    #[test]
+    fn miscellaneous_select_fails() {
+        let mut miscellaneous_select = MiscellaneousSelect::from(REPORT_BODY_SRC.misc_select);
+        let verifier = MiscellaneousSelectVerifier::new(miscellaneous_select.clone());
+        *miscellaneous_select.as_mut() = 0;
+
+        assert_eq!(
+            verifier.verify(&miscellaneous_select).is_some().unwrap_u8(),
+            1
+        );
     }
 }

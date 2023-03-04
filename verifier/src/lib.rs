@@ -5,10 +5,13 @@
 #![no_std]
 
 mod report_body;
-pub use report_body::{AttributesVerifier, ConfigIdVerifier, ConfigSvnVerifier, IsvSvnVerifier};
+pub use report_body::{
+    AttributesVerifier, ConfigIdVerifier, ConfigSvnVerifier, IsvSvnVerifier,
+    MiscellaneousSelectVerifier,
+};
 
 use core::fmt::Debug;
-use mc_sgx_core_types::{Attributes, ConfigId, ConfigSvn, IsvSvn};
+use mc_sgx_core_types::{Attributes, ConfigId, ConfigSvn, IsvSvn, MiscellaneousSelect};
 use subtle::CtOption;
 
 /// Failed to verify.
@@ -25,9 +28,9 @@ pub enum VerificationError {
     },
     /// The config id did not match expected:{expected} actual:{actual}
     ConfigIdMismatch {
-        /// The expected attributes
+        /// The expected config id
         expected: ConfigId,
-        /// The actual attributes that were present
+        /// The actual config id that was present
         actual: ConfigId,
     },
     /// The config SVN value of {actual} is less than the expected value of {expected}
@@ -43,6 +46,13 @@ pub enum VerificationError {
         expected: IsvSvn,
         /// The actual SVN that was present
         actual: IsvSvn,
+    },
+    /// The MiscellaneousSelect did not match expected:{expected} actual:{actual}
+    MiscellaneousSelectMismatch {
+        /// The expected selection
+        expected: MiscellaneousSelect,
+        /// The actual selections that were present
+        actual: MiscellaneousSelect,
     },
 }
 
