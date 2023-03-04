@@ -5,10 +5,10 @@
 #![no_std]
 
 mod report_body;
-pub use report_body::{AttributesVerifier, ConfigIdVerifier, ConfigSvnVerifier};
+pub use report_body::{AttributesVerifier, ConfigIdVerifier, ConfigSvnVerifier, IsvSvnVerifier};
 
 use core::fmt::Debug;
-use mc_sgx_core_types::{Attributes, ConfigId, ConfigSvn};
+use mc_sgx_core_types::{Attributes, ConfigId, ConfigSvn, IsvSvn};
 use subtle::CtOption;
 
 /// Failed to verify.
@@ -30,12 +30,19 @@ pub enum VerificationError {
         /// The actual attributes that were present
         actual: ConfigId,
     },
-    /// The config svn value of {actual} is less than the expected value of {expected}
+    /// The config SVN value of {actual} is less than the expected value of {expected}
     ConfigSvnTooSmall {
         /// The minimum SVN
         expected: ConfigSvn,
         /// The actual SVN that was present
         actual: ConfigSvn,
+    },
+    /// The ISV svn value of {actual} is less than the expected value of {expected}
+    IsvSvnTooSmall {
+        /// The minimum SVN
+        expected: IsvSvn,
+        /// The actual SVN that was present
+        actual: IsvSvn,
     },
 }
 
