@@ -7,11 +7,13 @@
 mod report_body;
 pub use report_body::{
     AttributesVerifier, ConfigIdVerifier, ConfigSvnVerifier, IsvSvnVerifier,
-    MiscellaneousSelectVerifier, MrEnclaveVerifier,
+    MiscellaneousSelectVerifier, MrEnclaveVerifier, MrSignerVerifier,
 };
 
 use core::fmt::Debug;
-use mc_sgx_core_types::{Attributes, ConfigId, ConfigSvn, IsvSvn, MiscellaneousSelect, MrEnclave};
+use mc_sgx_core_types::{
+    Attributes, ConfigId, ConfigSvn, IsvSvn, MiscellaneousSelect, MrEnclave, MrSigner,
+};
 use subtle::CtOption;
 
 /// Failed to verify.
@@ -60,6 +62,13 @@ pub enum VerificationError {
         expected: MrEnclave,
         /// The actual measurement that was present
         actual: MrEnclave,
+    },
+    /// The MRSIGNER measurement did not match expected:{expected} actual:{actual}
+    MrSignerMismatch {
+        /// The expected measurement
+        expected: MrSigner,
+        /// The actual measurement that was present
+        actual: MrSigner,
     },
 }
 
