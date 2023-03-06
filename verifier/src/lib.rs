@@ -374,6 +374,51 @@ impl<T, L: Verifier<T>, R: Verifier<T>> Verifier<T> for Or<L, R> {
     }
 }
 
+/// An error that occurs due to a [`Not`] operation.
+#[derive(Debug, Clone)]
+pub struct NotError<E> {
+    // The [`CtOption`] that was negated by the [`Not`] operation.
+    inner: CtOption<E>,
+}
+
+impl<E> NotError<E> {
+    /// Create a new instance
+    pub fn new(inner: CtOption<E>) -> Self {
+        Self { inner }
+    }
+}
+
+impl<E: DisplayableError> DisplayableError for NotError<E> {}
+
+impl<E: DisplayableError> Display for NotError<E> {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+        f.debug_struct("NotError")
+            .field("inner", &format_args!("{:#}", self.inner.display()))
+            .finish()
+    }
+}
+/// Will negate the result of the [`Verifier::verify()`] operation.
+#[derive(Debug)]
+pub struct Not<V> {
+    verifier: V,
+}
+
+impl<V> Not<V> {
+    /// Create a new [`Not`] instance
+    pub fn new(verifier: V) -> Self {
+        Self { verifier }
+    }
+}
+
+impl<T, V: Verifier<T>> Verifier<T> for Not<V> {
+    type Error = NotError<V::Error>;
+    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
+        let original = self.verifier.verify(evidence);
+        let is_some = original.is_some();
+        CtOption::new(NotError::new(original), !is_some)
+    }
+}
+
 /// Will always succeed for the [`Verifier::verify()`] operation.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Default)]
 pub struct AlwaysTrue;
@@ -617,5 +662,19 @@ mod tests {
             format!("{displayable:}"),
             "Forced failure via `AlwaysFalse`"
         );
+    }
+    
+    #[test]
+    fn not_negates_success() {
+        let not = Not::new(AlwaysTrue);
+        let verification = not.verify(NO_EVIDENCE);
+        assert_eq!(verification.is_some().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn not_negates_failure() {
+        let not = Not::new(AlwaysFalse);
+        let verification = not.verify(NO_EVIDENCE);
+        assert_eq!(verification.is_none().unwrap_u8(), 1);
     }
 }
