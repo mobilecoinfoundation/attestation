@@ -28,38 +28,29 @@ pub trait Accessor<T>: Debug {
 }
 
 /// [`Accessor`] for returning Self, i.e. T -> T
-macro_rules! self_accessor {
-    ($($type:ty),*) => {$(
-        impl Accessor<$type> for $type {
-            fn get(&self) -> $type {
-                self.clone()
-            }
-        }
-    )*}
+impl<T: Clone + Debug> Accessor<T> for T {
+    fn get(&self) -> T {
+        self.clone()
+    }
 }
 
 /// Macro to generate boilerplate for implementing [`Accessor`] for a field of
 /// [`ReportBody`].
 ///
-/// Will create [`Accessor`] implementations for both `ReportBody` and the
-/// underlying field type
-///
 /// # Arguments
 /// * `field_type` - The type of the field in `ReportBody` to be accessed
 /// * `accessor_method` - The method on `ReportBody` that returns the field
-macro_rules! report_body_field_accessors {
+macro_rules! report_body_field_accessor {
     ($($field_type:ty, $accessor_method:ident;)*) => {$(
         impl Accessor<$field_type> for ReportBody {
             fn get(&self) -> $field_type {
                 self.$accessor_method()
             }
         }
-
-        self_accessor! {$field_type}
     )*}
 }
 
-report_body_field_accessors! {
+report_body_field_accessor! {
     Attributes, attributes;
     ConfigId, config_id;
     ConfigSvn, config_svn;
@@ -67,8 +58,6 @@ report_body_field_accessors! {
     MiscellaneousSelect, miscellaneous_select;
     ReportData, report_data;
 }
-
-self_accessor!(MrEnclave, MrSigner);
 
 /// Verify the attributes are as expected.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
