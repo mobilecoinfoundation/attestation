@@ -59,167 +59,129 @@ report_body_field_accessor! {
     ReportData, report_data;
 }
 
-/// Verify the attributes are as expected.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct AttributesVerifier {
-    expected_attributes: Attributes,
+trait IntoVerificationError {
+    fn into_verification_error(expected: Self, actual: Self) -> VerificationError;
 }
 
-impl AttributesVerifier {
-    /// Create a new [`AttributesVerifier`] instance.
-    pub fn new(expected_attributes: Attributes) -> Self {
-        Self {
-            expected_attributes,
-        }
+/// Common implementation for [`Verifier`]s that test for equality between
+/// an expected and actual value.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct EqualityVerifier<T> {
+    expected: T,
+}
+
+impl<T> EqualityVerifier<T> {
+    pub fn new(expected: T) -> Self {
+        Self { expected }
     }
 }
 
-impl<T: Accessor<Attributes>> Verifier<T> for AttributesVerifier {
+impl<T, E> Verifier<E> for EqualityVerifier<T>
+where
+    T: Debug + Clone + PartialEq + IntoVerificationError,
+    E: Accessor<T>,
+{
     type Error = VerificationError;
-    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
-        let expected = self.expected_attributes;
+    fn verify(&self, evidence: &E) -> CtOption<Self::Error> {
+        let expected = self.expected.clone();
         let actual = evidence.get();
         // TODO - This should be a constant time comparison.
         let is_some = if expected == actual { 0 } else { 1 };
-        CtOption::new(
-            VerificationError::AttributeMismatch { expected, actual },
-            is_some.into(),
-        )
+        CtOption::new(T::into_verification_error(expected, actual), is_some.into())
     }
 }
 
-/// Verify the [`ConfigId`] is as expected.
+/// Common implementation for [`Verifier`]s that test for an actual value being
+/// greater than or equal to an expected value
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct ConfigIdVerifier {
-    expected_id: ConfigId,
+pub struct GreaterThanEqualVerifier<T> {
+    expected: T,
 }
 
-impl ConfigIdVerifier {
-    /// Create a new [`ConfigIdVerifier`] instance.
-    pub fn new(expected_id: ConfigId) -> Self {
-        Self { expected_id }
+impl<T> GreaterThanEqualVerifier<T> {
+    pub fn new(expected: T) -> Self {
+        Self { expected }
     }
 }
 
-impl<T: Accessor<ConfigId>> Verifier<T> for ConfigIdVerifier {
+/// Verifier for ensuring [`Attributes`] values are equivalent.
+pub type AttributesVerifier = EqualityVerifier<Attributes>;
+impl IntoVerificationError for Attributes {
+    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
+        VerificationError::AttributeMismatch { expected, actual }
+    }
+}
+
+/// Verifier for ensuring [`ConfigId`] values are equivalent.
+pub type ConfigIdVerifier = EqualityVerifier<ConfigId>;
+impl IntoVerificationError for ConfigId {
+    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
+        VerificationError::ConfigIdMismatch { expected, actual }
+    }
+}
+
+/// Verifier for ensuring [`ConfigSvn`] is greater than or equal to an
+/// expected [`ConfigSvn`]
+pub type ConfigSvnVerifier = GreaterThanEqualVerifier<ConfigSvn>;
+impl IntoVerificationError for ConfigSvn {
+    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
+        VerificationError::ConfigSvnTooSmall { expected, actual }
+    }
+}
+
+impl<E: Accessor<ConfigSvn>> Verifier<E> for GreaterThanEqualVerifier<ConfigSvn> {
     type Error = VerificationError;
-    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
-        let expected = self.expected_id.clone();
-        let actual = evidence.get();
-        // TODO - This should be a constant time comparison.
-        let is_some = if expected == actual { 0 } else { 1 };
-        CtOption::new(
-            VerificationError::ConfigIdMismatch { expected, actual },
-            is_some.into(),
-        )
-    }
-}
-
-/// Verify the [`ConfigSvn`] is as expected.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct ConfigSvnVerifier {
-    expected_svn: ConfigSvn,
-}
-
-impl ConfigSvnVerifier {
-    /// Create a new [`ConfigSvnVerifier`] instance.
-    ///
-    /// Verifies that `expected_svn` is less than the svn found in evidence
-    /// during `verify()`.
-    pub fn new(expected_svn: ConfigSvn) -> Self {
-        Self { expected_svn }
-    }
-}
-
-impl<T: Accessor<ConfigSvn>> Verifier<T> for ConfigSvnVerifier {
-    type Error = VerificationError;
-
-    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
-        let expected = self.expected_svn.clone();
+    fn verify(&self, evidence: &E) -> CtOption<Self::Error> {
+        let expected = self.expected.clone();
         let actual = evidence.get();
 
+        // This verifier ensures the actual is greater than or equal to the
+        // expected. `CtOpton` is used to indicate an error, so we invert the
+        // comparison.
         let is_some = actual.as_ref().ct_lt(expected.as_ref());
         CtOption::new(
-            VerificationError::ConfigSvnTooSmall { expected, actual },
+            ConfigSvn::into_verification_error(expected, actual),
             is_some,
         )
     }
 }
 
-/// Verify the [`IsvSvn`] is as expected.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct IsvSvnVerifier {
-    expected_svn: IsvSvn,
-}
-
-impl IsvSvnVerifier {
-    /// Create a new [`IsvSvnVerifier`] instance.
-    ///
-    /// Verifies that `expected_svn` is less than the svn found in evidence
-    /// during `verify()`.
-    pub fn new(expected_svn: IsvSvn) -> Self {
-        Self { expected_svn }
+/// Verifier for ensuring [`IsvSvn`] is greater than or equal to an expected
+/// [`IsvSvn`]
+pub type IsvSvnVerifier = GreaterThanEqualVerifier<IsvSvn>;
+impl IntoVerificationError for IsvSvn {
+    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
+        VerificationError::IsvSvnTooSmall { expected, actual }
     }
 }
 
-impl<T: Accessor<IsvSvn>> Verifier<T> for IsvSvnVerifier {
+impl<E: Accessor<IsvSvn>> Verifier<E> for GreaterThanEqualVerifier<IsvSvn> {
     type Error = VerificationError;
-
-    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
-        let expected = self.expected_svn.clone();
+    fn verify(&self, evidence: &E) -> CtOption<Self::Error> {
+        let expected = self.expected.clone();
         let actual = evidence.get();
 
+        // This verifier ensures the actual is greater than or equal to the
+        // expected. `CtOpton` is used to indicate an error, so we invert the
+        // comparison.
         let is_some = actual.as_ref().ct_lt(expected.as_ref());
-        CtOption::new(
-            VerificationError::IsvSvnTooSmall { expected, actual },
-            is_some,
-        )
+        CtOption::new(IsvSvn::into_verification_error(expected, actual), is_some)
     }
 }
 
-/// Verify the [`MiscellaneousSelect`] is as expected.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct MiscellaneousSelectVerifier {
-    expected_misc_select: MiscellaneousSelect,
-}
-
-impl MiscellaneousSelectVerifier {
-    /// Create a new [`MiscellaneousSelectVerifier`] instance.
-    pub fn new(expected_misc_select: MiscellaneousSelect) -> Self {
-        Self {
-            expected_misc_select,
-        }
+/// Verifier for ensuring [`MiscellaneousSelect`] values are equivalent.
+pub type MiscellaneousSelectVerifier = EqualityVerifier<MiscellaneousSelect>;
+impl IntoVerificationError for MiscellaneousSelect {
+    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
+        VerificationError::MiscellaneousSelectMismatch { expected, actual }
     }
 }
 
-impl<T: Accessor<MiscellaneousSelect>> Verifier<T> for MiscellaneousSelectVerifier {
-    type Error = VerificationError;
-
-    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
-        let expected = self.expected_misc_select.clone();
-        let actual = evidence.get();
-
-        // TODO - This should be a constant time comparison.
-        let is_some = if expected == actual { 0 } else { 1 };
-        CtOption::new(
-            VerificationError::MiscellaneousSelectMismatch { expected, actual },
-            is_some.into(),
-        )
-    }
-}
-
-/// Verify the [`MrEnclave`] is as expected.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct MrEnclaveVerifier {
-    expected_mr_enclave: MrEnclave,
-}
-
-impl MrEnclaveVerifier {
-    /// Create a new [`MrEnclaveVerifier`] instance.
-    pub fn new(expected_mr_enclave: MrEnclave) -> Self {
-        Self {
-            expected_mr_enclave,
-        }
+/// Verifier for ensuring [`MrEnclave`] values are equivalent.
+pub type MrEnclaveVerifier = EqualityVerifier<MrEnclave>;
+impl IntoVerificationError for MrEnclave {
+    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
+        VerificationError::MrEnclaveMismatch { expected, actual }
     }
 }
 
@@ -232,32 +194,11 @@ impl Accessor<MrEnclave> for ReportBody {
     }
 }
 
-impl<T: Accessor<MrEnclave>> Verifier<T> for MrEnclaveVerifier {
-    type Error = VerificationError;
-
-    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
-        let expected = self.expected_mr_enclave;
-        let actual = evidence.get();
-
-        // TODO - This should be a constant time comparison.
-        let is_some = if expected == actual { 0 } else { 1 };
-        CtOption::new(
-            VerificationError::MrEnclaveMismatch { expected, actual },
-            is_some.into(),
-        )
-    }
-}
-
-/// Verify the [`MrSigner`] is as expected.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct MrSignerVerifier {
-    expected_mr_signer: MrSigner,
-}
-
-impl MrSignerVerifier {
-    /// Create a new [`MrSignerVerifier`] instance.
-    pub fn new(expected_mr_signer: MrSigner) -> Self {
-        Self { expected_mr_signer }
+/// Verifier for ensuring [`MrSigner`] values are equivalent.
+pub type MrSignerVerifier = EqualityVerifier<MrSigner>;
+impl IntoVerificationError for MrSigner {
+    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
+        VerificationError::MrSignerMismatch { expected, actual }
     }
 }
 
@@ -270,50 +211,11 @@ impl Accessor<MrSigner> for ReportBody {
     }
 }
 
-impl<T: Accessor<MrSigner>> Verifier<T> for MrSignerVerifier {
-    type Error = VerificationError;
-
-    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
-        let expected = self.expected_mr_signer;
-        let actual = evidence.get();
-
-        // TODO - This should be a constant time comparison.
-        let is_some = if expected == actual { 0 } else { 1 };
-        CtOption::new(
-            VerificationError::MrSignerMismatch { expected, actual },
-            is_some.into(),
-        )
-    }
-}
-
-/// Verify the [`ReportData`] is as expected.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ReportDataVerifier {
-    expected_report_data: ReportData,
-}
-
-impl ReportDataVerifier {
-    /// Create a new [`ReportDataVerifier`] instance.
-    pub fn new(expected_report_data: ReportData) -> Self {
-        Self {
-            expected_report_data,
-        }
-    }
-}
-
-impl<T: Accessor<ReportData>> Verifier<T> for ReportDataVerifier {
-    type Error = VerificationError;
-
-    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
-        let expected = self.expected_report_data.clone();
-        let actual = evidence.get();
-
-        // TODO - This should be a constant time comparison.
-        let is_some = if expected == actual { 0 } else { 1 };
-        CtOption::new(
-            VerificationError::ReportDataMismatch { expected, actual },
-            is_some.into(),
-        )
+/// Verifier for ensuring [`ReportData`] values are equivalent.
+pub type ReportDataVerifier = EqualityVerifier<ReportData>;
+impl IntoVerificationError for ReportData {
+    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
+        VerificationError::ReportDataMismatch { expected, actual }
     }
 }
 
