@@ -86,17 +86,44 @@ pub enum VerificationError {
 
 impl DisplayableError for VerificationError {}
 
-#[derive(Debug, Clone)]
-/// A [`CtOption`] wrapped to implement the [`Display`] trait.
-pub struct DisplayableCtOption<T>(CtOption<T>);
+/// Trait to convert a [`CtOption<T>`] into a [`CtOptionDisplay<'a, T>`].
+///
+/// # Examples
+/// ```
+/// use subtle::CtOption;
+/// use mc_attestation_verifier::{VerificationError, DisplayableCtOption};
+///
+/// let ct_option = CtOption::new(VerificationError::General, 0.into());
+///
+/// assert_eq!(format!("{}", ct_option.display()), "Passed");
+/// ```
+pub trait DisplayableCtOption<'a, T> {
+    /// Returns an object that implements [`Display`] for a wrapped
+    /// [`CtOption<T>`].
+    #[must_use = "this does not display the [`CtOption<T>`], \
+                  it returns an object that can be displayed"]
+    fn display(&'a self) -> CtOptionDisplay<'a, T>
+    where
+        Self: Sized;
+}
 
-impl<T> From<CtOption<T>> for DisplayableCtOption<T> {
-    fn from(ct_option: CtOption<T>) -> Self {
+impl<'a, T> DisplayableCtOption<'a, T> for CtOption<T> {
+    fn display(&'a self) -> CtOptionDisplay<'a, T> {
+        self.into()
+    }
+}
+
+#[derive(Debug, Clone)]
+/// Helper struct for displaying [`CtOption`] with [`format!`] and `{}`.
+pub struct CtOptionDisplay<'a, T>(&'a CtOption<T>);
+
+impl<'a, T> From<&'a CtOption<T>> for CtOptionDisplay<'a, T> {
+    fn from(ct_option: &'a CtOption<T>) -> Self {
         Self(ct_option)
     }
 }
 
-impl<T: DisplayableError> Display for DisplayableCtOption<T> {
+impl<'a, T: DisplayableError> Display for CtOptionDisplay<'a, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         let option: Option<T> = self.0.clone().into();
         match option {
@@ -104,7 +131,7 @@ impl<T: DisplayableError> Display for DisplayableCtOption<T> {
                 true => write!(f, "{value:#}")?,
                 false => write!(f, "{value}")?,
             },
-            None => write!(f, "passed")?,
+            None => write!(f, "Passed")?,
         }
 
         Ok(())
@@ -159,14 +186,8 @@ impl<L: DisplayableError, R: DisplayableError> DisplayableError for AndError<L, 
 impl<L: DisplayableError, R: DisplayableError> Display for AndError<L, R> {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         f.debug_struct("AndError")
-            .field(
-                "left",
-                &format_args!("{:#}", DisplayableCtOption(self.left.clone())),
-            )
-            .field(
-                "right",
-                &format_args!("{:#}", DisplayableCtOption(self.right.clone())),
-            )
+            .field("left", &format_args!("{:#}", self.left.display()))
+            .field("right", &format_args!("{:#}", self.right.display()))
             .finish()
     }
 }
@@ -233,14 +254,8 @@ impl<L: DisplayableError, R: DisplayableError> DisplayableError for OrError<L, R
 impl<L: DisplayableError, R: DisplayableError> Display for OrError<L, R> {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         f.debug_struct("OrError")
-            .field(
-                "left",
-                &format_args!("{:#}", DisplayableCtOption(self.left.clone())),
-            )
-            .field(
-                "right",
-                &format_args!("{:#}", DisplayableCtOption(self.right.clone())),
-            )
+            .field("left", &format_args!("{:#}", self.left.display()))
+            .field("right", &format_args!("{:#}", self.right.display()))
             .finish()
     }
 }
@@ -418,8 +433,8 @@ mod tests {
             },
             0.into(),
         );
-        let displayable: DisplayableCtOption<_> = success.into();
-        assert_eq!(format!("{displayable}"), "passed");
+        let displayable = success.display();
+        assert_eq!(format!("{displayable}"), "Passed");
     }
 
     #[test]
@@ -431,7 +446,7 @@ mod tests {
             },
             1.into(),
         );
-        let displayable: DisplayableCtOption<_> = failure.into();
+        let displayable = failure.display();
         assert_eq!(
             format!("{displayable:}"),
             "The ISV svn value of IsvSvn(2) is less than the expected value of IsvSvn(3)"
@@ -453,8 +468,8 @@ mod tests {
             ),
             0.into(),
         );
-        let displayable: DisplayableCtOption<_> = success.into();
-        assert_eq!(format!("{displayable}"), "passed");
+        let displayable = success.display();
+        assert_eq!(format!("{displayable}"), "Passed");
     }
 
     #[test]
@@ -472,8 +487,8 @@ mod tests {
             ),
             1.into(),
         );
-        let displayable: DisplayableCtOption<_> = failure.into();
-        let expected = r#"AndError { left: passed, right: The MiscellaneousSelect did not match expected:MiscellaneousSelect(3) actual:MiscellaneousSelect(3) }"#;
+        let displayable = failure.display();
+        let expected = r#"AndError { left: Passed, right: The MiscellaneousSelect did not match expected:MiscellaneousSelect(3) actual:MiscellaneousSelect(3) }"#;
         assert_eq!(format!("{displayable:}"), textwrap::dedent(expected));
     }
 
@@ -492,10 +507,10 @@ mod tests {
             ),
             1.into(),
         );
-        let displayable: DisplayableCtOption<_> = failure.into();
+        let displayable = failure.display();
         let expected = r#"
             AndError {
-                left: passed,
+                left: Passed,
                 right: The MiscellaneousSelect did not match expected:MiscellaneousSelect(2) actual:MiscellaneousSelect(3),
             }"#;
         assert_eq!(format!("\n{displayable:#}"), textwrap::dedent(expected));
@@ -528,11 +543,11 @@ mod tests {
             ),
             1.into(),
         );
-        let displayable: DisplayableCtOption<_> = failure.into();
+        let displayable = failure.display();
         let expected = r#"
             OrError {
                 left: AndError {
-                    left: passed,
+                    left: Passed,
                     right: The ISV svn value of IsvSvn(1) is less than the expected value of IsvSvn(3),
                 },
                 right: The MiscellaneousSelect did not match expected:MiscellaneousSelect(2) actual:MiscellaneousSelect(3),
@@ -543,7 +558,7 @@ mod tests {
     #[test]
     fn display_of_always_false_option() {
         let failure = AlwaysFalse.verify(NO_EVIDENCE);
-        let displayable: DisplayableCtOption<_> = failure.into();
+        let displayable = failure.display();
         assert_eq!(
             format!("{displayable:}"),
             "Forced failure via `AlwaysFalse`"
