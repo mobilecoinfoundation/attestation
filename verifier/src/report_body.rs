@@ -5,8 +5,8 @@
 use crate::{VerificationError, Verifier};
 use core::fmt::Debug;
 use mc_sgx_core_types::{
-    Attributes, ConfigId, ConfigSvn, IsvSvn, Measurement, MiscellaneousSelect, MrEnclave, MrSigner,
-    ReportBody, ReportData,
+    Attributes, ConfigId, ConfigSvn, IsvSvn, MiscellaneousSelect, MrEnclave, MrSigner, ReportBody,
+    ReportData,
 };
 use subtle::{ConstantTimeLess, CtOption};
 
@@ -56,6 +56,8 @@ report_body_field_accessor! {
     ConfigSvn, config_svn;
     IsvSvn, isv_svn;
     MiscellaneousSelect, miscellaneous_select;
+    MrEnclave, mr_enclave;
+    MrSigner, mr_signer;
     ReportData, report_data;
 }
 
@@ -132,7 +134,7 @@ impl IntoVerificationError for ConfigSvn {
 impl<E: Accessor<ConfigSvn>> Verifier<E> for GreaterThanEqualVerifier<ConfigSvn> {
     type Error = VerificationError;
     fn verify(&self, evidence: &E) -> CtOption<Self::Error> {
-        let expected = self.expected.clone();
+        let expected = self.expected;
         let actual = evidence.get();
 
         // This verifier ensures the actual is greater than or equal to the
@@ -158,7 +160,7 @@ impl IntoVerificationError for IsvSvn {
 impl<E: Accessor<IsvSvn>> Verifier<E> for GreaterThanEqualVerifier<IsvSvn> {
     type Error = VerificationError;
     fn verify(&self, evidence: &E) -> CtOption<Self::Error> {
-        let expected = self.expected.clone();
+        let expected = self.expected;
         let actual = evidence.get();
 
         // This verifier ensures the actual is greater than or equal to the
@@ -185,29 +187,11 @@ impl IntoVerificationError for MrEnclave {
     }
 }
 
-impl Accessor<MrEnclave> for ReportBody {
-    fn get(&self) -> MrEnclave {
-        let Measurement::MrEnclave(mr_enclave) = self.mr_enclave() else {
-            panic!("`mr_enclave()` should return a Measurement::MrEnclave");
-        };
-        mr_enclave
-    }
-}
-
 /// Verifier for ensuring [`MrSigner`] values are equivalent.
 pub type MrSignerVerifier = EqualityVerifier<MrSigner>;
 impl IntoVerificationError for MrSigner {
     fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
         VerificationError::MrSignerMismatch { expected, actual }
-    }
-}
-
-impl Accessor<MrSigner> for ReportBody {
-    fn get(&self) -> MrSigner {
-        let Measurement::MrSigner(mr_signer) = self.mr_signer() else {
-            panic!("`mr_signer()` should return a Measurement::MrSigner");
-        };
-        mr_signer
     }
 }
 
@@ -226,7 +210,6 @@ mod test {
     use mc_sgx_core_sys_types::{
         sgx_attributes_t, sgx_cpu_svn_t, sgx_measurement_t, sgx_report_body_t, sgx_report_data_t,
     };
-    use mc_sgx_core_types::Measurement;
     use yare::parameterized;
 
     const REPORT_BODY_SRC: sgx_report_body_t = sgx_report_body_t {
@@ -327,9 +310,7 @@ mod test {
     #[test]
     fn report_body_fails_due_to_mr_enclave() {
         let report_body = ReportBody::from(&REPORT_BODY_SRC);
-        let Measurement::MrEnclave(mut mr_enclave) = report_body.mr_enclave() else {
-            panic!("mr_enclave is not an MrEnclave measurement");
-        };
+        let mut mr_enclave = report_body.mr_enclave();
         let bytes: &mut [u8] = mr_enclave.as_mut();
         bytes[0] += 1;
         let verifier = And::new(
@@ -345,9 +326,7 @@ mod test {
     #[test]
     fn report_body_fails_due_to_mr_signer() {
         let report_body = ReportBody::from(&REPORT_BODY_SRC);
-        let Measurement::MrSigner(mut mr_signer) = report_body.mr_signer() else {
-            panic!("mr_signer is not an MrSigner measurement");
-        };
+        let mut mr_signer = report_body.mr_signer();
         let bytes: &mut [u8] = mr_signer.as_mut();
         bytes[0] += 1;
         let verifier = And::new(
