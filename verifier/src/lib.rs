@@ -14,10 +14,21 @@ use core::fmt::{Debug, Display, Formatter};
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, IsvSvn, MiscellaneousSelect, MrEnclave, MrSigner, ReportData,
 };
-use subtle::CtOption;
+use subtle::{Choice, CtOption};
+
+/// Number of spaces to indent nested error messages.
+const ERROR_INDENT: usize = 2;
 
 /// An error that implements the [`Display`] trait.
-pub trait DisplayableError: Display + Clone {}
+pub trait DisplayableError: Display + Clone {
+    /// Format the error with preceding padding
+    ///
+    /// The `pad` is the number of spaces to precede each line of the error
+    /// with.
+    fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        write!(f, "{:pad$}{self}", "")
+    }
+}
 
 /// Failed to verify.
 #[derive(displaydoc::Display, Debug, Eq, PartialEq, Clone)]
@@ -116,6 +127,20 @@ impl<'a, T> DisplayableCtOption<'a, T> for CtOption<T> {
 #[derive(Debug, Clone)]
 /// Helper struct for displaying [`CtOption`] with [`format!`] and `{}`.
 pub struct CtOptionDisplay<'a, T>(&'a CtOption<T>);
+impl<'a, T: DisplayableError> CtOptionDisplay<'a, T> {
+    /// Format the instance with preceding padding
+    ///
+    /// The `pad` is the number of spaces to precede each line of the displayed
+    /// representation with.
+    pub fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        let option: Option<T> = Option::<T>::from(self.0.clone());
+        match option {
+            Some(value) => value.fmt_padded(f, pad)?,
+            None => write!(f, "{:pad$}Passed", "")?,
+        }
+        Ok(())
+    }
+}
 
 impl<'a, T> From<&'a CtOption<T>> for CtOptionDisplay<'a, T> {
     fn from(ct_option: &'a CtOption<T>) -> Self {
@@ -125,16 +150,7 @@ impl<'a, T> From<&'a CtOption<T>> for CtOptionDisplay<'a, T> {
 
 impl<'a, T: DisplayableError> Display for CtOptionDisplay<'a, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        let option: Option<T> = self.0.clone().into();
-        match option {
-            Some(value) => match f.alternate() {
-                true => write!(f, "{value:#}")?,
-                false => write!(f, "{value}")?,
-            },
-            None => write!(f, "Passed")?,
-        }
-
-        Ok(())
+        self.fmt_padded(f, 0)
     }
 }
 
@@ -181,14 +197,68 @@ impl<L, R> AndError<L, R> {
     }
 }
 
-impl<L: DisplayableError, R: DisplayableError> DisplayableError for AndError<L, R> {}
+/// Turn a `Choice` into a markdown checkbox
+///
+/// Will return one of:
+/// ```raw
+///     - [ ]
+///     - [x]
+/// ```
+fn choice_to_checkbox(choice: Choice) -> &'static str {
+    if bool::from(choice) {
+        "- [x]"
+    } else {
+        "- [ ]"
+    }
+}
+
+/// Common logic to display an [`AndError`] or an [`OrError`]
+///
+/// Results in output in the formatter similar to:
+/// ```raw
+///     <type_name>:
+///       - [ ]
+///         <left>
+///       - [ ]
+///         <right>
+/// ```
+///
+/// The `type_name` will be indented by `pad` spaces. Subsequent lines will be
+/// indented by multiples of `ERROR_INDENT` to communicate message hierarchy.
+fn and_or_error_fmt_padded<L: DisplayableError, R: DisplayableError>(
+    f: &mut Formatter,
+    pad: usize,
+    type_name: &str,
+    left: &CtOption<L>,
+    right: &CtOption<R>,
+) -> core::fmt::Result {
+    Display::fmt(&format_args!("{:pad$}{type_name}:", ""), f)?;
+    writeln!(f)?;
+
+    let status_pad = pad + ERROR_INDENT;
+    let left_status = choice_to_checkbox(left.is_none());
+    writeln!(f, "{:status_pad$}{left_status}", "")?;
+
+    let nested_pad = status_pad + 2;
+    left.display().fmt_padded(f, nested_pad)?;
+    writeln!(f)?;
+
+    let right_status = choice_to_checkbox(right.is_none());
+    writeln!(f, "{:status_pad$}{right_status}", "")?;
+    right.display().fmt_padded(f, nested_pad)
+    // No trailing newline to prevent nested `AndError`s and `OrError`s from
+    // resulting in multiple consecutive newlines
+}
+
+impl<L: DisplayableError, R: DisplayableError> DisplayableError for AndError<L, R> {
+    fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        and_or_error_fmt_padded(f, pad, "AndError", &self.left, &self.right)
+    }
+}
 
 impl<L: DisplayableError, R: DisplayableError> Display for AndError<L, R> {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        f.debug_struct("AndError")
-            .field("left", &format_args!("{:#}", self.left.display()))
-            .field("right", &format_args!("{:#}", self.right.display()))
-            .finish()
+        self.fmt_padded(f, 0)
     }
 }
 
@@ -249,14 +319,15 @@ impl<L, R> OrError<L, R> {
     }
 }
 
-impl<L: DisplayableError, R: DisplayableError> DisplayableError for OrError<L, R> {}
+impl<L: DisplayableError, R: DisplayableError> DisplayableError for OrError<L, R> {
+    fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        and_or_error_fmt_padded(f, pad, "OrError", &self.left, &self.right)
+    }
+}
 
 impl<L: DisplayableError, R: DisplayableError> Display for OrError<L, R> {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        f.debug_struct("OrError")
-            .field("left", &format_args!("{:#}", self.left.display()))
-            .field("right", &format_args!("{:#}", self.right.display()))
-            .finish()
+        self.fmt_padded(f, 0)
     }
 }
 
@@ -448,7 +519,7 @@ mod tests {
         );
         let displayable = failure.display();
         assert_eq!(
-            format!("{displayable:}"),
+            format!("{displayable}"),
             "The ISV svn value of IsvSvn(2) is less than the expected value of IsvSvn(3)"
         );
     }
@@ -479,26 +550,6 @@ mod tests {
                 CtOption::new(VerificationError::General, 0.into()),
                 CtOption::new(
                     VerificationError::MiscellaneousSelectMismatch {
-                        expected: 3.into(),
-                        actual: 3.into(),
-                    },
-                    1.into(),
-                ),
-            ),
-            1.into(),
-        );
-        let displayable = failure.display();
-        let expected = r#"AndError { left: Passed, right: The MiscellaneousSelect did not match expected:MiscellaneousSelect(3) actual:MiscellaneousSelect(3) }"#;
-        assert_eq!(format!("{displayable:}"), textwrap::dedent(expected));
-    }
-
-    #[test]
-    fn pretty_display_of_failure_for_and_error() {
-        let failure = CtOption::new(
-            AndError::new(
-                CtOption::new(VerificationError::General, 0.into()),
-                CtOption::new(
-                    VerificationError::MiscellaneousSelectMismatch {
                         expected: 2.into(),
                         actual: 3.into(),
                     },
@@ -509,15 +560,16 @@ mod tests {
         );
         let displayable = failure.display();
         let expected = r#"
-            AndError {
-                left: Passed,
-                right: The MiscellaneousSelect did not match expected:MiscellaneousSelect(2) actual:MiscellaneousSelect(3),
-            }"#;
-        assert_eq!(format!("\n{displayable:#}"), textwrap::dedent(expected));
+            AndError:
+              - [x]
+                Passed
+              - [ ]
+                The MiscellaneousSelect did not match expected:MiscellaneousSelect(2) actual:MiscellaneousSelect(3)"#;
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
     #[test]
-    fn pretty_display_of_failure_for_or_with_and_error() {
+    fn display_of_failure_for_or_with_and_error() {
         let failure = CtOption::new(
             OrError::new(
                 CtOption::new(
@@ -545,14 +597,16 @@ mod tests {
         );
         let displayable = failure.display();
         let expected = r#"
-            OrError {
-                left: AndError {
-                    left: Passed,
-                    right: The ISV svn value of IsvSvn(1) is less than the expected value of IsvSvn(3),
-                },
-                right: The MiscellaneousSelect did not match expected:MiscellaneousSelect(2) actual:MiscellaneousSelect(3),
-            }"#;
-        assert_eq!(format!("\n{displayable:#}"), textwrap::dedent(expected));
+            OrError:
+              - [ ]
+                AndError:
+                  - [x]
+                    Passed
+                  - [ ]
+                    The ISV svn value of IsvSvn(1) is less than the expected value of IsvSvn(3)
+              - [ ]
+                The MiscellaneousSelect did not match expected:MiscellaneousSelect(2) actual:MiscellaneousSelect(3)"#;
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
     #[test]
