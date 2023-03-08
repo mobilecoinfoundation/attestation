@@ -397,6 +397,7 @@ impl<E: DisplayableError> Display for NotError<E> {
             .finish()
     }
 }
+
 /// Will negate the result of the [`Verifier::verify()`] operation.
 #[derive(Debug)]
 pub struct Not<V> {
@@ -663,7 +664,7 @@ mod tests {
             "Forced failure via `AlwaysFalse`"
         );
     }
-    
+
     #[test]
     fn not_negates_success() {
         let not = Not::new(AlwaysTrue);
