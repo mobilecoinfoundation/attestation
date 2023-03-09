@@ -10,67 +10,83 @@ pub use report_body::{
     MiscellaneousSelectVerifier, MrEnclaveVerifier, MrSignerVerifier, ReportDataVerifier,
 };
 
-use core::fmt::Debug;
+use core::fmt::{Debug, Display, Formatter};
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, IsvSvn, MiscellaneousSelect, MrEnclave, MrSigner, ReportData,
 };
-use subtle::CtOption;
+use subtle::{Choice, CtOption};
+
+/// Number of spaces to indent nested error messages.
+const ERROR_INDENT: usize = 2;
+
+/// An error that implements the [`Display`] trait.
+pub trait DisplayableError: Display + Clone {
+    /// Format the error with preceding padding
+    ///
+    /// The `pad` is the number of spaces to precede each line of the error
+    /// with.
+    fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        write!(f, "{:pad$}{self}", "")
+    }
+}
 
 /// Failed to verify.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(displaydoc::Display, Debug, Eq, PartialEq, Clone)]
 pub enum VerificationError {
     /// A general error.
     General,
-    /// The attributes did not match expected:{expected} actual:{actual}
+    /// Forced failure via `AlwaysFalse`
+    AlwaysFalse,
+    /// The attributes did not match expected:{expected:?} actual:{actual:?}
     AttributeMismatch {
         /// The expected attributes
         expected: Attributes,
         /// The actual attributes that were present
         actual: Attributes,
     },
-    /// The config id did not match expected:{expected} actual:{actual}
+    /// The config id did not match expected:{expected:?} actual:{actual:?}
     ConfigIdMismatch {
         /// The expected config id
         expected: ConfigId,
         /// The actual config id that was present
         actual: ConfigId,
     },
-    /// The config SVN value of {actual} is less than the expected value of {expected}
+    /// The config SVN value of {actual:?} is less than the expected value of {expected:?}
     ConfigSvnTooSmall {
         /// The minimum SVN
         expected: ConfigSvn,
         /// The actual SVN that was present
         actual: ConfigSvn,
     },
-    /// The ISV svn value of {actual} is less than the expected value of {expected}
+    /// The ISV svn value of {actual:?} is less than the expected value of {expected:?}
     IsvSvnTooSmall {
         /// The minimum SVN
         expected: IsvSvn,
         /// The actual SVN that was present
         actual: IsvSvn,
     },
-    /// The MiscellaneousSelect did not match expected:{expected} actual:{actual}
+    /// The MiscellaneousSelect did not match expected:{expected:?} actual:{actual:?}
     MiscellaneousSelectMismatch {
         /// The expected selection
         expected: MiscellaneousSelect,
         /// The actual selections that were present
         actual: MiscellaneousSelect,
     },
-    /// The MRENCLAVE measurement did not match expected:{expected} actual:{actual}
+    /// The MRENCLAVE measurement did not match expected:{expected:?} actual:{actual:?}
     MrEnclaveMismatch {
         /// The expected measurement
         expected: MrEnclave,
         /// The actual measurement that was present
         actual: MrEnclave,
     },
-    /// The MRSIGNER measurement did not match expected:{expected} actual:{actual}
+    /// The MRSIGNER measurement did not match expected:{expected:?} actual:{actual:?}
     MrSignerMismatch {
         /// The expected measurement
         expected: MrSigner,
         /// The actual measurement that was present
         actual: MrSigner,
     },
-    /// The report data did not match expected:{expected} actual:{actual}
+    /// The report data did not match expected:{expected:?} actual:{actual:?}
     ReportDataMismatch {
         /// The expected report data
         expected: ReportData,
@@ -79,11 +95,70 @@ pub enum VerificationError {
     },
 }
 
+impl DisplayableError for VerificationError {}
+
+/// Trait to convert a [`CtOption<T>`] into a [`CtOptionDisplay<'a, T>`].
+///
+/// # Examples
+/// ```
+/// use subtle::CtOption;
+/// use mc_attestation_verifier::{VerificationError, DisplayableCtOption};
+///
+/// let ct_option = CtOption::new(VerificationError::General, 0.into());
+///
+/// assert_eq!(format!("{}", ct_option.display()), "Passed");
+/// ```
+pub trait DisplayableCtOption<'a, T> {
+    /// Returns an object that implements [`Display`] for a wrapped
+    /// [`CtOption<T>`].
+    #[must_use = "this does not display the [`CtOption<T>`], \
+                  it returns an object that can be displayed"]
+    fn display(&'a self) -> CtOptionDisplay<'a, T>
+    where
+        Self: Sized;
+}
+
+impl<'a, T> DisplayableCtOption<'a, T> for CtOption<T> {
+    fn display(&'a self) -> CtOptionDisplay<'a, T> {
+        self.into()
+    }
+}
+
+#[derive(Debug, Clone)]
+/// Helper struct for displaying [`CtOption`] with [`format!`] and `{}`.
+pub struct CtOptionDisplay<'a, T>(&'a CtOption<T>);
+impl<'a, T: DisplayableError> CtOptionDisplay<'a, T> {
+    /// Format the instance with preceding padding
+    ///
+    /// The `pad` is the number of spaces to precede each line of the displayed
+    /// representation with.
+    pub fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        let option: Option<T> = Option::<T>::from(self.0.clone());
+        match option {
+            Some(value) => value.fmt_padded(f, pad)?,
+            None => write!(f, "{:pad$}Passed", "")?,
+        }
+        Ok(())
+    }
+}
+
+impl<'a, T> From<&'a CtOption<T>> for CtOptionDisplay<'a, T> {
+    fn from(ct_option: &'a CtOption<T>) -> Self {
+        Self(ct_option)
+    }
+}
+
+impl<'a, T: DisplayableError> Display for CtOptionDisplay<'a, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        self.fmt_padded(f, 0)
+    }
+}
+
 /// A verifier. These can chained together using the [`Or`] and [`And`]
 /// types.
 pub trait Verifier<T>: Debug {
     /// The error that this verification will return in failure cases.
-    type Error;
+    type Error: DisplayableError;
 
     /// Performs a verification operation on `evidence`.
     ///
@@ -109,19 +184,81 @@ pub trait Verifier<T>: Debug {
 }
 
 /// An error that occurs during an `and` operation.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AndError<L, R> {
-    _left: CtOption<L>,
-    _right: CtOption<R>,
+    left: CtOption<L>,
+    right: CtOption<R>,
 }
 
 impl<L, R> AndError<L, R> {
     /// Create a new instance
     pub fn new(left: CtOption<L>, right: CtOption<R>) -> Self {
-        Self {
-            _left: left,
-            _right: right,
-        }
+        Self { left, right }
+    }
+}
+
+/// Turn a `Choice` into a markdown checkbox
+///
+/// Will return one of:
+/// ```raw
+///     - [ ]
+///     - [x]
+/// ```
+fn choice_to_checkbox(choice: Choice) -> &'static str {
+    if bool::from(choice) {
+        "- [x]"
+    } else {
+        "- [ ]"
+    }
+}
+
+/// Common logic to display an [`AndError`] or an [`OrError`]
+///
+/// Results in output in the formatter similar to:
+/// ```raw
+///     <type_name>:
+///       - [ ]
+///         <left>
+///       - [ ]
+///         <right>
+/// ```
+///
+/// The `type_name` will be indented by `pad` spaces. Subsequent lines will be
+/// indented by multiples of `ERROR_INDENT` to communicate message hierarchy.
+fn and_or_error_fmt_padded<L: DisplayableError, R: DisplayableError>(
+    f: &mut Formatter,
+    pad: usize,
+    type_name: &str,
+    left: &CtOption<L>,
+    right: &CtOption<R>,
+) -> core::fmt::Result {
+    Display::fmt(&format_args!("{:pad$}{type_name}:", ""), f)?;
+    writeln!(f)?;
+
+    let status_pad = pad + ERROR_INDENT;
+    let left_status = choice_to_checkbox(left.is_none());
+    writeln!(f, "{:status_pad$}{left_status}", "")?;
+
+    let nested_pad = status_pad + 2;
+    left.display().fmt_padded(f, nested_pad)?;
+    writeln!(f)?;
+
+    let right_status = choice_to_checkbox(right.is_none());
+    writeln!(f, "{:status_pad$}{right_status}", "")?;
+    right.display().fmt_padded(f, nested_pad)
+    // No trailing newline to prevent nested `AndError`s and `OrError`s from
+    // resulting in multiple consecutive newlines
+}
+
+impl<L: DisplayableError, R: DisplayableError> DisplayableError for AndError<L, R> {
+    fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        and_or_error_fmt_padded(f, pad, "AndError", &self.left, &self.right)
+    }
+}
+
+impl<L: DisplayableError, R: DisplayableError> Display for AndError<L, R> {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+        self.fmt_padded(f, 0)
     }
 }
 
@@ -169,19 +306,28 @@ impl<T, L: Verifier<T>, R: Verifier<T>> Verifier<T> for And<L, R> {
 }
 
 /// An error that occurs during an `or` operation.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct OrError<L, R> {
-    _left: CtOption<L>,
-    _right: CtOption<R>,
+    left: CtOption<L>,
+    right: CtOption<R>,
 }
 
 impl<L, R> OrError<L, R> {
     /// Create a new instance
     pub fn new(left: CtOption<L>, right: CtOption<R>) -> Self {
-        Self {
-            _left: left,
-            _right: right,
-        }
+        Self { left, right }
+    }
+}
+
+impl<L: DisplayableError, R: DisplayableError> DisplayableError for OrError<L, R> {
+    fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        and_or_error_fmt_padded(f, pad, "OrError", &self.left, &self.right)
+    }
+}
+
+impl<L: DisplayableError, R: DisplayableError> Display for OrError<L, R> {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+        self.fmt_padded(f, 0)
     }
 }
 
@@ -246,13 +392,15 @@ pub struct AlwaysFalse;
 impl<T> Verifier<T> for AlwaysFalse {
     type Error = VerificationError;
     fn verify(&self, _evidence: &T) -> CtOption<Self::Error> {
-        CtOption::new(VerificationError::General, 1.into())
+        CtOption::new(VerificationError::AlwaysFalse, 1.into())
     }
 }
 
 #[cfg(test)]
 mod tests {
+    extern crate alloc;
     use super::*;
+    use alloc::format;
     use core::cell::Cell;
 
     // The `And` and `Or` logic tests below don't care about the evidence, but
@@ -345,5 +493,129 @@ mod tests {
         let and = And::new(Or::new(Node::new(true), Node::new(false)), Node::new(true));
         let verification = and.verify(NO_EVIDENCE);
         assert_eq!(verification.is_none().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn display_of_successful_option() {
+        let success = CtOption::new(
+            VerificationError::IsvSvnTooSmall {
+                expected: 3.into(),
+                actual: 3.into(),
+            },
+            0.into(),
+        );
+        let displayable = success.display();
+        assert_eq!(format!("{displayable}"), "Passed");
+    }
+
+    #[test]
+    fn display_of_fail_option() {
+        let failure = CtOption::new(
+            VerificationError::IsvSvnTooSmall {
+                expected: 3.into(),
+                actual: 2.into(),
+            },
+            1.into(),
+        );
+        let displayable = failure.display();
+        assert_eq!(
+            format!("{displayable}"),
+            "The ISV svn value of IsvSvn(2) is less than the expected value of IsvSvn(3)"
+        );
+    }
+
+    #[test]
+    fn display_of_success_for_and_error() {
+        let success = CtOption::new(
+            AndError::new(
+                CtOption::new(VerificationError::General, 0.into()),
+                CtOption::new(
+                    VerificationError::MiscellaneousSelectMismatch {
+                        expected: 3.into(),
+                        actual: 3.into(),
+                    },
+                    0.into(),
+                ),
+            ),
+            0.into(),
+        );
+        let displayable = success.display();
+        assert_eq!(format!("{displayable}"), "Passed");
+    }
+
+    #[test]
+    fn display_of_failure_for_and_error() {
+        let failure = CtOption::new(
+            AndError::new(
+                CtOption::new(VerificationError::General, 0.into()),
+                CtOption::new(
+                    VerificationError::MiscellaneousSelectMismatch {
+                        expected: 2.into(),
+                        actual: 3.into(),
+                    },
+                    1.into(),
+                ),
+            ),
+            1.into(),
+        );
+        let displayable = failure.display();
+        let expected = r#"
+            AndError:
+              - [x]
+                Passed
+              - [ ]
+                The MiscellaneousSelect did not match expected:MiscellaneousSelect(2) actual:MiscellaneousSelect(3)"#;
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
+    }
+
+    #[test]
+    fn display_of_failure_for_or_with_and_error() {
+        let failure = CtOption::new(
+            OrError::new(
+                CtOption::new(
+                    AndError::new(
+                        CtOption::new(VerificationError::General, 0.into()),
+                        CtOption::new(
+                            VerificationError::IsvSvnTooSmall {
+                                expected: 3.into(),
+                                actual: 1.into(),
+                            },
+                            1.into(),
+                        ),
+                    ),
+                    1.into(),
+                ),
+                CtOption::new(
+                    VerificationError::MiscellaneousSelectMismatch {
+                        expected: 2.into(),
+                        actual: 3.into(),
+                    },
+                    1.into(),
+                ),
+            ),
+            1.into(),
+        );
+        let displayable = failure.display();
+        let expected = r#"
+            OrError:
+              - [ ]
+                AndError:
+                  - [x]
+                    Passed
+                  - [ ]
+                    The ISV svn value of IsvSvn(1) is less than the expected value of IsvSvn(3)
+              - [ ]
+                The MiscellaneousSelect did not match expected:MiscellaneousSelect(2) actual:MiscellaneousSelect(3)"#;
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
+    }
+
+    #[test]
+    fn display_of_always_false_option() {
+        let failure = AlwaysFalse.verify(NO_EVIDENCE);
+        let displayable = failure.display();
+        assert_eq!(
+            format!("{displayable:}"),
+            "Forced failure via `AlwaysFalse`"
+        );
     }
 }
