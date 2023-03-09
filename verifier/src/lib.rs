@@ -6,13 +6,14 @@
 
 mod report_body;
 pub use report_body::{
-    AttributesVerifier, ConfigIdVerifier, ConfigSvnVerifier, IsvSvnVerifier,
+    AttributesVerifier, ConfigIdVerifier, ConfigSvnVerifier, CpuSvnVerifier, IsvSvnVerifier,
     MiscellaneousSelectVerifier, MrEnclaveVerifier, MrSignerVerifier, ReportDataVerifier,
 };
 
 use core::fmt::{Debug, Display, Formatter};
 use mc_sgx_core_types::{
-    Attributes, ConfigId, ConfigSvn, IsvSvn, MiscellaneousSelect, MrEnclave, MrSigner, ReportData,
+    Attributes, ConfigId, ConfigSvn, CpuSvn, IsvSvn, MiscellaneousSelect, MrEnclave, MrSigner,
+    ReportData,
 };
 use subtle::{Choice, CtOption};
 
@@ -58,7 +59,14 @@ pub enum VerificationError {
         /// The actual SVN that was present
         actual: ConfigSvn,
     },
-    /// The ISV svn value of {actual:?} is less than the expected value of {expected:?}
+    /// The CPU SVN value of {actual:?} is less than the expected value of {expected:?}
+    CpuSvnTooSmall {
+        /// The minimum SVN
+        expected: CpuSvn,
+        /// The actual SVN that was present
+        actual: CpuSvn,
+    },
+    /// The ISV SVN value of {actual:?} is less than the expected value of {expected:?}
     IsvSvnTooSmall {
         /// The minimum SVN
         expected: IsvSvn,
@@ -568,7 +576,7 @@ mod tests {
         let displayable = failure.display();
         assert_eq!(
             format!("{displayable}"),
-            "The ISV svn value of IsvSvn(2) is less than the expected value of IsvSvn(3)"
+            "The ISV SVN value of IsvSvn(2) is less than the expected value of IsvSvn(3)"
         );
     }
 
@@ -651,7 +659,7 @@ mod tests {
                   - [x]
                     Passed
                   - [ ]
-                    The ISV svn value of IsvSvn(1) is less than the expected value of IsvSvn(3)
+                    The ISV SVN value of IsvSvn(1) is less than the expected value of IsvSvn(3)
               - [ ]
                 The MiscellaneousSelect did not match expected:MiscellaneousSelect(2) actual:MiscellaneousSelect(3)"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));

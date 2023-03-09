@@ -5,10 +5,10 @@
 use crate::{VerificationError, Verifier};
 use core::fmt::Debug;
 use mc_sgx_core_types::{
-    Attributes, ConfigId, ConfigSvn, IsvSvn, MiscellaneousSelect, MrEnclave, MrSigner, ReportBody,
-    ReportData,
+    Attributes, ConfigId, ConfigSvn, CpuSvn, IsvSvn, MiscellaneousSelect, MrEnclave, MrSigner,
+    ReportBody, ReportData,
 };
-use subtle::{ConstantTimeLess, CtOption};
+use subtle::{ConstantTimeEq, ConstantTimeLess, CtOption};
 
 /// Trait for getting access to the type `T` that needs to be verified.
 ///
@@ -54,6 +54,7 @@ report_body_field_accessor! {
     Attributes, attributes;
     ConfigId, config_id;
     ConfigSvn, config_svn;
+    CpuSvn, cpu_svn;
     IsvSvn, isv_svn;
     MiscellaneousSelect, miscellaneous_select;
     MrEnclave, mr_enclave;
@@ -138,13 +139,49 @@ impl<E: Accessor<ConfigSvn>> Verifier<E> for GreaterThanEqualVerifier<ConfigSvn>
         let actual = evidence.get();
 
         // This verifier ensures the actual is greater than or equal to the
-        // expected. `CtOpton` is used to indicate an error, so we invert the
+        // expected. `CtOption` is used to indicate an error, so we invert the
         // comparison.
         let is_some = actual.as_ref().ct_lt(expected.as_ref());
         CtOption::new(
             ConfigSvn::into_verification_error(expected, actual),
             is_some,
         )
+    }
+}
+
+/// Verifier for ensuring [`CpuSvn`] is greater than or equal to an
+/// expected [`CpuSvn`]
+pub type CpuSvnVerifier = GreaterThanEqualVerifier<CpuSvn>;
+impl IntoVerificationError for CpuSvn {
+    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
+        VerificationError::CpuSvnTooSmall { expected, actual }
+    }
+}
+
+fn cpu_svn_to_u64s(cpu_svn: &CpuSvn) -> (u64, u64) {
+    let cpu_svn_bytes: &[u8] = cpu_svn.as_ref();
+    let mut bytes = [0u8; 8];
+    bytes.copy_from_slice(&cpu_svn_bytes[0..8]);
+    let high = <u64>::from_be_bytes(bytes);
+    bytes.copy_from_slice(&cpu_svn_bytes[8..]);
+    let low = <u64>::from_be_bytes(bytes);
+    (high, low)
+}
+
+impl<E: Accessor<CpuSvn>> Verifier<E> for GreaterThanEqualVerifier<CpuSvn> {
+    type Error = VerificationError;
+    fn verify(&self, evidence: &E) -> CtOption<Self::Error> {
+        let expected = self.expected.clone();
+        let actual = evidence.get();
+
+        // Per the Intel docs, CPU SVN is a 16 byte BE value. Since we may not
+        // support u128 on all platforms we compare the 64 bit values.
+        let (actual_high, actual_low) = cpu_svn_to_u64s(&actual);
+        let (expected_high, expected_low) = cpu_svn_to_u64s(&expected);
+        let is_some = actual_high.ct_lt(&expected_high)
+            | (actual_high.ct_eq(&expected_high) & actual_low.ct_lt(&expected_low));
+
+        CtOption::new(CpuSvn::into_verification_error(expected, actual), is_some)
     }
 }
 
@@ -164,7 +201,7 @@ impl<E: Accessor<IsvSvn>> Verifier<E> for GreaterThanEqualVerifier<IsvSvn> {
         let actual = evidence.get();
 
         // This verifier ensures the actual is greater than or equal to the
-        // expected. `CtOpton` is used to indicate an error, so we invert the
+        // expected. `CtOption` is used to indicate an error, so we invert the
         // comparison.
         let is_some = actual.as_ref().ct_lt(expected.as_ref());
         CtOption::new(IsvSvn::into_verification_error(expected, actual), is_some)
@@ -573,5 +610,63 @@ mod test {
         bytes[bytes.len() - 1] = 0b1010_1011; // Note: the last bit is different
 
         assert_eq!(verifier.verify(&report_data).is_some().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn cpu_svn_succeeds() {
+        let cpu_svn = CpuSvn::from(REPORT_BODY_SRC.cpu_svn);
+        let verifier = CpuSvnVerifier::new(cpu_svn.clone());
+
+        assert_eq!(verifier.verify(&cpu_svn).is_none().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn cpu_svn_fails_on_high_u64() {
+        let mut cpu_svn = CpuSvn::from(REPORT_BODY_SRC.cpu_svn);
+        let verifier = CpuSvnVerifier::new(cpu_svn.clone());
+
+        let bytes: &mut [u8] = cpu_svn.as_mut();
+        bytes[7] -= 1;
+
+        assert_eq!(verifier.verify(&cpu_svn).is_some().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn cpu_svn_fails_on_low_u64() {
+        let mut cpu_svn = CpuSvn::from(REPORT_BODY_SRC.cpu_svn);
+        let verifier = CpuSvnVerifier::new(cpu_svn.clone());
+
+        let bytes: &mut [u8] = cpu_svn.as_mut();
+        bytes[15] -= 1;
+
+        assert_eq!(verifier.verify(&cpu_svn).is_some().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn cpu_svn_succeeds_when_high_u64_greater() {
+        let mut cpu_svn = CpuSvn::from(REPORT_BODY_SRC.cpu_svn);
+        let verifier = CpuSvnVerifier::new(cpu_svn.clone());
+
+        let bytes: &mut [u8] = cpu_svn.as_mut();
+        bytes[7] += 1;
+
+        // Making this less, to show how the high 64 takes precedence
+        bytes[15] -= 1;
+
+        assert_eq!(verifier.verify(&cpu_svn).is_none().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn cpu_svn_fails_when_high_u64_less_but_low_greater() {
+        let mut cpu_svn = CpuSvn::from(REPORT_BODY_SRC.cpu_svn);
+        let verifier = CpuSvnVerifier::new(cpu_svn.clone());
+
+        let bytes: &mut [u8] = cpu_svn.as_mut();
+        bytes[7] -= 1;
+
+        // Making this greater, to show how the high 64 takes precedence
+        bytes[15] += 1;
+
+        assert_eq!(verifier.verify(&cpu_svn).is_some().unwrap_u8(), 1);
     }
 }
