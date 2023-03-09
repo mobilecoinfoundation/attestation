@@ -109,11 +109,11 @@ pub enum VerificationError {
         /// The actual measurement that was present
         actual: MrEnclave,
     },
-    /// The MRSIGNER measurement did not match expected:{expected:?} actual:{actual:?}
-    MrSignerMismatch {
-        /// The expected measurement
+    /// The MRSIGNER key did not match expected:{expected:?} actual:{actual:?}
+    MrSignerKeyMismatch {
+        /// The expected key
         expected: MrSigner,
-        /// The actual measurement that was present
+        /// The actual key that was present
         actual: MrSigner,
     },
     /// The report data did not match expected:{expected:?} actual:{actual:?} mask:{mask:?}
