@@ -6,14 +6,15 @@
 
 mod report_body;
 pub use report_body::{
-    AttributesVerifier, ConfigIdVerifier, ConfigSvnVerifier, CpuSvnVerifier, IsvSvnVerifier,
-    MiscellaneousSelectVerifier, MrEnclaveVerifier, MrSignerVerifier, ReportDataVerifier,
+    AttributesVerifier, ConfigIdVerifier, ConfigSvnVerifier, CpuSvnVerifier,
+    ExtendedProductIdVerifier, IsvSvnVerifier, MiscellaneousSelectVerifier, MrEnclaveVerifier,
+    MrSignerVerifier, ReportDataVerifier,
 };
 
 use core::fmt::{Debug, Display, Formatter};
 use mc_sgx_core_types::{
-    Attributes, ConfigId, ConfigSvn, CpuSvn, IsvSvn, MiscellaneousSelect, MrEnclave, MrSigner,
-    ReportData,
+    Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, IsvSvn, MiscellaneousSelect,
+    MrEnclave, MrSigner, ReportData,
 };
 use subtle::{Choice, CtOption};
 
@@ -65,6 +66,13 @@ pub enum VerificationError {
         expected: CpuSvn,
         /// The actual SVN that was present
         actual: CpuSvn,
+    },
+    /// The extended product ID did not match expected:{expected:?} actual:{actual:?}
+    ExtendedProductIdMismatch {
+        /// The expected extended product ID
+        expected: ExtendedProductId,
+        /// The actual extended product ID that was present
+        actual: ExtendedProductId,
     },
     /// The ISV SVN value of {actual:?} is less than the expected value of {expected:?}
     IsvSvnTooSmall {
