@@ -5,7 +5,7 @@
 use crate::{VerificationError, Verifier};
 use core::fmt::Debug;
 use mc_sgx_core_types::{
-    Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, IsvProductId, IsvSvn,
+    Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
     MiscellaneousSelect, MrEnclave, MrSigner, ReportBody, ReportData,
 };
 use subtle::{ConstantTimeEq, ConstantTimeLess, CtOption};
@@ -56,6 +56,7 @@ report_body_field_accessor! {
     ConfigSvn, config_svn;
     CpuSvn, cpu_svn;
     ExtendedProductId, isv_extended_product_id;
+    FamilyId, isv_family_id;
     IsvProductId, isv_product_id;
     IsvSvn, isv_svn;
     MiscellaneousSelect, miscellaneous_select;
@@ -192,6 +193,14 @@ pub type ExtendedProductIdVerifier = EqualityVerifier<ExtendedProductId>;
 impl IntoVerificationError for ExtendedProductId {
     fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
         VerificationError::ExtendedProductIdMismatch { expected, actual }
+    }
+}
+
+/// Verifier for ensuring [`FamilyId`] values are equivalent.
+pub type FamilyIdVerifier = EqualityVerifier<FamilyId>;
+impl IntoVerificationError for FamilyId {
+    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
+        VerificationError::FamilyIdMismatch { expected, actual }
     }
 }
 
@@ -711,6 +720,25 @@ mod test {
             verifier.verify(&extended_product_id).is_some().unwrap_u8(),
             1
         );
+    }
+
+    #[test]
+    fn family_id_succeeds() {
+        let family_id = FamilyId::from(REPORT_BODY_SRC.isv_family_id);
+        let verifier = FamilyIdVerifier::new(family_id.clone());
+
+        assert_eq!(verifier.verify(&family_id).is_none().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn family_id_fails() {
+        let mut family_id = FamilyId::from(REPORT_BODY_SRC.isv_family_id);
+        let verifier = FamilyIdVerifier::new(family_id.clone());
+
+        let bytes: &mut [u8] = family_id.as_mut();
+        bytes[0] += 1;
+
+        assert_eq!(verifier.verify(&family_id).is_some().unwrap_u8(), 1);
     }
 
     #[test]
