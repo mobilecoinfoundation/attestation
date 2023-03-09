@@ -5,8 +5,8 @@
 use crate::{VerificationError, Verifier};
 use core::fmt::Debug;
 use mc_sgx_core_types::{
-    Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, IsvSvn, MiscellaneousSelect,
-    MrEnclave, MrSigner, ReportBody, ReportData,
+    Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, IsvProductId, IsvSvn,
+    MiscellaneousSelect, MrEnclave, MrSigner, ReportBody, ReportData,
 };
 use subtle::{ConstantTimeEq, ConstantTimeLess, CtOption};
 
@@ -56,6 +56,7 @@ report_body_field_accessor! {
     ConfigSvn, config_svn;
     CpuSvn, cpu_svn;
     ExtendedProductId, isv_extended_product_id;
+    IsvProductId, isv_product_id;
     IsvSvn, isv_svn;
     MiscellaneousSelect, miscellaneous_select;
     MrEnclave, mr_enclave;
@@ -186,11 +187,19 @@ impl<E: Accessor<CpuSvn>> Verifier<E> for GreaterThanEqualVerifier<CpuSvn> {
     }
 }
 
-/// Verifier for ensureing [`ExtendedProductId`] values are equivalent.
+/// Verifier for ensuring [`ExtendedProductId`] values are equivalent.
 pub type ExtendedProductIdVerifier = EqualityVerifier<ExtendedProductId>;
 impl IntoVerificationError for ExtendedProductId {
     fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
         VerificationError::ExtendedProductIdMismatch { expected, actual }
+    }
+}
+
+/// Verifier for ensuring [`IsvProductId`] values are equivalent.
+pub type IsvProductIdVerifier = EqualityVerifier<IsvProductId>;
+impl IntoVerificationError for IsvProductId {
+    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
+        VerificationError::IsvProductIdMismatch { expected, actual }
     }
 }
 
@@ -702,5 +711,23 @@ mod test {
             verifier.verify(&extended_product_id).is_some().unwrap_u8(),
             1
         );
+    }
+
+    #[test]
+    fn isv_product_id_succeeds() {
+        let isv_product_id = IsvProductId::from(REPORT_BODY_SRC.isv_prod_id);
+        let verifier = IsvProductIdVerifier::new(isv_product_id.clone());
+
+        assert_eq!(verifier.verify(&isv_product_id).is_none().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn isv_product_id_fails() {
+        let mut isv_product_id = IsvProductId::from(REPORT_BODY_SRC.isv_prod_id);
+        let verifier = IsvProductIdVerifier::new(isv_product_id.clone());
+
+        *isv_product_id.as_mut() += 1;
+
+        assert_eq!(verifier.verify(&isv_product_id).is_some().unwrap_u8(), 1);
     }
 }
