@@ -2,13 +2,13 @@
 
 //! Verifiers which operate on the [`ReportBody`]
 
-use crate::{VerificationError, Verifier};
+use crate::{VerificationError, VerificationResult, Verifier};
 use core::fmt::Debug;
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
     MiscellaneousSelect, MrEnclave, MrSigner, ReportBody, ReportData,
 };
-use subtle::{ConstantTimeEq, ConstantTimeLess, CtOption};
+use subtle::{ConstantTimeEq, ConstantTimeGreater};
 
 /// Trait for getting access to the type `T` that needs to be verified.
 ///
@@ -88,12 +88,12 @@ where
     E: Accessor<T>,
 {
     type Error = VerificationError;
-    fn verify(&self, evidence: &E) -> CtOption<Self::Error> {
+    fn verify(&self, evidence: &E) -> VerificationResult<Self::Error> {
         let expected = self.expected.clone();
         let actual = evidence.get();
         // TODO - This should be a constant time comparison.
-        let is_some = if expected == actual { 0 } else { 1 };
-        CtOption::new(T::into_verification_error(expected, actual), is_some.into())
+        let is_ok = if expected == actual { 1 } else { 0 };
+        VerificationResult::new(T::into_verification_error(expected, actual), is_ok.into())
     }
 }
 
@@ -137,18 +137,14 @@ impl IntoVerificationError for ConfigSvn {
 
 impl<E: Accessor<ConfigSvn>> Verifier<E> for GreaterThanEqualVerifier<ConfigSvn> {
     type Error = VerificationError;
-    fn verify(&self, evidence: &E) -> CtOption<Self::Error> {
+    fn verify(&self, evidence: &E) -> VerificationResult<Self::Error> {
         let expected = self.expected;
         let actual = evidence.get();
 
-        // This verifier ensures the actual is greater than or equal to the
-        // expected. `CtOption` is used to indicate an error, so we invert the
-        // comparison.
-        let is_some = actual.as_ref().ct_lt(expected.as_ref());
-        CtOption::new(
-            ConfigSvn::into_verification_error(expected, actual),
-            is_some,
-        )
+        let actual_value = actual.as_ref();
+        let expected_value = expected.as_ref();
+        let is_ok = actual_value.ct_gt(expected_value) | actual_value.ct_eq(expected_value);
+        VerificationResult::new(ConfigSvn::into_verification_error(expected, actual), is_ok)
     }
 }
 
@@ -173,7 +169,7 @@ fn cpu_svn_to_u64s(cpu_svn: &CpuSvn) -> (u64, u64) {
 
 impl<E: Accessor<CpuSvn>> Verifier<E> for GreaterThanEqualVerifier<CpuSvn> {
     type Error = VerificationError;
-    fn verify(&self, evidence: &E) -> CtOption<Self::Error> {
+    fn verify(&self, evidence: &E) -> VerificationResult<Self::Error> {
         let expected = self.expected.clone();
         let actual = evidence.get();
 
@@ -181,10 +177,14 @@ impl<E: Accessor<CpuSvn>> Verifier<E> for GreaterThanEqualVerifier<CpuSvn> {
         // support u128 on all platforms we compare the 64 bit values.
         let (actual_high, actual_low) = cpu_svn_to_u64s(&actual);
         let (expected_high, expected_low) = cpu_svn_to_u64s(&expected);
-        let is_some = actual_high.ct_lt(&expected_high)
-            | (actual_high.ct_eq(&expected_high) & actual_low.ct_lt(&expected_low));
 
-        CtOption::new(CpuSvn::into_verification_error(expected, actual), is_some)
+        let high_order_greater = actual_high.ct_gt(&expected_high);
+        let high_order_equal = actual_high.ct_eq(&expected_high);
+        let low_order_greater_equal =
+            actual_low.ct_gt(&expected_low) | actual_low.ct_eq(&expected_low);
+        let is_ok = high_order_greater | (high_order_equal & low_order_greater_equal);
+
+        VerificationResult::new(CpuSvn::into_verification_error(expected, actual), is_ok)
     }
 }
 
@@ -223,15 +223,14 @@ impl IntoVerificationError for IsvSvn {
 
 impl<E: Accessor<IsvSvn>> Verifier<E> for GreaterThanEqualVerifier<IsvSvn> {
     type Error = VerificationError;
-    fn verify(&self, evidence: &E) -> CtOption<Self::Error> {
+    fn verify(&self, evidence: &E) -> VerificationResult<Self::Error> {
         let expected = self.expected;
         let actual = evidence.get();
 
-        // This verifier ensures the actual is greater than or equal to the
-        // expected. `CtOption` is used to indicate an error, so we invert the
-        // comparison.
-        let is_some = actual.as_ref().ct_lt(expected.as_ref());
-        CtOption::new(IsvSvn::into_verification_error(expected, actual), is_some)
+        let actual_value = actual.as_ref();
+        let expected_value = expected.as_ref();
+        let is_ok = actual_value.ct_gt(expected_value) | actual_value.ct_eq(expected_value);
+        VerificationResult::new(IsvSvn::into_verification_error(expected, actual), is_ok)
     }
 }
 
@@ -278,14 +277,14 @@ impl<E: Accessor<MrSigner> + Accessor<IsvProductId> + Accessor<IsvSvn>> Verifier
     for MrSignerVerifier
 {
     type Error = VerificationError;
-    fn verify(&self, evidence: &E) -> CtOption<Self::Error> {
+    fn verify(&self, evidence: &E) -> VerificationResult<Self::Error> {
         let mr_signer_key = self.mr_signer.verify(evidence);
         let product_id = self.product_id.verify(evidence);
         let isv_svn = self.isv_svn.verify(evidence);
 
-        let is_some = mr_signer_key.is_some() | product_id.is_some() | isv_svn.is_some();
+        let is_ok = mr_signer_key.is_ok() & product_id.is_ok() & isv_svn.is_ok();
 
-        CtOption::new(VerificationError::General, is_some)
+        VerificationResult::new(VerificationError::General, is_ok)
     }
 }
 /// Verifier for ensuring [`MrSigner`] key values are equivalent.
@@ -318,13 +317,13 @@ impl ReportDataVerifier {
 
 impl<E: Accessor<ReportData>> Verifier<E> for ReportDataVerifier {
     type Error = VerificationError;
-    fn verify(&self, evidence: &E) -> CtOption<Self::Error> {
+    fn verify(&self, evidence: &E) -> VerificationResult<Self::Error> {
         let mask = self.mask.clone();
         let expected = &self.expected & &mask;
         let actual = &evidence.get() & &mask;
         // TODO - This should be a constant time comparison.
-        let is_some = if expected == actual { 0 } else { 1 };
-        CtOption::new(
+        let is_some = if expected == actual { 1 } else { 0 };
+        VerificationResult::new(
             VerificationError::ReportDataMismatch {
                 expected,
                 actual,
@@ -399,7 +398,7 @@ mod test {
             AttributesVerifier::new(report_body.attributes()),
             ConfigIdVerifier::new(report_body.config_id()),
         );
-        assert_eq!(verifier.verify(&report_body).is_none().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&report_body).is_ok().unwrap_u8(), 1);
     }
 
     #[test]
@@ -410,7 +409,7 @@ mod test {
             AttributesVerifier::new(attributes),
             ConfigIdVerifier::new(report_body.config_id()),
         );
-        assert_eq!(verifier.verify(&report_body).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&report_body).is_err().unwrap_u8(), 1);
     }
 
     #[test]
@@ -422,7 +421,7 @@ mod test {
             AttributesVerifier::new(report_body.attributes()),
             ConfigIdVerifier::new(config_id),
         );
-        assert_eq!(verifier.verify(&report_body).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&report_body).is_err().unwrap_u8(), 1);
     }
 
     #[test]
@@ -436,7 +435,7 @@ mod test {
                 ConfigSvnVerifier::new(expected_config_svn.into()),
             ),
         );
-        assert_eq!(verifier.verify(&report_body).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&report_body).is_err().unwrap_u8(), 1);
     }
 
     #[test]
@@ -452,7 +451,7 @@ mod test {
                 MrEnclaveVerifier::new(mr_enclave),
             ),
         );
-        assert_eq!(verifier.verify(&report_body).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&report_body).is_err().unwrap_u8(), 1);
     }
 
     #[test]
@@ -472,14 +471,14 @@ mod test {
                 ),
             ),
         );
-        assert_eq!(verifier.verify(&report_body).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&report_body).is_err().unwrap_u8(), 1);
     }
     #[test]
     fn attributes_success() {
         let attributes = Attributes::from(REPORT_BODY_SRC.attributes);
         let verifier = AttributesVerifier::new(attributes);
 
-        assert_eq!(verifier.verify(&attributes).is_none().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&attributes).is_ok().unwrap_u8(), 1);
     }
 
     #[test]
@@ -488,7 +487,7 @@ mod test {
         let verifier = AttributesVerifier::new(attributes);
         attributes = attributes.set_flags(0);
 
-        assert_eq!(verifier.verify(&attributes).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&attributes).is_err().unwrap_u8(), 1);
     }
 
     #[test]
@@ -496,7 +495,7 @@ mod test {
         let config_id = ConfigId::from(REPORT_BODY_SRC.config_id);
         let verifier = ConfigIdVerifier::new(config_id.clone());
 
-        assert_eq!(verifier.verify(&config_id).is_none().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&config_id).is_ok().unwrap_u8(), 1);
     }
 
     #[test]
@@ -505,7 +504,7 @@ mod test {
         let verifier = ConfigIdVerifier::new(config_id.clone());
         config_id.as_mut()[0] = 2;
 
-        assert_eq!(verifier.verify(&config_id).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&config_id).is_err().unwrap_u8(), 1);
     }
 
     #[parameterized(
@@ -517,7 +516,7 @@ mod test {
         let verifier = ConfigSvnVerifier::new(expected.into());
         let config_svn = ConfigSvn::from(actual);
 
-        assert_eq!(verifier.verify(&config_svn).is_none().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&config_svn).is_ok().unwrap_u8(), 1);
     }
 
     #[test]
@@ -525,7 +524,7 @@ mod test {
         let verifier = ConfigSvnVerifier::new(10.into());
         let config_svn = ConfigSvn::from(9);
 
-        assert_eq!(verifier.verify(&config_svn).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&config_svn).is_err().unwrap_u8(), 1);
     }
 
     #[parameterized(
@@ -537,7 +536,7 @@ mod test {
         let verifier = IsvSvnVerifier::new(expected.into());
         let isv_svn = IsvSvn::from(actual);
 
-        assert_eq!(verifier.verify(&isv_svn).is_none().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&isv_svn).is_ok().unwrap_u8(), 1);
     }
 
     #[test]
@@ -545,7 +544,7 @@ mod test {
         let verifier = IsvSvnVerifier::new(10.into());
         let isv_svn = IsvSvn::from(9);
 
-        assert_eq!(verifier.verify(&isv_svn).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&isv_svn).is_err().unwrap_u8(), 1);
     }
 
     #[test]
@@ -554,7 +553,7 @@ mod test {
         let verifier = MiscellaneousSelectVerifier::new(miscellaneous_select.clone());
 
         assert_eq!(
-            verifier.verify(&miscellaneous_select).is_none().unwrap_u8(),
+            verifier.verify(&miscellaneous_select).is_ok().unwrap_u8(),
             1
         );
     }
@@ -566,7 +565,7 @@ mod test {
         *miscellaneous_select.as_mut() = 0;
 
         assert_eq!(
-            verifier.verify(&miscellaneous_select).is_some().unwrap_u8(),
+            verifier.verify(&miscellaneous_select).is_err().unwrap_u8(),
             1
         );
     }
@@ -576,7 +575,7 @@ mod test {
         let mr_enclave = MrEnclave::from(REPORT_BODY_SRC.mr_enclave);
         let verifier = MrEnclaveVerifier::new(mr_enclave.clone());
 
-        assert_eq!(verifier.verify(&mr_enclave).is_none().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&mr_enclave).is_ok().unwrap_u8(), 1);
     }
 
     #[test]
@@ -586,7 +585,7 @@ mod test {
         let bytes: &mut [u8] = mr_enclave.as_mut();
         bytes[0] = 0;
 
-        assert_eq!(verifier.verify(&mr_enclave).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&mr_enclave).is_err().unwrap_u8(), 1);
     }
 
     #[test]
@@ -594,7 +593,7 @@ mod test {
         let mr_signer = MrSigner::from(REPORT_BODY_SRC.mr_signer);
         let verifier = MrSignerKeyVerifier::new(mr_signer.clone());
 
-        assert_eq!(verifier.verify(&mr_signer).is_none().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&mr_signer).is_ok().unwrap_u8(), 1);
     }
 
     #[test]
@@ -604,7 +603,7 @@ mod test {
         let bytes: &mut [u8] = mr_signer.as_mut();
         bytes[0] = 1;
 
-        assert_eq!(verifier.verify(&mr_signer).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&mr_signer).is_err().unwrap_u8(), 1);
     }
 
     #[test]
@@ -612,7 +611,7 @@ mod test {
         let report_data = ReportData::from(REPORT_BODY_SRC.report_data);
         let verifier = ReportDataVerifier::new(report_data.clone());
 
-        assert_eq!(verifier.verify(&report_data).is_none().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&report_data).is_ok().unwrap_u8(), 1);
     }
 
     #[test]
@@ -622,7 +621,7 @@ mod test {
         let bytes: &mut [u8] = report_data.as_mut();
         bytes[0] = 1;
 
-        assert_eq!(verifier.verify(&report_data).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&report_data).is_err().unwrap_u8(), 1);
     }
 
     #[test]
@@ -636,7 +635,7 @@ mod test {
         let bytes: &mut [u8] = report_data.as_mut();
         bytes[0] = 0b1111_0000;
 
-        assert_eq!(verifier.verify(&report_data).is_none().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&report_data).is_ok().unwrap_u8(), 1);
     }
 
     #[test]
@@ -651,7 +650,7 @@ mod test {
         bytes[0] = 0b1111_0000;
         bytes[1] = 0b1111_0000; // Not masked off so should fail
 
-        assert_eq!(verifier.verify(&report_data).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&report_data).is_err().unwrap_u8(), 1);
     }
 
     #[test]
@@ -665,7 +664,7 @@ mod test {
         let bytes: &mut [u8] = report_data.as_mut();
         bytes[bytes.len() - 1] = 0b1010_1011; // Note: the last bit is different
 
-        assert_eq!(verifier.verify(&report_data).is_none().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&report_data).is_ok().unwrap_u8(), 1);
     }
 
     #[test]
@@ -677,7 +676,7 @@ mod test {
         let bytes: &mut [u8] = report_data.as_mut();
         bytes[bytes.len() - 1] = 0b1010_1011; // Note: the last bit is different
 
-        assert_eq!(verifier.verify(&report_data).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&report_data).is_err().unwrap_u8(), 1);
     }
 
     #[test]
@@ -685,7 +684,7 @@ mod test {
         let cpu_svn = CpuSvn::from(REPORT_BODY_SRC.cpu_svn);
         let verifier = CpuSvnVerifier::new(cpu_svn.clone());
 
-        assert_eq!(verifier.verify(&cpu_svn).is_none().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&cpu_svn).is_ok().unwrap_u8(), 1);
     }
 
     #[test]
@@ -696,7 +695,7 @@ mod test {
         let bytes: &mut [u8] = cpu_svn.as_mut();
         bytes[7] -= 1;
 
-        assert_eq!(verifier.verify(&cpu_svn).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&cpu_svn).is_err().unwrap_u8(), 1);
     }
 
     #[test]
@@ -707,7 +706,7 @@ mod test {
         let bytes: &mut [u8] = cpu_svn.as_mut();
         bytes[15] -= 1;
 
-        assert_eq!(verifier.verify(&cpu_svn).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&cpu_svn).is_err().unwrap_u8(), 1);
     }
 
     #[test]
@@ -721,7 +720,7 @@ mod test {
         // Making this less, to show how the high 64 takes precedence
         bytes[15] -= 1;
 
-        assert_eq!(verifier.verify(&cpu_svn).is_none().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&cpu_svn).is_ok().unwrap_u8(), 1);
     }
 
     #[test]
@@ -735,7 +734,7 @@ mod test {
         // Making this greater, to show how the high 64 takes precedence
         bytes[15] += 1;
 
-        assert_eq!(verifier.verify(&cpu_svn).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&cpu_svn).is_err().unwrap_u8(), 1);
     }
 
     #[test]
@@ -743,10 +742,7 @@ mod test {
         let extended_product_id = ExtendedProductId::from(REPORT_BODY_SRC.isv_ext_prod_id);
         let verifier = ExtendedProductIdVerifier::new(extended_product_id.clone());
 
-        assert_eq!(
-            verifier.verify(&extended_product_id).is_none().unwrap_u8(),
-            1
-        );
+        assert_eq!(verifier.verify(&extended_product_id).is_ok().unwrap_u8(), 1);
     }
 
     #[test]
@@ -758,7 +754,7 @@ mod test {
         bytes[0] += 1;
 
         assert_eq!(
-            verifier.verify(&extended_product_id).is_some().unwrap_u8(),
+            verifier.verify(&extended_product_id).is_err().unwrap_u8(),
             1
         );
     }
@@ -768,7 +764,7 @@ mod test {
         let family_id = FamilyId::from(REPORT_BODY_SRC.isv_family_id);
         let verifier = FamilyIdVerifier::new(family_id.clone());
 
-        assert_eq!(verifier.verify(&family_id).is_none().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&family_id).is_ok().unwrap_u8(), 1);
     }
 
     #[test]
@@ -779,7 +775,7 @@ mod test {
         let bytes: &mut [u8] = family_id.as_mut();
         bytes[0] += 1;
 
-        assert_eq!(verifier.verify(&family_id).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&family_id).is_err().unwrap_u8(), 1);
     }
 
     #[test]
@@ -787,7 +783,7 @@ mod test {
         let isv_product_id = IsvProductId::from(REPORT_BODY_SRC.isv_prod_id);
         let verifier = IsvProductIdVerifier::new(isv_product_id.clone());
 
-        assert_eq!(verifier.verify(&isv_product_id).is_none().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&isv_product_id).is_ok().unwrap_u8(), 1);
     }
 
     #[test]
@@ -797,7 +793,7 @@ mod test {
 
         *isv_product_id.as_mut() += 1;
 
-        assert_eq!(verifier.verify(&isv_product_id).is_some().unwrap_u8(), 1);
+        assert_eq!(verifier.verify(&isv_product_id).is_err().unwrap_u8(), 1);
     }
 
     #[test]
@@ -810,10 +806,7 @@ mod test {
         let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
 
         assert_eq!(
-            mr_signer_verifier
-                .verify(&report_body)
-                .is_none()
-                .unwrap_u8(),
+            mr_signer_verifier.verify(&report_body).is_ok().unwrap_u8(),
             1
         );
     }
@@ -831,10 +824,7 @@ mod test {
         let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
 
         assert_eq!(
-            mr_signer_verifier
-                .verify(&report_body)
-                .is_some()
-                .unwrap_u8(),
+            mr_signer_verifier.verify(&report_body).is_err().unwrap_u8(),
             1
         );
     }
@@ -851,10 +841,7 @@ mod test {
         let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
 
         assert_eq!(
-            mr_signer_verifier
-                .verify(&report_body)
-                .is_some()
-                .unwrap_u8(),
+            mr_signer_verifier.verify(&report_body).is_err().unwrap_u8(),
             1
         );
     }
@@ -871,10 +858,7 @@ mod test {
         let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
 
         assert_eq!(
-            mr_signer_verifier
-                .verify(&report_body)
-                .is_some()
-                .unwrap_u8(),
+            mr_signer_verifier.verify(&report_body).is_err().unwrap_u8(),
             1
         );
     }
