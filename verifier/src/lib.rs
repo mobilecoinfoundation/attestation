@@ -20,21 +20,30 @@ use mc_sgx_core_types::{
 };
 use subtle::Choice;
 
+/// Number of spaces to indent nested messages.
+const MESSAGE_INDENT: usize = 2;
+
+/// Success checkbox indicator
+const SUCCESS_MESSAGE_INDICATOR: &str = "- [x]";
+
+/// Failure checkbox indicator
+const FAILURE_MESSAGE_INDICATOR: &str = "- [ ]";
+
 /// The result of a [`Verifier::verify`] method.
 ///
 /// This is a constant time [`Result`] like structure.
 ///
 /// The [`Display`] implementation is *not* constant time.
 #[derive(Debug, Clone)]
-pub struct VerificationResult<E> {
-    error: E,
+pub struct VerificationResult<T> {
+    metadata: T,
     is_ok: Choice,
 }
 
-impl<E: DisplayableError> VerificationResult<E> {
+impl<T: ResultMessage> VerificationResult<T> {
     /// Create a new [`VerificationResult`].
-    pub fn new(error: E, is_ok: Choice) -> Self {
-        Self { error, is_ok }
+    pub fn new(metadata: T, is_ok: Choice) -> Self {
+        Self { metadata, is_ok }
     }
 
     /// Returns a `true` [`Choice`] if the verification step was successful.
@@ -53,114 +62,122 @@ impl<E: DisplayableError> VerificationResult<E> {
     /// representation with.
     pub fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
         if self.is_ok.into() {
-            write!(f, "{:pad$}Passed", "")?;
+            self.metadata.fmt_success(f, pad)?;
         } else {
-            self.error.fmt_padded(f, pad)?;
+            self.metadata.fmt_failure(f, pad)?;
         }
         Ok(())
     }
 }
 
-/// Number of spaces to indent nested error messages.
-const ERROR_INDENT: usize = 2;
-
-/// An error that implements the [`Display`] trait.
-pub trait DisplayableError: Display + Clone {
-    /// Format the error with preceding padding
-    ///
-    /// The `pad` is the number of spaces to precede each line of the error
-    /// with.
-    fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
-        write!(f, "{:pad$}{self}", "")
+impl<T: ResultMessage> Display for VerificationResult<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        self.fmt_padded(f, 0)
     }
 }
 
+/// A message that can be used in [`VerificationResult`]'s [`Display`]
+/// implementation.
+pub trait ResultMessage {
+    /// Formatting of a successful verification with this message type
+    ///
+    /// The `pad` is the number of spaces to precede each line of the message
+    /// with.
+    fn fmt_success(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result;
+
+    /// Formatting of a failure verification with this message type
+    ///
+    /// The `pad` is the number of spaces to precede each line of the message
+    /// with.
+    fn fmt_failure(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result;
+}
+
 /// Failed to verify.
-#[derive(displaydoc::Display, Debug, Eq, PartialEq, Clone)]
-pub enum VerificationError {
-    /// A general error.
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub enum VerificationResultMetadata {
+    /// Generic no extra info.
     General,
     /// Forced failure via `AlwaysFalse`
     AlwaysFalse,
-    /// The attributes did not match expected:{expected:?} actual:{actual:?}
-    AttributeMismatch {
+    /// [`Attributes`] verification data
+    Attributes {
         /// The expected attributes
         expected: Attributes,
         /// The actual attributes that were present
         actual: Attributes,
     },
-    /// The config id did not match expected:{expected:?} actual:{actual:?}
-    ConfigIdMismatch {
+    /// [`ConfigId`] verification data
+    ConfigId {
         /// The expected config id
         expected: ConfigId,
         /// The actual config id that was present
         actual: ConfigId,
     },
-    /// The config SVN value of {actual:?} is less than the expected value of {expected:?}
-    ConfigSvnTooSmall {
+    /// [`ConfigSvn`] verification data
+    ConfigSvn {
         /// The minimum SVN
         expected: ConfigSvn,
         /// The actual SVN that was present
         actual: ConfigSvn,
     },
-    /// The CPU SVN value of {actual:?} is less than the expected value of {expected:?}
-    CpuSvnTooSmall {
+    /// [`CpuSvn`] verification data
+    CpuSvn {
         /// The minimum SVN
         expected: CpuSvn,
         /// The actual SVN that was present
         actual: CpuSvn,
     },
-    /// The extended product ID did not match expected:{expected:?} actual:{actual:?}
-    ExtendedProductIdMismatch {
+    /// [`ExtendedProductId`] verification data
+    ExtendedProductId {
         /// The expected extended product ID
         expected: ExtendedProductId,
         /// The actual extended product ID that was present
         actual: ExtendedProductId,
     },
-    /// The family ID did not match expected:{expected:?} actual:{actual:?}
-    FamilyIdMismatch {
+    /// [`FamilyId`] verification data
+    FamilyId {
         /// The expected family ID
         expected: FamilyId,
         /// The actual family ID that was present
         actual: FamilyId,
     },
-    /// The ISV product ID did not match expected:{expected:?} actual:{actual:?}
-    IsvProductIdMismatch {
+    /// [`IsvProductId`] verification data
+    IsvProductId {
         /// The expected product ID
         expected: IsvProductId,
         /// The actual product ID that was present
         actual: IsvProductId,
     },
-    /// The ISV SVN value of {actual:?} is less than the expected value of {expected:?}
-    IsvSvnTooSmall {
+    /// [`IsvSvn`] verification data
+    IsvSvn {
         /// The minimum SVN
         expected: IsvSvn,
         /// The actual SVN that was present
         actual: IsvSvn,
     },
-    /// The MiscellaneousSelect did not match expected:{expected:?} actual:{actual:?}
-    MiscellaneousSelectMismatch {
+    /// [`MiscellaneousSelect`] verification data
+    MiscellaneousSelect {
         /// The expected selection
         expected: MiscellaneousSelect,
         /// The actual selections that were present
         actual: MiscellaneousSelect,
     },
-    /// The MRENCLAVE measurement did not match expected:{expected:?} actual:{actual:?}
-    MrEnclaveMismatch {
+    /// [`MrEnclave`] verification data
+    MrEnclave {
         /// The expected measurement
         expected: MrEnclave,
         /// The actual measurement that was present
         actual: MrEnclave,
     },
-    /// The MRSIGNER key did not match expected:{expected:?} actual:{actual:?}
-    MrSignerKeyMismatch {
+    /// [`MrSigner`] verification data
+    MrSignerKey {
         /// The expected key
         expected: MrSigner,
         /// The actual key that was present
         actual: MrSigner,
     },
-    /// The report data did not match expected:{expected:?} actual:{actual:?} mask:{mask:?}
-    ReportDataMismatch {
+    /// [`ReportData`] verification data
+    ReportData {
         /// The expected report data
         expected: ReportData,
         /// The actual report data that was present
@@ -170,22 +187,111 @@ pub enum VerificationError {
     },
 }
 
-impl DisplayableError for VerificationError {}
+impl ResultMessage for VerificationResultMetadata {
+    fn fmt_success(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        let status = SUCCESS_MESSAGE_INDICATOR;
+        match self {
+            Self::General => write!(f, "{:pad$}{status} Success", "")?,
+            Self::AlwaysFalse => write!(f, "{:pad$}{status} How did you get here", "")?,
+            Self::Attributes {
+                expected: _,
+                actual,
+            } => write!(f, "{:pad$}{status} The attributes were {actual:?}", "")?,
+            Self::ConfigId {
+                expected: _,
+                actual,
+            } => write!(f, "{:pad$}{status} The config ID was {actual:?}", "")?,
+            Self::ConfigSvn {
+                expected: _,
+                actual,
+            } => write!(f, "{:pad$}{status} The config SVN was {actual:?}", "")?,
+            Self::CpuSvn {
+                expected: _,
+                actual,
+            } => write!(f, "{:pad$}{status} The CPU SVN was {actual:?}", "")?,
+            Self::ExtendedProductId {
+                expected: _,
+                actual,
+            } => write!(
+                f,
+                "{:pad$}{status} The extended product ID was {actual:?}",
+                ""
+            )?,
+            Self::FamilyId {
+                expected: _,
+                actual,
+            } => write!(f, "{:pad$}{status} The family ID was {actual:?}", "")?,
+            Self::IsvProductId {
+                expected: _,
+                actual,
+            } => write!(f, "{:pad$}{status} The ISV product ID was {actual:?}", "")?,
+            Self::IsvSvn {
+                expected: _,
+                actual,
+            } => write!(f, "{:pad$}{status} The ISV SVN was {actual:?}", "")?,
+            Self::MiscellaneousSelect {
+                expected: _,
+                actual,
+            } => write!(
+                f,
+                "{:pad$}{status} The miscellaneous select was {actual:?}",
+                ""
+            )?,
+            Self::MrEnclave {
+                expected: _,
+                actual,
+            } => write!(
+                f,
+                "{:pad$}{status} The MRENCLAVE measurement was {actual:?}",
+                ""
+            )?,
+            Self::MrSignerKey {
+                expected: _,
+                actual,
+            } => write!(
+                f,
+                "{:pad$}{status} The MRSIGNER key hash was {actual:?}",
+                ""
+            )?,
+            Self::ReportData {
+                expected: _,
+                actual,
+                mask: _,
+            } => write!(f, "{:pad$}{status} The report data was {actual:?}", "")?,
+        }
+        Ok(())
+    }
 
-impl<E: DisplayableError> Display for VerificationResult<E> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        self.fmt_padded(f, 0)
+    fn fmt_failure(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        let status = FAILURE_MESSAGE_INDICATOR;
+        match self {
+            Self::General => write!(f, "{:pad$}{status} A general failure", "")?,
+            Self::AlwaysFalse => write!(f, "{:pad$}{status} Forced failure via `AlwaysFalse`", "")?,
+            Self::Attributes {expected, actual} => write!(f, "{:pad$}{status} The attributes did not match, expected:{expected:?} actual:{actual:?}", "")?,
+            Self::ConfigId {expected, actual} => write!(f, "{:pad$}{status} The config ID did not match, expected:{expected:?} actual:{actual:?}", "")?,
+            Self::ConfigSvn {expected, actual} => write!(f, "{:pad$}{status} The config SVN value of {actual:?} is less than the expected value of {expected:?}", "")?,
+            Self::CpuSvn {expected, actual} => write!(f, "{:pad$}{status} The CPU SVN value of {actual:?} is less than the expected value of {expected:?}", "")?,
+            Self::ExtendedProductId {expected, actual} => write!(f, "{:pad$}{status} The extended product ID did not match, expected:{expected:?} actual:{actual:?}", "")?,
+            Self::FamilyId {expected, actual} => write!(f, "{:pad$}{status} The family ID did not match, expected:{expected:?} actual:{actual:?}", "")?,
+            Self::IsvProductId {expected, actual} => write!(f, "{:pad$}{status} The ISV product ID did not match, expected:{expected:?} actual:{actual:?}", "")?,
+            Self::IsvSvn {expected, actual} => write!(f, "{:pad$}{status} The ISV SVN value of {actual:?} is less than the expected value of {expected:?}", "")?,
+            Self::MiscellaneousSelect {expected, actual} => write!(f, "{:pad$}{status} The miscellaneous select did not match, expected:{expected:?} actual:{actual:?}", "")?,
+            Self::MrEnclave {expected, actual} => write!(f, "{:pad$}{status} The MRENCLAVE measurement did not match, expected:{expected:?} actual:{actual:?}", "")?,
+            Self::MrSignerKey {expected, actual} => write!(f, "{:pad$}{status} The MRSIGNER key hash did not match, expected:{expected:?} actual:{actual:?}", "")?,
+            Self::ReportData {expected, actual, mask} => write!(f, "{:pad$}{status} The report data did not match expected:{expected:?} actual:{actual:?} mask:{mask:?}", "")?,
+        }
+        Ok(())
     }
 }
 
 /// A verifier. These can chained together using the [`Or`] and [`And`]
 /// types.
 pub trait Verifier<T>: Debug {
-    /// The error that this verification will return in failure cases.
-    type Error: DisplayableError;
+    /// The metadata that was used in this verification
+    type ResultMetadata: ResultMessage;
 
     /// Performs a verification operation on `evidence`.
-    fn verify(&self, evidence: &T) -> VerificationResult<Self::Error>;
+    fn verify(&self, evidence: &T) -> VerificationResult<Self::ResultMetadata>;
 
     /// Or this verifier with another.
     fn or<U, V: Verifier<U>>(self, other: V) -> Or<Self, V>
@@ -204,82 +310,37 @@ pub trait Verifier<T>: Debug {
     }
 }
 
-/// An error that occurs during an `and` operation.
+/// A result message for an `and` operation.
 #[derive(Debug, Clone)]
-pub struct AndError<L, R> {
+pub struct AndResultMessage<L, R> {
     left: VerificationResult<L>,
     right: VerificationResult<R>,
 }
 
-impl<L, R> AndError<L, R> {
+impl<L, R> AndResultMessage<L, R> {
     /// Create a new instance
     pub fn new(left: VerificationResult<L>, right: VerificationResult<R>) -> Self {
         Self { left, right }
     }
 }
 
-/// Turn a `Choice` into a markdown checkbox
-///
-/// Will return one of:
-/// ```raw
-///     - [ ]
-///     - [x]
-/// ```
-fn choice_to_checkbox(choice: Choice) -> &'static str {
-    if bool::from(choice) {
-        "- [x]"
-    } else {
-        "- [ ]"
+impl<L: ResultMessage, R: ResultMessage> ResultMessage for AndResultMessage<L, R> {
+    fn fmt_success(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        let status = SUCCESS_MESSAGE_INDICATOR;
+        writeln!(f, "{:pad$}{status} Both of the following are true:", "")?;
+        let pad = pad + MESSAGE_INDENT;
+        self.left.fmt_padded(f, pad)?;
+        writeln!(f)?;
+        self.right.fmt_padded(f, pad)
     }
-}
 
-/// Common logic to display an [`AndError`] or an [`OrError`]
-///
-/// Results in output in the formatter similar to:
-/// ```raw
-///     <type_name>:
-///       - [ ]
-///         <left>
-///       - [ ]
-///         <right>
-/// ```
-///
-/// The `type_name` will be indented by `pad` spaces. Subsequent lines will be
-/// indented by multiples of `ERROR_INDENT` to communicate message hierarchy.
-fn and_or_error_fmt_padded<L: DisplayableError, R: DisplayableError>(
-    f: &mut Formatter,
-    pad: usize,
-    type_name: &str,
-    left: &VerificationResult<L>,
-    right: &VerificationResult<R>,
-) -> core::fmt::Result {
-    Display::fmt(&format_args!("{:pad$}{type_name}:", ""), f)?;
-    writeln!(f)?;
-
-    let status_pad = pad + ERROR_INDENT;
-    let left_status = choice_to_checkbox(left.is_ok());
-    writeln!(f, "{:status_pad$}{left_status}", "")?;
-
-    let nested_pad = status_pad + 2;
-    left.fmt_padded(f, nested_pad)?;
-    writeln!(f)?;
-
-    let right_status = choice_to_checkbox(right.is_ok());
-    writeln!(f, "{:status_pad$}{right_status}", "")?;
-    right.fmt_padded(f, nested_pad)
-    // No trailing newline to prevent nested `AndError`s and `OrError`s from
-    // resulting in multiple consecutive newlines
-}
-
-impl<L: DisplayableError, R: DisplayableError> DisplayableError for AndError<L, R> {
-    fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
-        and_or_error_fmt_padded(f, pad, "AndError", &self.left, &self.right)
-    }
-}
-
-impl<L: DisplayableError, R: DisplayableError> Display for AndError<L, R> {
-    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        self.fmt_padded(f, 0)
+    fn fmt_failure(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        let status = FAILURE_MESSAGE_INDICATOR;
+        writeln!(f, "{:pad$}{status} Both of the following must be true:", "")?;
+        let pad = pad + MESSAGE_INDENT;
+        self.left.fmt_padded(f, pad)?;
+        writeln!(f)?;
+        self.right.fmt_padded(f, pad)
     }
 }
 
@@ -317,38 +378,46 @@ impl<L, R> And<L, R> {
 }
 
 impl<T, L: Verifier<T>, R: Verifier<T>> Verifier<T> for And<L, R> {
-    type Error = AndError<L::Error, R::Error>;
-    fn verify(&self, evidence: &T) -> VerificationResult<Self::Error> {
+    type ResultMetadata = AndResultMessage<L::ResultMetadata, R::ResultMetadata>;
+    fn verify(&self, evidence: &T) -> VerificationResult<Self::ResultMetadata> {
         let left_err = self.left.verify(evidence);
         let right_err = self.right.verify(evidence);
         let is_ok = left_err.is_ok() & right_err.is_ok();
-        VerificationResult::new(AndError::new(left_err, right_err), is_ok)
+        VerificationResult::new(AndResultMessage::new(left_err, right_err), is_ok)
     }
 }
 
-/// An error that occurs during an `or` operation.
+/// A result message that occurs during an `or` operation.
 #[derive(Debug, Clone)]
-pub struct OrError<L, R> {
+pub struct OrResultMessage<L, R> {
     left: VerificationResult<L>,
     right: VerificationResult<R>,
 }
 
-impl<L, R> OrError<L, R> {
+impl<L, R> OrResultMessage<L, R> {
     /// Create a new instance
     pub fn new(left: VerificationResult<L>, right: VerificationResult<R>) -> Self {
         Self { left, right }
     }
 }
 
-impl<L: DisplayableError, R: DisplayableError> DisplayableError for OrError<L, R> {
-    fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
-        and_or_error_fmt_padded(f, pad, "OrError", &self.left, &self.right)
+impl<L: ResultMessage, R: ResultMessage> ResultMessage for OrResultMessage<L, R> {
+    fn fmt_success(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        let status = SUCCESS_MESSAGE_INDICATOR;
+        writeln!(f, "{:pad$}{status} One of the following was true:", "")?;
+        let pad = pad + MESSAGE_INDENT;
+        self.left.fmt_padded(f, pad)?;
+        writeln!(f)?;
+        self.right.fmt_padded(f, pad)
     }
-}
 
-impl<L: DisplayableError, R: DisplayableError> Display for OrError<L, R> {
-    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        self.fmt_padded(f, 0)
+    fn fmt_failure(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        let status = FAILURE_MESSAGE_INDICATOR;
+        writeln!(f, "{:pad$}{status} One of the following must be true:", "")?;
+        let pad = pad + MESSAGE_INDENT;
+        self.left.fmt_padded(f, pad)?;
+        writeln!(f)?;
+        self.right.fmt_padded(f, pad)
     }
 }
 
@@ -386,36 +455,48 @@ impl<L, R> Or<L, R> {
 }
 
 impl<T, L: Verifier<T>, R: Verifier<T>> Verifier<T> for Or<L, R> {
-    type Error = OrError<L::Error, R::Error>;
-    fn verify(&self, evidence: &T) -> VerificationResult<Self::Error> {
+    type ResultMetadata = OrResultMessage<L::ResultMetadata, R::ResultMetadata>;
+    fn verify(&self, evidence: &T) -> VerificationResult<Self::ResultMetadata> {
         let left_err = self.left.verify(evidence);
         let right_err = self.right.verify(evidence);
         let is_ok = left_err.is_ok() | right_err.is_ok();
-        VerificationResult::new(OrError::new(left_err, right_err), is_ok)
+        VerificationResult::new(OrResultMessage::new(left_err, right_err), is_ok)
     }
 }
 
-/// An error that occurs due to a [`Not`] operation.
+/// A result message that occurs due to a [`Not`] operation.
 #[derive(Debug, Clone)]
-pub struct NotError<E> {
+pub struct NotResultMessage<T> {
     // The [`VerificationResult`] that was negated by the [`Not`] operation.
-    inner: VerificationResult<E>,
+    inner: VerificationResult<T>,
 }
 
-impl<E> NotError<E> {
+impl<T> NotResultMessage<T> {
     /// Create a new instance
-    pub fn new(inner: VerificationResult<E>) -> Self {
+    pub fn new(inner: VerificationResult<T>) -> Self {
         Self { inner }
     }
 }
 
-impl<E: DisplayableError> DisplayableError for NotError<E> {}
+impl<T: ResultMessage> ResultMessage for NotResultMessage<T> {
+    fn fmt_success(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        let status = SUCCESS_MESSAGE_INDICATOR;
+        writeln!(
+            f,
+            "{:pad$}{status} Inverted expectation of the following:",
+            ""
+        )?;
+        self.inner.fmt_padded(f, pad + MESSAGE_INDENT)
+    }
 
-impl<E: DisplayableError> Display for NotError<E> {
-    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        f.debug_struct("NotError")
-            .field("inner", &format_args!("{}", self.inner))
-            .finish()
+    fn fmt_failure(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        let status = FAILURE_MESSAGE_INDICATOR;
+        writeln!(
+            f,
+            "{:pad$}{status} Inverted expectation of the following:",
+            ""
+        )?;
+        self.inner.fmt_padded(f, pad + MESSAGE_INDENT)
     }
 }
 
@@ -433,11 +514,11 @@ impl<V> Not<V> {
 }
 
 impl<T, V: Verifier<T>> Verifier<T> for Not<V> {
-    type Error = NotError<V::Error>;
-    fn verify(&self, evidence: &T) -> VerificationResult<Self::Error> {
+    type ResultMetadata = NotResultMessage<V::ResultMetadata>;
+    fn verify(&self, evidence: &T) -> VerificationResult<Self::ResultMetadata> {
         let original = self.verifier.verify(evidence);
         let is_ok = original.is_ok();
-        VerificationResult::new(NotError::new(original), !is_ok)
+        VerificationResult::new(NotResultMessage::new(original), !is_ok)
     }
 }
 
@@ -446,9 +527,9 @@ impl<T, V: Verifier<T>> Verifier<T> for Not<V> {
 pub struct AlwaysTrue;
 
 impl<T> Verifier<T> for AlwaysTrue {
-    type Error = VerificationError;
-    fn verify(&self, _evidence: &T) -> VerificationResult<Self::Error> {
-        VerificationResult::new(VerificationError::General, 1.into())
+    type ResultMetadata = VerificationResultMetadata;
+    fn verify(&self, _evidence: &T) -> VerificationResult<Self::ResultMetadata> {
+        VerificationResult::new(VerificationResultMetadata::General, 1.into())
     }
 }
 
@@ -457,9 +538,9 @@ impl<T> Verifier<T> for AlwaysTrue {
 pub struct AlwaysFalse;
 
 impl<T> Verifier<T> for AlwaysFalse {
-    type Error = VerificationError;
-    fn verify(&self, _evidence: &T) -> VerificationResult<Self::Error> {
-        VerificationResult::new(VerificationError::AlwaysFalse, 0.into())
+    type ResultMetadata = VerificationResultMetadata;
+    fn verify(&self, _evidence: &T) -> VerificationResult<Self::ResultMetadata> {
+        VerificationResult::new(VerificationResultMetadata::AlwaysFalse, 0.into())
     }
 }
 
@@ -490,11 +571,11 @@ mod tests {
     }
 
     impl<T> Verifier<T> for Node {
-        type Error = VerificationError;
-        fn verify(&self, _evidence: &T) -> VerificationResult<Self::Error> {
+        type ResultMetadata = VerificationResultMetadata;
+        fn verify(&self, _evidence: &T) -> VerificationResult<Self::ResultMetadata> {
             self.verified_called.replace(true);
             let succeed = if self.succeed { 1 } else { 0 };
-            VerificationResult::new(VerificationError::General, succeed.into())
+            VerificationResult::new(VerificationResultMetadata::General, succeed.into())
         }
     }
 
@@ -565,19 +646,19 @@ mod tests {
     #[test]
     fn display_of_successful_option() {
         let success = VerificationResult::new(
-            VerificationError::IsvSvnTooSmall {
+            VerificationResultMetadata::IsvSvn {
                 expected: 3.into(),
                 actual: 3.into(),
             },
             1.into(),
         );
-        assert_eq!(format!("{success}"), "Passed");
+        assert_eq!(format!("{success}"), "- [x] The ISV SVN was IsvSvn(3)");
     }
 
     #[test]
     fn display_of_fail_option() {
         let failure = VerificationResult::new(
-            VerificationError::IsvSvnTooSmall {
+            VerificationResultMetadata::IsvSvn {
                 expected: 3.into(),
                 actual: 2.into(),
             },
@@ -585,17 +666,17 @@ mod tests {
         );
         assert_eq!(
             format!("{failure}"),
-            "The ISV SVN value of IsvSvn(2) is less than the expected value of IsvSvn(3)"
+            "- [ ] The ISV SVN value of IsvSvn(2) is less than the expected value of IsvSvn(3)"
         );
     }
 
     #[test]
-    fn display_of_success_for_and_error() {
+    fn display_of_success_for_and_failure() {
         let success = VerificationResult::new(
-            AndError::new(
-                VerificationResult::new(VerificationError::General, 1.into()),
+            AndResultMessage::new(
+                VerificationResult::new(VerificationResultMetadata::General, 1.into()),
                 VerificationResult::new(
-                    VerificationError::MiscellaneousSelectMismatch {
+                    VerificationResultMetadata::MiscellaneousSelect {
                         expected: 3.into(),
                         actual: 3.into(),
                     },
@@ -604,16 +685,20 @@ mod tests {
             ),
             1.into(),
         );
-        assert_eq!(format!("{success}"), "Passed");
+        let expected = r#"
+            - [x] Both of the following are true:
+              - [x] Success
+              - [x] The miscellaneous select was MiscellaneousSelect(3)"#;
+        assert_eq!(format!("\n{success}"), textwrap::dedent(expected));
     }
 
     #[test]
-    fn display_of_failure_for_and_error() {
+    fn display_of_failure_for_and_failure() {
         let failure = VerificationResult::new(
-            AndError::new(
-                VerificationResult::new(VerificationError::General, 1.into()),
+            AndResultMessage::new(
+                VerificationResult::new(VerificationResultMetadata::General, 1.into()),
                 VerificationResult::new(
-                    VerificationError::MiscellaneousSelectMismatch {
+                    VerificationResultMetadata::MiscellaneousSelect {
                         expected: 2.into(),
                         actual: 3.into(),
                     },
@@ -623,23 +708,21 @@ mod tests {
             0.into(),
         );
         let expected = r#"
-            AndError:
-              - [x]
-                Passed
-              - [ ]
-                The MiscellaneousSelect did not match expected:MiscellaneousSelect(2) actual:MiscellaneousSelect(3)"#;
+            - [ ] Both of the following must be true:
+              - [x] Success
+              - [ ] The miscellaneous select did not match, expected:MiscellaneousSelect(2) actual:MiscellaneousSelect(3)"#;
         assert_eq!(format!("\n{failure}"), textwrap::dedent(expected));
     }
 
     #[test]
-    fn display_of_failure_for_or_with_and_error() {
+    fn display_of_failure_for_or_with_and_failure() {
         let failure = VerificationResult::new(
-            OrError::new(
+            OrResultMessage::new(
                 VerificationResult::new(
-                    AndError::new(
-                        VerificationResult::new(VerificationError::General, 1.into()),
+                    AndResultMessage::new(
+                        VerificationResult::new(VerificationResultMetadata::General, 1.into()),
                         VerificationResult::new(
-                            VerificationError::IsvSvnTooSmall {
+                            VerificationResultMetadata::IsvSvn {
                                 expected: 3.into(),
                                 actual: 1.into(),
                             },
@@ -649,7 +732,7 @@ mod tests {
                     0.into(),
                 ),
                 VerificationResult::new(
-                    VerificationError::MiscellaneousSelectMismatch {
+                    VerificationResultMetadata::MiscellaneousSelect {
                         expected: 2.into(),
                         actual: 3.into(),
                     },
@@ -659,22 +742,21 @@ mod tests {
             0.into(),
         );
         let expected = r#"
-            OrError:
-              - [ ]
-                AndError:
-                  - [x]
-                    Passed
-                  - [ ]
-                    The ISV SVN value of IsvSvn(1) is less than the expected value of IsvSvn(3)
-              - [ ]
-                The MiscellaneousSelect did not match expected:MiscellaneousSelect(2) actual:MiscellaneousSelect(3)"#;
+            - [ ] One of the following must be true:
+              - [ ] Both of the following must be true:
+                - [x] Success
+                - [ ] The ISV SVN value of IsvSvn(1) is less than the expected value of IsvSvn(3)
+              - [ ] The miscellaneous select did not match, expected:MiscellaneousSelect(2) actual:MiscellaneousSelect(3)"#;
         assert_eq!(format!("\n{failure}"), textwrap::dedent(expected));
     }
 
     #[test]
     fn display_of_always_false_option() {
         let failure = AlwaysFalse.verify(NO_EVIDENCE);
-        assert_eq!(format!("{failure}"), "Forced failure via `AlwaysFalse`");
+        assert_eq!(
+            format!("{failure}"),
+            "- [ ] Forced failure via `AlwaysFalse`"
+        );
     }
 
     #[test]
@@ -682,6 +764,10 @@ mod tests {
         let not = Not::new(AlwaysTrue);
         let verification = not.verify(NO_EVIDENCE);
         assert_eq!(verification.is_err().unwrap_u8(), 1);
+        let expected = r#"
+            - [ ] Inverted expectation of the following:
+              - [x] Success"#;
+        assert_eq!(format!("\n{verification}"), textwrap::dedent(expected));
     }
 
     #[test]
@@ -689,5 +775,9 @@ mod tests {
         let not = Not::new(AlwaysFalse);
         let verification = not.verify(NO_EVIDENCE);
         assert_eq!(verification.is_ok().unwrap_u8(), 1);
+        let expected = r#"
+            - [x] Inverted expectation of the following:
+              - [ ] Forced failure via `AlwaysFalse`"#;
+        assert_eq!(format!("\n{verification}"), textwrap::dedent(expected));
     }
 }
