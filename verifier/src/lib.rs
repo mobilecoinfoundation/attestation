@@ -86,12 +86,14 @@ pub enum VerificationError {
         /// The actual measurement that was present
         actual: MrSigner,
     },
-    /// The report data did not match expected:{expected:?} actual:{actual:?}
+    /// The report data did not match expected:{expected:?} actual:{actual:?} mask:{mask:?}
     ReportDataMismatch {
         /// The expected report data
         expected: ReportData,
         /// The actual report data that was present
         actual: ReportData,
+        /// Mask of which bytes were expected to match
+        mask: ReportData,
     },
 }
 
