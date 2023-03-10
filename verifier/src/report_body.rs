@@ -2,7 +2,7 @@
 
 //! Verifiers which operate on the [`ReportBody`]
 
-use crate::{VerificationError, VerificationResult, Verifier};
+use crate::{VerificationResult, VerificationResultMetadata, Verifier};
 use core::fmt::Debug;
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
@@ -65,8 +65,8 @@ report_body_field_accessor! {
     ReportData, report_data;
 }
 
-trait IntoVerificationError {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError;
+trait IntoVerificationMetadata {
+    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata;
 }
 
 /// Common implementation for [`Verifier`]s that test for equality between
@@ -84,16 +84,19 @@ impl<T> EqualityVerifier<T> {
 
 impl<T, E> Verifier<E> for EqualityVerifier<T>
 where
-    T: Debug + Clone + PartialEq + IntoVerificationError,
+    T: Debug + Clone + PartialEq + IntoVerificationMetadata,
     E: Accessor<T>,
 {
-    type Error = VerificationError;
-    fn verify(&self, evidence: &E) -> VerificationResult<Self::Error> {
+    type ResultMetadata = VerificationResultMetadata;
+    fn verify(&self, evidence: &E) -> VerificationResult<Self::ResultMetadata> {
         let expected = self.expected.clone();
         let actual = evidence.get();
         // TODO - This should be a constant time comparison.
         let is_ok = if expected == actual { 1 } else { 0 };
-        VerificationResult::new(T::into_verification_error(expected, actual), is_ok.into())
+        VerificationResult::new(
+            T::into_verification_metadata(expected, actual),
+            is_ok.into(),
+        )
     }
 }
 
@@ -112,48 +115,51 @@ impl<T> GreaterThanEqualVerifier<T> {
 
 /// Verifier for ensuring [`Attributes`] values are equivalent.
 pub type AttributesVerifier = EqualityVerifier<Attributes>;
-impl IntoVerificationError for Attributes {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::AttributeMismatch { expected, actual }
+impl IntoVerificationMetadata for Attributes {
+    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
+        VerificationResultMetadata::Attributes { expected, actual }
     }
 }
 
 /// Verifier for ensuring [`ConfigId`] values are equivalent.
 pub type ConfigIdVerifier = EqualityVerifier<ConfigId>;
-impl IntoVerificationError for ConfigId {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::ConfigIdMismatch { expected, actual }
+impl IntoVerificationMetadata for ConfigId {
+    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
+        VerificationResultMetadata::ConfigId { expected, actual }
     }
 }
 
 /// Verifier for ensuring [`ConfigSvn`] is greater than or equal to an
 /// expected [`ConfigSvn`]
 pub type ConfigSvnVerifier = GreaterThanEqualVerifier<ConfigSvn>;
-impl IntoVerificationError for ConfigSvn {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::ConfigSvnTooSmall { expected, actual }
+impl IntoVerificationMetadata for ConfigSvn {
+    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
+        VerificationResultMetadata::ConfigSvn { expected, actual }
     }
 }
 
 impl<E: Accessor<ConfigSvn>> Verifier<E> for GreaterThanEqualVerifier<ConfigSvn> {
-    type Error = VerificationError;
-    fn verify(&self, evidence: &E) -> VerificationResult<Self::Error> {
+    type ResultMetadata = VerificationResultMetadata;
+    fn verify(&self, evidence: &E) -> VerificationResult<Self::ResultMetadata> {
         let expected = self.expected;
         let actual = evidence.get();
 
         let actual_value = actual.as_ref();
         let expected_value = expected.as_ref();
         let is_ok = actual_value.ct_gt(expected_value) | actual_value.ct_eq(expected_value);
-        VerificationResult::new(ConfigSvn::into_verification_error(expected, actual), is_ok)
+        VerificationResult::new(
+            ConfigSvn::into_verification_metadata(expected, actual),
+            is_ok,
+        )
     }
 }
 
 /// Verifier for ensuring [`CpuSvn`] is greater than or equal to an
 /// expected [`CpuSvn`]
 pub type CpuSvnVerifier = GreaterThanEqualVerifier<CpuSvn>;
-impl IntoVerificationError for CpuSvn {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::CpuSvnTooSmall { expected, actual }
+impl IntoVerificationMetadata for CpuSvn {
+    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
+        VerificationResultMetadata::CpuSvn { expected, actual }
     }
 }
 
@@ -168,8 +174,8 @@ fn cpu_svn_to_u64s(cpu_svn: &CpuSvn) -> (u64, u64) {
 }
 
 impl<E: Accessor<CpuSvn>> Verifier<E> for GreaterThanEqualVerifier<CpuSvn> {
-    type Error = VerificationError;
-    fn verify(&self, evidence: &E) -> VerificationResult<Self::Error> {
+    type ResultMetadata = VerificationResultMetadata;
+    fn verify(&self, evidence: &E) -> VerificationResult<Self::ResultMetadata> {
         let expected = self.expected.clone();
         let actual = evidence.get();
 
@@ -184,61 +190,61 @@ impl<E: Accessor<CpuSvn>> Verifier<E> for GreaterThanEqualVerifier<CpuSvn> {
             actual_low.ct_gt(&expected_low) | actual_low.ct_eq(&expected_low);
         let is_ok = high_order_greater | (high_order_equal & low_order_greater_equal);
 
-        VerificationResult::new(CpuSvn::into_verification_error(expected, actual), is_ok)
+        VerificationResult::new(CpuSvn::into_verification_metadata(expected, actual), is_ok)
     }
 }
 
 /// Verifier for ensuring [`ExtendedProductId`] values are equivalent.
 pub type ExtendedProductIdVerifier = EqualityVerifier<ExtendedProductId>;
-impl IntoVerificationError for ExtendedProductId {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::ExtendedProductIdMismatch { expected, actual }
+impl IntoVerificationMetadata for ExtendedProductId {
+    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
+        VerificationResultMetadata::ExtendedProductId { expected, actual }
     }
 }
 
 /// Verifier for ensuring [`FamilyId`] values are equivalent.
 pub type FamilyIdVerifier = EqualityVerifier<FamilyId>;
-impl IntoVerificationError for FamilyId {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::FamilyIdMismatch { expected, actual }
+impl IntoVerificationMetadata for FamilyId {
+    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
+        VerificationResultMetadata::FamilyId { expected, actual }
     }
 }
 
 /// Verifier for ensuring [`IsvProductId`] values are equivalent.
 pub type IsvProductIdVerifier = EqualityVerifier<IsvProductId>;
-impl IntoVerificationError for IsvProductId {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::IsvProductIdMismatch { expected, actual }
+impl IntoVerificationMetadata for IsvProductId {
+    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
+        VerificationResultMetadata::IsvProductId { expected, actual }
     }
 }
 
 /// Verifier for ensuring [`IsvSvn`] is greater than or equal to an expected
 /// [`IsvSvn`]
 pub type IsvSvnVerifier = GreaterThanEqualVerifier<IsvSvn>;
-impl IntoVerificationError for IsvSvn {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::IsvSvnTooSmall { expected, actual }
+impl IntoVerificationMetadata for IsvSvn {
+    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
+        VerificationResultMetadata::IsvSvn { expected, actual }
     }
 }
 
 impl<E: Accessor<IsvSvn>> Verifier<E> for GreaterThanEqualVerifier<IsvSvn> {
-    type Error = VerificationError;
-    fn verify(&self, evidence: &E) -> VerificationResult<Self::Error> {
+    type ResultMetadata = VerificationResultMetadata;
+    fn verify(&self, evidence: &E) -> VerificationResult<Self::ResultMetadata> {
         let expected = self.expected;
         let actual = evidence.get();
 
         let actual_value = actual.as_ref();
         let expected_value = expected.as_ref();
         let is_ok = actual_value.ct_gt(expected_value) | actual_value.ct_eq(expected_value);
-        VerificationResult::new(IsvSvn::into_verification_error(expected, actual), is_ok)
+        VerificationResult::new(IsvSvn::into_verification_metadata(expected, actual), is_ok)
     }
 }
 
 /// Verifier for ensuring [`MiscellaneousSelect`] values are equivalent.
 pub type MiscellaneousSelectVerifier = EqualityVerifier<MiscellaneousSelect>;
-impl IntoVerificationError for MiscellaneousSelect {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::MiscellaneousSelectMismatch { expected, actual }
+impl IntoVerificationMetadata for MiscellaneousSelect {
+    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
+        VerificationResultMetadata::MiscellaneousSelect { expected, actual }
     }
 }
 
@@ -246,9 +252,9 @@ impl IntoVerificationError for MiscellaneousSelect {
 ///
 /// The Intel SDK docs refer to this as "Strict Enclave Modification Policy"
 pub type MrEnclaveVerifier = EqualityVerifier<MrEnclave>;
-impl IntoVerificationError for MrEnclave {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::MrEnclaveMismatch { expected, actual }
+impl IntoVerificationMetadata for MrEnclave {
+    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
+        VerificationResultMetadata::MrEnclave { expected, actual }
     }
 }
 
@@ -276,22 +282,22 @@ impl MrSignerVerifier {
 impl<E: Accessor<MrSigner> + Accessor<IsvProductId> + Accessor<IsvSvn>> Verifier<E>
     for MrSignerVerifier
 {
-    type Error = VerificationError;
-    fn verify(&self, evidence: &E) -> VerificationResult<Self::Error> {
+    type ResultMetadata = VerificationResultMetadata;
+    fn verify(&self, evidence: &E) -> VerificationResult<Self::ResultMetadata> {
         let mr_signer_key = self.mr_signer.verify(evidence);
         let product_id = self.product_id.verify(evidence);
         let isv_svn = self.isv_svn.verify(evidence);
 
         let is_ok = mr_signer_key.is_ok() & product_id.is_ok() & isv_svn.is_ok();
 
-        VerificationResult::new(VerificationError::General, is_ok)
+        VerificationResult::new(VerificationResultMetadata::General, is_ok)
     }
 }
 /// Verifier for ensuring [`MrSigner`] key values are equivalent.
 type MrSignerKeyVerifier = EqualityVerifier<MrSigner>;
-impl IntoVerificationError for MrSigner {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::MrSignerKeyMismatch { expected, actual }
+impl IntoVerificationMetadata for MrSigner {
+    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
+        VerificationResultMetadata::MrSignerKey { expected, actual }
     }
 }
 
@@ -316,15 +322,15 @@ impl ReportDataVerifier {
 }
 
 impl<E: Accessor<ReportData>> Verifier<E> for ReportDataVerifier {
-    type Error = VerificationError;
-    fn verify(&self, evidence: &E) -> VerificationResult<Self::Error> {
+    type ResultMetadata = VerificationResultMetadata;
+    fn verify(&self, evidence: &E) -> VerificationResult<Self::ResultMetadata> {
         let mask = self.mask.clone();
         let expected = &self.expected & &mask;
         let actual = &evidence.get() & &mask;
         // TODO - This should be a constant time comparison.
         let is_some = if expected == actual { 1 } else { 0 };
         VerificationResult::new(
-            VerificationError::ReportDataMismatch {
+            VerificationResultMetadata::ReportData {
                 expected,
                 actual,
                 mask,
