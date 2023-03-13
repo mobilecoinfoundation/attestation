@@ -2,8 +2,11 @@
 
 //! Verifiers which operate on the [`ReportBody`]
 
-use crate::{VerificationResult, VerificationResultMetadata, Verifier};
-use core::fmt::Debug;
+use crate::{
+    ResultMessage, VerificationResult, VerificationResultMetadata, Verifier,
+    FAILURE_MESSAGE_INDICATOR, MESSAGE_INDENT, SUCCESS_MESSAGE_INDICATOR,
+};
+use core::fmt::{Debug, Formatter};
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
     MiscellaneousSelect, MrEnclave, MrSigner, ReportBody, ReportData,
@@ -258,6 +261,38 @@ impl IntoVerificationMetadata for MrEnclave {
     }
 }
 
+/// Metadata for [`MrSigner`] verification
+#[derive(Debug, Clone)]
+pub struct MrSignerVerificationMetadata {
+    mr_signer_key: VerificationResult<VerificationResultMetadata>,
+    product_id: VerificationResult<VerificationResultMetadata>,
+    isv_svn: VerificationResult<VerificationResultMetadata>,
+}
+
+impl ResultMessage for MrSignerVerificationMetadata {
+    fn fmt_success(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        let status = SUCCESS_MESSAGE_INDICATOR;
+        writeln!(f, "{:pad$}{status} MrSigner:", "", pad = pad)?;
+        let pad = pad + MESSAGE_INDENT;
+        self.mr_signer_key.fmt_padded(f, pad)?;
+        writeln!(f)?;
+        self.product_id.fmt_padded(f, pad)?;
+        writeln!(f)?;
+        self.isv_svn.fmt_padded(f, pad)
+    }
+
+    fn fmt_failure(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        let status = FAILURE_MESSAGE_INDICATOR;
+        writeln!(f, "{:pad$}{status} MrSigner:", "", pad = pad)?;
+        let pad = pad + MESSAGE_INDENT;
+        self.mr_signer_key.fmt_padded(f, pad)?;
+        writeln!(f)?;
+        self.product_id.fmt_padded(f, pad)?;
+        writeln!(f)?;
+        self.isv_svn.fmt_padded(f, pad)
+    }
+}
+
 /// Verifier for ensuring all of the MRSIGNER inputs are sufficient.
 ///
 /// The Intel SDK docs refer to this as "Security Enclave Modification Policy"
@@ -282,7 +317,7 @@ impl MrSignerVerifier {
 impl<E: Accessor<MrSigner> + Accessor<IsvProductId> + Accessor<IsvSvn>> Verifier<E>
     for MrSignerVerifier
 {
-    type ResultMetadata = VerificationResultMetadata;
+    type ResultMetadata = MrSignerVerificationMetadata;
     fn verify(&self, evidence: &E) -> VerificationResult<Self::ResultMetadata> {
         let mr_signer_key = self.mr_signer.verify(evidence);
         let product_id = self.product_id.verify(evidence);
@@ -290,9 +325,17 @@ impl<E: Accessor<MrSigner> + Accessor<IsvProductId> + Accessor<IsvSvn>> Verifier
 
         let is_ok = mr_signer_key.is_ok() & product_id.is_ok() & isv_svn.is_ok();
 
-        VerificationResult::new(VerificationResultMetadata::General, is_ok)
+        VerificationResult::new(
+            MrSignerVerificationMetadata {
+                mr_signer_key,
+                product_id,
+                isv_svn,
+            },
+            is_ok,
+        )
     }
 }
+
 /// Verifier for ensuring [`MrSigner`] key values are equivalent.
 type MrSignerKeyVerifier = EqualityVerifier<MrSigner>;
 impl IntoVerificationMetadata for MrSigner {
@@ -342,8 +385,10 @@ impl<E: Accessor<ReportData>> Verifier<E> for ReportDataVerifier {
 
 #[cfg(test)]
 mod test {
+    extern crate alloc;
     use super::*;
     use crate::And;
+    use alloc::format;
     use mc_sgx_core_sys_types::{
         sgx_attributes_t, sgx_cpu_svn_t, sgx_measurement_t, sgx_report_body_t, sgx_report_data_t,
     };
@@ -811,10 +856,14 @@ mod test {
 
         let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
 
-        assert_eq!(
-            mr_signer_verifier.verify(&report_body).is_ok().unwrap_u8(),
-            1
-        );
+        let verification = mr_signer_verifier.verify(&report_body);
+        assert_eq!(verification.is_ok().unwrap_u8(), 1);
+        let expected = r#"
+            - [x] MrSigner:
+              - [x] The MRSIGNER key hash was MrSigner(sgx_measurement_t { m: [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79] })
+              - [x] The ISV product ID was IsvProductId(144)
+              - [x] The ISV SVN was IsvSvn(145)"#;
+        assert_eq!(format!("\n{verification}"), textwrap::dedent(expected));
     }
 
     #[test]
@@ -829,10 +878,14 @@ mod test {
 
         let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
 
-        assert_eq!(
-            mr_signer_verifier.verify(&report_body).is_err().unwrap_u8(),
-            1
-        );
+        let verification = mr_signer_verifier.verify(&report_body);
+        assert_eq!(verification.is_err().unwrap_u8(), 1);
+        let expected = r#"
+            - [ ] MrSigner:
+              - [ ] The MRSIGNER key hash did not match, expected:MrSigner(sgx_measurement_t { m: [49, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79] }) actual:MrSigner(sgx_measurement_t { m: [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79] })
+              - [x] The ISV product ID was IsvProductId(144)
+              - [x] The ISV SVN was IsvSvn(145)"#;
+        assert_eq!(format!("\n{verification}"), textwrap::dedent(expected));
     }
 
     #[test]
@@ -846,10 +899,14 @@ mod test {
 
         let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
 
-        assert_eq!(
-            mr_signer_verifier.verify(&report_body).is_err().unwrap_u8(),
-            1
-        );
+        let verification = mr_signer_verifier.verify(&report_body);
+        assert_eq!(verification.is_err().unwrap_u8(), 1);
+        let expected = r#"
+            - [ ] MrSigner:
+              - [x] The MRSIGNER key hash was MrSigner(sgx_measurement_t { m: [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79] })
+              - [ ] The ISV product ID did not match, expected:IsvProductId(145) actual:IsvProductId(144)
+              - [x] The ISV SVN was IsvSvn(145)"#;
+        assert_eq!(format!("\n{verification}"), textwrap::dedent(expected));
     }
 
     #[test]
@@ -863,9 +920,13 @@ mod test {
 
         let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
 
-        assert_eq!(
-            mr_signer_verifier.verify(&report_body).is_err().unwrap_u8(),
-            1
-        );
+        let verification = mr_signer_verifier.verify(&report_body);
+        assert_eq!(verification.is_err().unwrap_u8(), 1);
+        let expected = r#"
+            - [ ] MrSigner:
+              - [x] The MRSIGNER key hash was MrSigner(sgx_measurement_t { m: [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79] })
+              - [x] The ISV product ID was IsvProductId(144)
+              - [ ] The ISV SVN value of IsvSvn(145) is less than the expected value of IsvSvn(146)"#;
+        assert_eq!(format!("\n{verification}"), textwrap::dedent(expected));
     }
 }
