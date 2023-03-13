@@ -91,7 +91,7 @@ pub trait ResultMessage {
 }
 
 /// Failed to verify.
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub enum VerificationResultMetadata {
     /// Generic no extra info.
     General,
