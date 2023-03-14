@@ -196,10 +196,41 @@ impl IntoVerificationError for MrSigner {
 }
 
 /// Verifier for ensuring [`ReportData`] values are equivalent.
-pub type ReportDataVerifier = EqualityVerifier<ReportData>;
-impl IntoVerificationError for ReportData {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::ReportDataMismatch { expected, actual }
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct ReportDataVerifier {
+    expected: ReportData,
+    mask: ReportData,
+}
+impl ReportDataVerifier {
+    /// Create a new [`ReportDataVerifier`] where all bits will be compared
+    pub fn new(expected: ReportData) -> Self {
+        let mask = ReportData::from([0xff; ReportData::SIZE]);
+        Self::new_with_mask(expected, mask)
+    }
+
+    /// Create a new [`ReportDataVerifier`] where only bits set in the mask will
+    /// compared
+    pub fn new_with_mask(expected: ReportData, mask: ReportData) -> Self {
+        Self { expected, mask }
+    }
+}
+
+impl<E: Accessor<ReportData>> Verifier<E> for ReportDataVerifier {
+    type Error = VerificationError;
+    fn verify(&self, evidence: &E) -> CtOption<Self::Error> {
+        let mask = self.mask.clone();
+        let expected = &self.expected & &mask;
+        let actual = &evidence.get() & &mask;
+        // TODO - This should be a constant time comparison.
+        let is_some = if expected == actual { 0 } else { 1 };
+        CtOption::new(
+            VerificationError::ReportDataMismatch {
+                expected,
+                actual,
+                mask,
+            },
+            is_some.into(),
+        )
     }
 }
 
@@ -485,6 +516,61 @@ mod test {
         let verifier = ReportDataVerifier::new(report_data.clone());
         let bytes: &mut [u8] = report_data.as_mut();
         bytes[0] = 1;
+
+        assert_eq!(verifier.verify(&report_data).is_some().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn report_data_ignores_masked_off_bits() {
+        let mut report_data = ReportData::from([0b1010_1010; ReportData::SIZE]);
+        let mut mask = ReportData::from([0b1111_1111; ReportData::SIZE]);
+        let mask_bytes: &mut [u8] = mask.as_mut();
+        mask_bytes[0] = 0b0000_0000;
+        let verifier = ReportDataVerifier::new_with_mask(report_data.clone(), mask);
+
+        let bytes: &mut [u8] = report_data.as_mut();
+        bytes[0] = 0b1111_0000;
+
+        assert_eq!(verifier.verify(&report_data).is_none().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn report_data_fails_when_non_masked_bits_differ() {
+        let mut report_data = ReportData::from([0b1010_1010; ReportData::SIZE]);
+        let mut mask = ReportData::from([0b1111_1111; ReportData::SIZE]);
+        let mask_bytes: &mut [u8] = mask.as_mut();
+        mask_bytes[0] = 0b0000_0000;
+        let verifier = ReportDataVerifier::new_with_mask(report_data.clone(), mask);
+
+        let bytes: &mut [u8] = report_data.as_mut();
+        bytes[0] = 0b1111_0000;
+        bytes[1] = 0b1111_0000; // Not masked off so should fail
+
+        assert_eq!(verifier.verify(&report_data).is_some().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn report_data_ignores_masked_off_bit_at_end() {
+        let mut report_data = ReportData::from([0b1010_1010; ReportData::SIZE]);
+        let mut mask = ReportData::from([0b1111_1111; ReportData::SIZE]);
+        let mask_bytes: &mut [u8] = mask.as_mut();
+        mask_bytes[mask_bytes.len() - 1] = 0b1111_1110;
+        let verifier = ReportDataVerifier::new_with_mask(report_data.clone(), mask);
+
+        let bytes: &mut [u8] = report_data.as_mut();
+        bytes[bytes.len() - 1] = 0b1010_1011; // Note: the last bit is different
+
+        assert_eq!(verifier.verify(&report_data).is_none().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn report_data_fails_when_non_masked_bit_differs() {
+        let mut report_data = ReportData::from([0b1010_1010; ReportData::SIZE]);
+        let mask = ReportData::from([0b1111_1111; ReportData::SIZE]);
+        let verifier = ReportDataVerifier::new_with_mask(report_data.clone(), mask);
+
+        let bytes: &mut [u8] = report_data.as_mut();
+        bytes[bytes.len() - 1] = 0b1010_1011; // Note: the last bit is different
 
         assert_eq!(verifier.verify(&report_data).is_some().unwrap_u8(), 1);
     }
