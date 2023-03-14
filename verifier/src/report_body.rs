@@ -5,8 +5,8 @@
 use crate::{VerificationError, Verifier};
 use core::fmt::Debug;
 use mc_sgx_core_types::{
-    Attributes, ConfigId, ConfigSvn, CpuSvn, IsvSvn, MiscellaneousSelect, MrEnclave, MrSigner,
-    ReportBody, ReportData,
+    Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, IsvSvn, MiscellaneousSelect,
+    MrEnclave, MrSigner, ReportBody, ReportData,
 };
 use subtle::{ConstantTimeEq, ConstantTimeLess, CtOption};
 
@@ -55,6 +55,7 @@ report_body_field_accessor! {
     ConfigId, config_id;
     ConfigSvn, config_svn;
     CpuSvn, cpu_svn;
+    ExtendedProductId, isv_extended_product_id;
     IsvSvn, isv_svn;
     MiscellaneousSelect, miscellaneous_select;
     MrEnclave, mr_enclave;
@@ -182,6 +183,14 @@ impl<E: Accessor<CpuSvn>> Verifier<E> for GreaterThanEqualVerifier<CpuSvn> {
             | (actual_high.ct_eq(&expected_high) & actual_low.ct_lt(&expected_low));
 
         CtOption::new(CpuSvn::into_verification_error(expected, actual), is_some)
+    }
+}
+
+/// Verifier for ensureing [`ExtendedProductId`] values are equivalent.
+pub type ExtendedProductIdVerifier = EqualityVerifier<ExtendedProductId>;
+impl IntoVerificationError for ExtendedProductId {
+    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
+        VerificationError::ExtendedProductIdMismatch { expected, actual }
     }
 }
 
@@ -668,5 +677,30 @@ mod test {
         bytes[15] += 1;
 
         assert_eq!(verifier.verify(&cpu_svn).is_some().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn extended_product_id_succeeds() {
+        let extended_product_id = ExtendedProductId::from(REPORT_BODY_SRC.isv_ext_prod_id);
+        let verifier = ExtendedProductIdVerifier::new(extended_product_id.clone());
+
+        assert_eq!(
+            verifier.verify(&extended_product_id).is_none().unwrap_u8(),
+            1
+        );
+    }
+
+    #[test]
+    fn extended_product_id_fails() {
+        let mut extended_product_id = ExtendedProductId::from(REPORT_BODY_SRC.isv_ext_prod_id);
+        let verifier = ExtendedProductIdVerifier::new(extended_product_id.clone());
+
+        let bytes: &mut [u8] = extended_product_id.as_mut();
+        bytes[0] += 1;
+
+        assert_eq!(
+            verifier.verify(&extended_product_id).is_some().unwrap_u8(),
+            1
+        );
     }
 }
