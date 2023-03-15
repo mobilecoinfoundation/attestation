@@ -244,6 +244,8 @@ impl IntoVerificationError for MiscellaneousSelect {
 }
 
 /// Verifier for ensuring [`MrEnclave`] values are equivalent.
+///
+/// The Intel SDK docs refer to this as "Strict Enclave Modification Policy"
 pub type MrEnclaveVerifier = EqualityVerifier<MrEnclave>;
 impl IntoVerificationError for MrEnclave {
     fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
@@ -251,11 +253,46 @@ impl IntoVerificationError for MrEnclave {
     }
 }
 
-/// Verifier for ensuring [`MrSigner`] values are equivalent.
-pub type MrSignerVerifier = EqualityVerifier<MrSigner>;
+/// Verifier for ensuring all of the MRSIGNER inputs are sufficient.
+///
+/// The Intel SDK docs refer to this as "Security Enclave Modification Policy"
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MrSignerVerifier {
+    mr_signer: MrSignerKeyVerifier,
+    product_id: IsvProductIdVerifier,
+    isv_svn: IsvSvnVerifier,
+}
+
+impl MrSignerVerifier {
+    /// Create a new [`MrSignerVerifier`]
+    pub fn new(mr_signer: MrSigner, product_id: IsvProductId, isv_svn: IsvSvn) -> Self {
+        Self {
+            mr_signer: MrSignerKeyVerifier::new(mr_signer),
+            product_id: IsvProductIdVerifier::new(product_id),
+            isv_svn: IsvSvnVerifier::new(isv_svn),
+        }
+    }
+}
+
+impl<E: Accessor<MrSigner> + Accessor<IsvProductId> + Accessor<IsvSvn>> Verifier<E>
+    for MrSignerVerifier
+{
+    type Error = VerificationError;
+    fn verify(&self, evidence: &E) -> CtOption<Self::Error> {
+        let mr_signer_key = self.mr_signer.verify(evidence);
+        let product_id = self.product_id.verify(evidence);
+        let isv_svn = self.isv_svn.verify(evidence);
+
+        let is_some = mr_signer_key.is_some() | product_id.is_some() | isv_svn.is_some();
+
+        CtOption::new(VerificationError::General, is_some)
+    }
+}
+/// Verifier for ensuring [`MrSigner`] key values are equivalent.
+type MrSignerKeyVerifier = EqualityVerifier<MrSigner>;
 impl IntoVerificationError for MrSigner {
     fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::MrSignerMismatch { expected, actual }
+        VerificationError::MrSignerKeyMismatch { expected, actual }
     }
 }
 
@@ -428,7 +465,11 @@ mod test {
             AttributesVerifier::new(report_body.attributes()),
             And::new(
                 ConfigIdVerifier::new(report_body.config_id()),
-                MrSignerVerifier::new(mr_signer),
+                MrSignerVerifier::new(
+                    mr_signer,
+                    report_body.isv_product_id(),
+                    report_body.isv_svn(),
+                ),
             ),
         );
         assert_eq!(verifier.verify(&report_body).is_some().unwrap_u8(), 1);
@@ -549,17 +590,17 @@ mod test {
     }
 
     #[test]
-    fn mr_signer_success() {
+    fn mr_signer_key_success() {
         let mr_signer = MrSigner::from(REPORT_BODY_SRC.mr_signer);
-        let verifier = MrSignerVerifier::new(mr_signer.clone());
+        let verifier = MrSignerKeyVerifier::new(mr_signer.clone());
 
         assert_eq!(verifier.verify(&mr_signer).is_none().unwrap_u8(), 1);
     }
 
     #[test]
-    fn mr_signer_fails() {
+    fn mr_signer_key_fails() {
         let mut mr_signer = MrSigner::from(REPORT_BODY_SRC.mr_signer);
-        let verifier = MrSignerVerifier::new(mr_signer.clone());
+        let verifier = MrSignerKeyVerifier::new(mr_signer.clone());
         let bytes: &mut [u8] = mr_signer.as_mut();
         bytes[0] = 1;
 
@@ -757,5 +798,84 @@ mod test {
         *isv_product_id.as_mut() += 1;
 
         assert_eq!(verifier.verify(&isv_product_id).is_some().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn mr_signer_succeeds() {
+        let report_body = ReportBody::from(REPORT_BODY_SRC);
+        let mr_signer = report_body.mr_signer();
+        let product_id = report_body.isv_product_id();
+        let isv_svn = report_body.isv_svn();
+
+        let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
+
+        assert_eq!(
+            mr_signer_verifier
+                .verify(&report_body)
+                .is_none()
+                .unwrap_u8(),
+            1
+        );
+    }
+
+    #[test]
+    fn mr_signer_fails_due_to_mr_signer_key() {
+        let report_body = ReportBody::from(REPORT_BODY_SRC);
+        let mut mr_signer = report_body.mr_signer();
+        let product_id = report_body.isv_product_id();
+        let isv_svn = report_body.isv_svn();
+
+        let bytes: &mut [u8] = mr_signer.as_mut();
+        bytes[0] += 1;
+
+        let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
+
+        assert_eq!(
+            mr_signer_verifier
+                .verify(&report_body)
+                .is_some()
+                .unwrap_u8(),
+            1
+        );
+    }
+
+    #[test]
+    fn mr_signer_fails_due_to_product_id() {
+        let report_body = ReportBody::from(REPORT_BODY_SRC);
+        let mr_signer = report_body.mr_signer();
+        let mut product_id = report_body.isv_product_id();
+        let isv_svn = report_body.isv_svn();
+
+        *product_id.as_mut() += 1;
+
+        let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
+
+        assert_eq!(
+            mr_signer_verifier
+                .verify(&report_body)
+                .is_some()
+                .unwrap_u8(),
+            1
+        );
+    }
+
+    #[test]
+    fn mr_signer_fails_due_to_isv_svn() {
+        let report_body = ReportBody::from(REPORT_BODY_SRC);
+        let mr_signer = report_body.mr_signer();
+        let product_id = report_body.isv_product_id();
+        let mut isv_svn = report_body.isv_svn();
+
+        *isv_svn.as_mut() += 1;
+
+        let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
+
+        assert_eq!(
+            mr_signer_verifier
+                .verify(&report_body)
+                .is_some()
+                .unwrap_u8(),
+            1
+        );
     }
 }
