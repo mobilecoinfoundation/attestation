@@ -5,6 +5,8 @@
 #![no_std]
 
 mod report_body;
+mod struct_name;
+
 pub use report_body::{
     AttributesVerifier, ConfigIdVerifier, ConfigSvnVerifier, CpuSvnVerifier,
     ExtendedProductIdVerifier, FamilyIdVerifier, IsvProductIdVerifier, IsvSvnVerifier,
