@@ -7,13 +7,13 @@
 mod report_body;
 pub use report_body::{
     AttributesVerifier, ConfigIdVerifier, ConfigSvnVerifier, CpuSvnVerifier,
-    ExtendedProductIdVerifier, IsvProductIdVerifier, IsvSvnVerifier, MiscellaneousSelectVerifier,
-    MrEnclaveVerifier, MrSignerVerifier, ReportDataVerifier,
+    ExtendedProductIdVerifier, FamilyIdVerifier, IsvProductIdVerifier, IsvSvnVerifier,
+    MiscellaneousSelectVerifier, MrEnclaveVerifier, MrSignerVerifier, ReportDataVerifier,
 };
 
 use core::fmt::{Debug, Display, Formatter};
 use mc_sgx_core_types::{
-    Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, IsvProductId, IsvSvn,
+    Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
     MiscellaneousSelect, MrEnclave, MrSigner, ReportData,
 };
 use subtle::{Choice, CtOption};
@@ -73,6 +73,13 @@ pub enum VerificationError {
         expected: ExtendedProductId,
         /// The actual extended product ID that was present
         actual: ExtendedProductId,
+    },
+    /// The family ID did not match expected:{expected:?} actual:{actual:?}
+    FamilyIdMismatch {
+        /// The expected family ID
+        expected: FamilyId,
+        /// The actual family ID that was present
+        actual: FamilyId,
     },
     /// The ISV product ID did not match expected:{expected:?} actual:{actual:?}
     IsvProductIdMismatch {
