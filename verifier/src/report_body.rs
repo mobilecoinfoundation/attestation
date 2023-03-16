@@ -2,8 +2,12 @@
 
 //! Verifiers which operate on the [`ReportBody`]
 
-use crate::{VerificationResult, VerificationResultMetadata, Verifier};
-use core::fmt::Debug;
+use crate::struct_name::SpacedStructName;
+use crate::{
+    VerificationMessage, VerificationResult, Verifier, FAILURE_MESSAGE_INDICATOR, MESSAGE_INDENT,
+    SUCCESS_MESSAGE_INDICATOR,
+};
+use core::fmt::{Debug, Formatter};
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
     MiscellaneousSelect, MrEnclave, MrSigner, ReportBody, ReportData,
@@ -65,38 +69,43 @@ report_body_field_accessor! {
     ReportData, report_data;
 }
 
-trait IntoVerificationMetadata {
-    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata;
+trait IntoVerificationValues<T: VerificationMessage> {
+    fn into_verification_values(expected: Self, actual: Self) -> T;
 }
 
 /// Common implementation for [`Verifier`]s that test for equality between
 /// an expected and actual value.
+///
+/// The `T` is the type to verify.
+/// The `O` is the output data type to use for [`Verifier::VerificationValues`]
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct EqualityVerifier<T> {
+pub struct EqualityVerifier<T, O> {
     expected: T,
+    _phantom: core::marker::PhantomData<O>,
 }
 
-impl<T> EqualityVerifier<T> {
+impl<T, O> EqualityVerifier<T, O> {
     pub fn new(expected: T) -> Self {
-        Self { expected }
+        Self {
+            expected,
+            _phantom: core::marker::PhantomData,
+        }
     }
 }
 
-impl<T, E> Verifier<E> for EqualityVerifier<T>
+impl<T, O, E> Verifier<E> for EqualityVerifier<T, O>
 where
-    T: Debug + Clone + PartialEq + IntoVerificationMetadata,
+    O: VerificationMessage + Debug,
+    T: Debug + Clone + PartialEq + IntoVerificationValues<O>,
     E: Accessor<T>,
 {
-    type ResultMetadata = VerificationResultMetadata;
-    fn verify(&self, evidence: &E) -> VerificationResult<Self::ResultMetadata> {
+    type VerificationValues = O;
+    fn verify(&self, evidence: &E) -> VerificationResult<Self::VerificationValues> {
         let expected = self.expected.clone();
         let actual = evidence.get();
         // TODO - This should be a constant time comparison.
         let is_ok = if expected == actual { 1 } else { 0 };
-        VerificationResult::new(
-            T::into_verification_metadata(expected, actual),
-            is_ok.into(),
-        )
+        VerificationResult::new(T::into_verification_values(expected, actual), is_ok.into())
     }
 }
 
@@ -113,53 +122,125 @@ impl<T> GreaterThanEqualVerifier<T> {
     }
 }
 
-/// Verifier for ensuring [`Attributes`] values are equivalent.
-pub type AttributesVerifier = EqualityVerifier<Attributes>;
-impl IntoVerificationMetadata for Attributes {
-    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
-        VerificationResultMetadata::Attributes { expected, actual }
-    }
+/// Macro to generate types and traits used for types that only need `expected`
+/// and `actual` in the output data
+///
+/// # Arguments
+/// * `type_to_verify` - The type to be verified
+/// * `verifier` - The name to use for the verifier type
+/// * `verification_output_type` - The type that will be returned in the
+///   [`VerificationResult`]
+macro_rules! expected_actual_output_impls {
+    ($($type_to_verify:ty, $verifier:ident, $verification_output_type:ident;)*) => {$(
+        #[derive(Debug, Clone, Eq, PartialEq)]
+        pub struct $verification_output_type {
+            pub(crate) expected: $type_to_verify,
+            pub(crate) actual: $type_to_verify,
+        }
+
+        impl IntoVerificationValues<$verification_output_type> for $type_to_verify {
+            fn into_verification_values(expected: Self, actual: Self) -> $verification_output_type {
+                $verification_output_type{ expected, actual }
+            }
+        }
+
+    )*}
 }
 
-/// Verifier for ensuring [`ConfigId`] values are equivalent.
-pub type ConfigIdVerifier = EqualityVerifier<ConfigId>;
-impl IntoVerificationMetadata for ConfigId {
-    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
-        VerificationResultMetadata::ConfigId { expected, actual }
-    }
+/// Macro to generate types and traits used for comparing equality between an
+/// expected and actual value
+///
+/// # Arguments
+/// * `type_to_verify` - The type to be verified
+/// * `verifier` - The name to use for the verifier type
+/// * `verification_output_type` - The type that will be returned in the
+///   [`VerificationResult`]
+macro_rules! equal_verifier {
+    ($($type_to_verify:ty, $verifier:ident, $verification_output_type:ident;)*) => {$(
+        /// Verifier for [`$type_to_verify`] that checks for equality
+        pub type $verifier = EqualityVerifier<$type_to_verify, $verification_output_type>;
+        expected_actual_output_impls!{$type_to_verify, $verifier, $verification_output_type;}
+
+        impl VerificationMessage for $verification_output_type {
+            fn fmt_success(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+                let status = SUCCESS_MESSAGE_INDICATOR;
+                let actual = &self.actual;
+                let struct_name = <$type_to_verify>::spaced_struct_name();
+                write!(f, "{:pad$}{status} The provided {struct_name}: {actual:?}", "")
+            }
+
+            fn fmt_failure(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+                let status = FAILURE_MESSAGE_INDICATOR;
+                let actual = &self.actual;
+                let expected = &self.expected;
+                let struct_name = <$type_to_verify>::spaced_struct_name();
+                write!(f, "{:pad$}{status} The {struct_name} did not match, expected:{expected:?} actual:{actual:?}", "")
+            }
+        }
+    )*}
 }
 
-/// Verifier for ensuring [`ConfigSvn`] is greater than or equal to an
-/// expected [`ConfigSvn`]
-pub type ConfigSvnVerifier = GreaterThanEqualVerifier<ConfigSvn>;
-impl IntoVerificationMetadata for ConfigSvn {
-    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
-        VerificationResultMetadata::ConfigSvn { expected, actual }
-    }
+/// Macro to generate types and traits used for verifying an actual value is
+/// greater than or equal to an expected
+///
+/// # Arguments
+/// * `type_to_verify` - The type to be verified
+/// * `verifier` - The name to use for the verifier type
+/// * `verification_output_type` - The type that will be returned in the
+///   [`VerificationResult`]
+macro_rules! greater_than_equal_verifier {
+    ($($type_to_verify:ty, $verifier:ident, $verification_output_type:ident;)*) => {$(
+        /// Verifier for ensuring [`$type_to_verify`] is greater than or equal
+        /// to an expected [`$type_to_verify`]
+        pub type $verifier = GreaterThanEqualVerifier<$type_to_verify>;
+        expected_actual_output_impls!{$type_to_verify, $verifier, $verification_output_type;}
+
+        impl VerificationMessage for $verification_output_type {
+            fn fmt_success(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+                let status = SUCCESS_MESSAGE_INDICATOR;
+                let actual = &self.actual;
+                let struct_name = <$type_to_verify>::spaced_struct_name();
+                write!(f, "{:pad$}{status} The provided {struct_name}: {actual:?}", "")
+            }
+
+            fn fmt_failure(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+                let status = FAILURE_MESSAGE_INDICATOR;
+                let actual = &self.actual;
+                let expected = &self.expected;
+                let struct_name = <$type_to_verify>::spaced_struct_name();
+                write!(f, "{:pad$}{status} The {struct_name} value of {actual:?} is less than the expected value of {expected:?}", "")
+            }
+        }
+    )*}
+}
+
+equal_verifier! {
+    Attributes, AttributesVerifier, AttributesVerificationValues;
+    ConfigId, ConfigIdVerifier, ConfigIdVerificationValues;
+    ExtendedProductId, ExtendedProductIdVerifier, ExtendedProductIdVerificationValues;
+    FamilyId, FamilyIdVerifier, FamilyIdVerificationValues;
+    IsvProductId, IsvProductIdVerifier, IsvProductIdVerificationValues;
+    MiscellaneousSelect, MiscellaneousSelectVerifier, MiscellaneousSelectVerificationValues;
+    MrEnclave, MrEnclaveVerifier, MrEnclaveVerificationValues;
+    MrSigner, MrSignerKeyVerifier, MrSignerKeyVerificationValues;
+}
+
+greater_than_equal_verifier! {
+    ConfigSvn, ConfigSvnVerifier, ConfigSvnVerificationValues;
+    CpuSvn, CpuSvnVerifier, CpuSvnVerificationValues;
+    IsvSvn, IsvSvnVerifier, IsvSvnVerificationValues;
 }
 
 impl<E: Accessor<ConfigSvn>> Verifier<E> for GreaterThanEqualVerifier<ConfigSvn> {
-    type ResultMetadata = VerificationResultMetadata;
-    fn verify(&self, evidence: &E) -> VerificationResult<Self::ResultMetadata> {
+    type VerificationValues = ConfigSvnVerificationValues;
+    fn verify(&self, evidence: &E) -> VerificationResult<Self::VerificationValues> {
         let expected = self.expected;
         let actual = evidence.get();
 
         let actual_value = actual.as_ref();
         let expected_value = expected.as_ref();
         let is_ok = actual_value.ct_gt(expected_value) | actual_value.ct_eq(expected_value);
-        VerificationResult::new(
-            ConfigSvn::into_verification_metadata(expected, actual),
-            is_ok,
-        )
-    }
-}
-
-/// Verifier for ensuring [`CpuSvn`] is greater than or equal to an
-/// expected [`CpuSvn`]
-pub type CpuSvnVerifier = GreaterThanEqualVerifier<CpuSvn>;
-impl IntoVerificationMetadata for CpuSvn {
-    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
-        VerificationResultMetadata::CpuSvn { expected, actual }
+        VerificationResult::new(ConfigSvn::into_verification_values(expected, actual), is_ok)
     }
 }
 
@@ -174,8 +255,8 @@ fn cpu_svn_to_u64s(cpu_svn: &CpuSvn) -> (u64, u64) {
 }
 
 impl<E: Accessor<CpuSvn>> Verifier<E> for GreaterThanEqualVerifier<CpuSvn> {
-    type ResultMetadata = VerificationResultMetadata;
-    fn verify(&self, evidence: &E) -> VerificationResult<Self::ResultMetadata> {
+    type VerificationValues = CpuSvnVerificationValues;
+    fn verify(&self, evidence: &E) -> VerificationResult<Self::VerificationValues> {
         let expected = self.expected.clone();
         let actual = evidence.get();
 
@@ -190,71 +271,52 @@ impl<E: Accessor<CpuSvn>> Verifier<E> for GreaterThanEqualVerifier<CpuSvn> {
             actual_low.ct_gt(&expected_low) | actual_low.ct_eq(&expected_low);
         let is_ok = high_order_greater | (high_order_equal & low_order_greater_equal);
 
-        VerificationResult::new(CpuSvn::into_verification_metadata(expected, actual), is_ok)
-    }
-}
-
-/// Verifier for ensuring [`ExtendedProductId`] values are equivalent.
-pub type ExtendedProductIdVerifier = EqualityVerifier<ExtendedProductId>;
-impl IntoVerificationMetadata for ExtendedProductId {
-    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
-        VerificationResultMetadata::ExtendedProductId { expected, actual }
-    }
-}
-
-/// Verifier for ensuring [`FamilyId`] values are equivalent.
-pub type FamilyIdVerifier = EqualityVerifier<FamilyId>;
-impl IntoVerificationMetadata for FamilyId {
-    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
-        VerificationResultMetadata::FamilyId { expected, actual }
-    }
-}
-
-/// Verifier for ensuring [`IsvProductId`] values are equivalent.
-pub type IsvProductIdVerifier = EqualityVerifier<IsvProductId>;
-impl IntoVerificationMetadata for IsvProductId {
-    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
-        VerificationResultMetadata::IsvProductId { expected, actual }
-    }
-}
-
-/// Verifier for ensuring [`IsvSvn`] is greater than or equal to an expected
-/// [`IsvSvn`]
-pub type IsvSvnVerifier = GreaterThanEqualVerifier<IsvSvn>;
-impl IntoVerificationMetadata for IsvSvn {
-    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
-        VerificationResultMetadata::IsvSvn { expected, actual }
+        VerificationResult::new(CpuSvn::into_verification_values(expected, actual), is_ok)
     }
 }
 
 impl<E: Accessor<IsvSvn>> Verifier<E> for GreaterThanEqualVerifier<IsvSvn> {
-    type ResultMetadata = VerificationResultMetadata;
-    fn verify(&self, evidence: &E) -> VerificationResult<Self::ResultMetadata> {
+    type VerificationValues = IsvSvnVerificationValues;
+    fn verify(&self, evidence: &E) -> VerificationResult<Self::VerificationValues> {
         let expected = self.expected;
         let actual = evidence.get();
 
         let actual_value = actual.as_ref();
         let expected_value = expected.as_ref();
         let is_ok = actual_value.ct_gt(expected_value) | actual_value.ct_eq(expected_value);
-        VerificationResult::new(IsvSvn::into_verification_metadata(expected, actual), is_ok)
+        VerificationResult::new(IsvSvn::into_verification_values(expected, actual), is_ok)
     }
 }
 
-/// Verifier for ensuring [`MiscellaneousSelect`] values are equivalent.
-pub type MiscellaneousSelectVerifier = EqualityVerifier<MiscellaneousSelect>;
-impl IntoVerificationMetadata for MiscellaneousSelect {
-    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
-        VerificationResultMetadata::MiscellaneousSelect { expected, actual }
-    }
+/// Verification Values used in [`MrSigner`] verification
+#[derive(Debug, Clone)]
+pub struct MrSignerVerificationValues {
+    mr_signer_key: VerificationResult<MrSignerKeyVerificationValues>,
+    product_id: VerificationResult<IsvProductIdVerificationValues>,
+    isv_svn: VerificationResult<IsvSvnVerificationValues>,
 }
 
-/// Verifier for ensuring [`MrEnclave`] values are equivalent.
-///
-/// The Intel SDK docs refer to this as "Strict Enclave Modification Policy"
-pub type MrEnclaveVerifier = EqualityVerifier<MrEnclave>;
-impl IntoVerificationMetadata for MrEnclave {
-    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
-        VerificationResultMetadata::MrEnclave { expected, actual }
+impl VerificationMessage for MrSignerVerificationValues {
+    fn fmt_success(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        let status = SUCCESS_MESSAGE_INDICATOR;
+        writeln!(f, "{:pad$}{status} MrSigner:", "", pad = pad)?;
+        let pad = pad + MESSAGE_INDENT;
+        self.mr_signer_key.fmt_padded(f, pad)?;
+        writeln!(f)?;
+        self.product_id.fmt_padded(f, pad)?;
+        writeln!(f)?;
+        self.isv_svn.fmt_padded(f, pad)
+    }
+
+    fn fmt_failure(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        let status = FAILURE_MESSAGE_INDICATOR;
+        writeln!(f, "{:pad$}{status} MrSigner:", "", pad = pad)?;
+        let pad = pad + MESSAGE_INDENT;
+        self.mr_signer_key.fmt_padded(f, pad)?;
+        writeln!(f)?;
+        self.product_id.fmt_padded(f, pad)?;
+        writeln!(f)?;
+        self.isv_svn.fmt_padded(f, pad)
     }
 }
 
@@ -282,22 +344,52 @@ impl MrSignerVerifier {
 impl<E: Accessor<MrSigner> + Accessor<IsvProductId> + Accessor<IsvSvn>> Verifier<E>
     for MrSignerVerifier
 {
-    type ResultMetadata = VerificationResultMetadata;
-    fn verify(&self, evidence: &E) -> VerificationResult<Self::ResultMetadata> {
+    type VerificationValues = MrSignerVerificationValues;
+    fn verify(&self, evidence: &E) -> VerificationResult<Self::VerificationValues> {
         let mr_signer_key = self.mr_signer.verify(evidence);
         let product_id = self.product_id.verify(evidence);
         let isv_svn = self.isv_svn.verify(evidence);
 
         let is_ok = mr_signer_key.is_ok() & product_id.is_ok() & isv_svn.is_ok();
 
-        VerificationResult::new(VerificationResultMetadata::General, is_ok)
+        VerificationResult::new(
+            MrSignerVerificationValues {
+                mr_signer_key,
+                product_id,
+                isv_svn,
+            },
+            is_ok,
+        )
     }
 }
-/// Verifier for ensuring [`MrSigner`] key values are equivalent.
-type MrSignerKeyVerifier = EqualityVerifier<MrSigner>;
-impl IntoVerificationMetadata for MrSigner {
-    fn into_verification_metadata(expected: Self, actual: Self) -> VerificationResultMetadata {
-        VerificationResultMetadata::MrSignerKey { expected, actual }
+
+/// Values used in verification of [`ReportData`]
+#[derive(Debug, Clone)]
+pub struct ReportDataVerificationValues {
+    expected: ReportData,
+    actual: ReportData,
+    mask: ReportData,
+}
+
+impl VerificationMessage for ReportDataVerificationValues {
+    fn fmt_success(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        let status = SUCCESS_MESSAGE_INDICATOR;
+        let actual = &self.actual;
+        let struct_name = ReportData::spaced_struct_name();
+        write!(
+            f,
+            "{:pad$}{status} The provided {struct_name}: {actual:?}",
+            ""
+        )
+    }
+
+    fn fmt_failure(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        let status = FAILURE_MESSAGE_INDICATOR;
+        let actual = &self.actual;
+        let expected = &self.expected;
+        let mask = &self.mask;
+        let struct_name = ReportData::spaced_struct_name();
+        write!(f, "{:pad$}{status} The {struct_name} did not match expected:{expected:?} actual:{actual:?} mask:{mask:?}", "")
     }
 }
 
@@ -322,15 +414,15 @@ impl ReportDataVerifier {
 }
 
 impl<E: Accessor<ReportData>> Verifier<E> for ReportDataVerifier {
-    type ResultMetadata = VerificationResultMetadata;
-    fn verify(&self, evidence: &E) -> VerificationResult<Self::ResultMetadata> {
+    type VerificationValues = ReportDataVerificationValues;
+    fn verify(&self, evidence: &E) -> VerificationResult<Self::VerificationValues> {
         let mask = self.mask.clone();
         let expected = &self.expected & &mask;
         let actual = &evidence.get() & &mask;
         // TODO - This should be a constant time comparison.
         let is_some = if expected == actual { 1 } else { 0 };
         VerificationResult::new(
-            VerificationResultMetadata::ReportData {
+            ReportDataVerificationValues {
                 expected,
                 actual,
                 mask,
@@ -342,8 +434,11 @@ impl<E: Accessor<ReportData>> Verifier<E> for ReportDataVerifier {
 
 #[cfg(test)]
 mod test {
+    extern crate alloc;
+
     use super::*;
     use crate::And;
+    use alloc::format;
     use mc_sgx_core_sys_types::{
         sgx_attributes_t, sgx_cpu_svn_t, sgx_measurement_t, sgx_report_body_t, sgx_report_data_t,
     };
@@ -484,7 +579,9 @@ mod test {
         let attributes = Attributes::from(REPORT_BODY_SRC.attributes);
         let verifier = AttributesVerifier::new(attributes);
 
-        assert_eq!(verifier.verify(&attributes).is_ok().unwrap_u8(), 1);
+        let verification = verifier.verify(&attributes);
+        assert_eq!(verification.is_ok().unwrap_u8(), 1);
+        assert_eq!(format!("{verification}"), "- [x] The provided attributes: Attributes(sgx_attributes_t { flags: 72623859790382856, xfrm: 578437695752307201 })");
     }
 
     #[test]
@@ -493,7 +590,9 @@ mod test {
         let verifier = AttributesVerifier::new(attributes);
         attributes = attributes.set_flags(0);
 
-        assert_eq!(verifier.verify(&attributes).is_err().unwrap_u8(), 1);
+        let verification = verifier.verify(&attributes);
+        assert_eq!(verification.is_err().unwrap_u8(), 1);
+        assert_eq!(format!("{verification}"), "- [ ] The attributes did not match, expected:Attributes(sgx_attributes_t { flags: 72623859790382856, xfrm: 578437695752307201 }) actual:Attributes(sgx_attributes_t { flags: 0, xfrm: 578437695752307201 })");
     }
 
     #[test]
@@ -811,10 +910,14 @@ mod test {
 
         let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
 
-        assert_eq!(
-            mr_signer_verifier.verify(&report_body).is_ok().unwrap_u8(),
-            1
-        );
+        let verification = mr_signer_verifier.verify(&report_body);
+        assert_eq!(verification.is_ok().unwrap_u8(), 1);
+        let expected = r#"
+            - [x] MrSigner:
+              - [x] The provided MRSIGNER key hash: MrSigner(sgx_measurement_t { m: [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79] })
+              - [x] The provided ISV product ID: IsvProductId(144)
+              - [x] The provided ISV SVN: IsvSvn(145)"#;
+        assert_eq!(format!("\n{verification}"), textwrap::dedent(expected));
     }
 
     #[test]
@@ -829,10 +932,14 @@ mod test {
 
         let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
 
-        assert_eq!(
-            mr_signer_verifier.verify(&report_body).is_err().unwrap_u8(),
-            1
-        );
+        let verification = mr_signer_verifier.verify(&report_body);
+        assert_eq!(verification.is_err().unwrap_u8(), 1);
+        let expected = r#"
+            - [ ] MrSigner:
+              - [ ] The MRSIGNER key hash did not match, expected:MrSigner(sgx_measurement_t { m: [49, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79] }) actual:MrSigner(sgx_measurement_t { m: [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79] })
+              - [x] The provided ISV product ID: IsvProductId(144)
+              - [x] The provided ISV SVN: IsvSvn(145)"#;
+        assert_eq!(format!("\n{verification}"), textwrap::dedent(expected));
     }
 
     #[test]
@@ -846,10 +953,14 @@ mod test {
 
         let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
 
-        assert_eq!(
-            mr_signer_verifier.verify(&report_body).is_err().unwrap_u8(),
-            1
-        );
+        let verification = mr_signer_verifier.verify(&report_body);
+        assert_eq!(verification.is_err().unwrap_u8(), 1);
+        let expected = r#"
+            - [ ] MrSigner:
+              - [x] The provided MRSIGNER key hash: MrSigner(sgx_measurement_t { m: [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79] })
+              - [ ] The ISV product ID did not match, expected:IsvProductId(145) actual:IsvProductId(144)
+              - [x] The provided ISV SVN: IsvSvn(145)"#;
+        assert_eq!(format!("\n{verification}"), textwrap::dedent(expected));
     }
 
     #[test]
@@ -863,9 +974,13 @@ mod test {
 
         let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
 
-        assert_eq!(
-            mr_signer_verifier.verify(&report_body).is_err().unwrap_u8(),
-            1
-        );
+        let verification = mr_signer_verifier.verify(&report_body);
+        assert_eq!(verification.is_err().unwrap_u8(), 1);
+        let expected = r#"
+            - [ ] MrSigner:
+              - [x] The provided MRSIGNER key hash: MrSigner(sgx_measurement_t { m: [48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79] })
+              - [x] The provided ISV product ID: IsvProductId(144)
+              - [ ] The ISV SVN value of IsvSvn(145) is less than the expected value of IsvSvn(146)"#;
+        assert_eq!(format!("\n{verification}"), textwrap::dedent(expected));
     }
 }
