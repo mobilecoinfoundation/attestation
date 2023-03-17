@@ -40,4 +40,6 @@ spaced_struct_name! {
     ConfigSvn, "config SVN";
     FamilyId, "family ID";
     ReportData, "report data";
+    u8, "Unsigned byte";
+
 }
