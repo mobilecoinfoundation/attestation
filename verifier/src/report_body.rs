@@ -2,10 +2,12 @@
 
 //! Verifiers which operate on the [`ReportBody`]
 
+use crate::struct_name::SpacedStructName;
 use crate::{
-    Accessor, EqualityVerifier, GreaterThanEqualVerifier, IntoVerificationError, VerificationError,
-    VerificationOutput, Verifier,
+    choice_to_status_message, Accessor, EqualityVerifier, GreaterThanEqualVerifier,
+    VerificationMessage, VerificationOutput, Verifier, MESSAGE_INDENT,
 };
+use core::fmt::{Debug, Display, Formatter};
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
     MiscellaneousSelect, MrEnclave, MrSigner, ReportBody, ReportData,
@@ -45,52 +47,29 @@ report_body_field_accessor! {
 
 /// Verifier for ensuring [`Attributes`] values are equivalent.
 pub type AttributesVerifier = EqualityVerifier<Attributes>;
-impl IntoVerificationError for Attributes {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::AttributeMismatch { expected, actual }
-    }
-}
 
 /// Verifier for ensuring [`ConfigId`] values are equivalent.
 pub type ConfigIdVerifier = EqualityVerifier<ConfigId>;
-impl IntoVerificationError for ConfigId {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::ConfigIdMismatch { expected, actual }
-    }
-}
 
 /// Verifier for ensuring [`ConfigSvn`] is greater than or equal to an
 /// expected [`ConfigSvn`]
 pub type ConfigSvnVerifier = GreaterThanEqualVerifier<ConfigSvn>;
-impl IntoVerificationError for ConfigSvn {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::ConfigSvnTooSmall { expected, actual }
-    }
-}
 
 impl<E: Accessor<ConfigSvn>> Verifier<E> for GreaterThanEqualVerifier<ConfigSvn> {
-    type Value = VerificationError;
+    type Value = ConfigSvn;
     fn verify(&self, evidence: &E) -> VerificationOutput<Self::Value> {
         let expected = self.expected;
         let actual = evidence.get();
 
         let is_success =
             actual.as_ref().ct_gt(expected.as_ref()) | actual.as_ref().ct_eq(expected.as_ref());
-        VerificationOutput::new(
-            ConfigSvn::into_verification_error(expected, actual),
-            is_success,
-        )
+        VerificationOutput::new(actual, is_success)
     }
 }
 
 /// Verifier for ensuring [`CpuSvn`] is greater than or equal to an
 /// expected [`CpuSvn`]
 pub type CpuSvnVerifier = GreaterThanEqualVerifier<CpuSvn>;
-impl IntoVerificationError for CpuSvn {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::CpuSvnTooSmall { expected, actual }
-    }
-}
 
 fn cpu_svn_to_u64s(cpu_svn: &CpuSvn) -> (u64, u64) {
     let cpu_svn_bytes: &[u8] = cpu_svn.as_ref();
@@ -103,7 +82,7 @@ fn cpu_svn_to_u64s(cpu_svn: &CpuSvn) -> (u64, u64) {
 }
 
 impl<E: Accessor<CpuSvn>> Verifier<E> for GreaterThanEqualVerifier<CpuSvn> {
-    type Value = VerificationError;
+    type Value = CpuSvn;
     fn verify(&self, evidence: &E) -> VerificationOutput<Self::Value> {
         let expected = self.expected.clone();
         let actual = evidence.get();
@@ -116,77 +95,48 @@ impl<E: Accessor<CpuSvn>> Verifier<E> for GreaterThanEqualVerifier<CpuSvn> {
             | (actual_high.ct_eq(&expected_high)
                 & (actual_low.ct_gt(&expected_low) | actual_low.ct_eq(&expected_low)));
 
-        VerificationOutput::new(
-            CpuSvn::into_verification_error(expected, actual),
-            is_success,
-        )
+        VerificationOutput::new(actual, is_success)
     }
 }
 
 /// Verifier for ensuring [`ExtendedProductId`] values are equivalent.
 pub type ExtendedProductIdVerifier = EqualityVerifier<ExtendedProductId>;
-impl IntoVerificationError for ExtendedProductId {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::ExtendedProductIdMismatch { expected, actual }
-    }
-}
 
 /// Verifier for ensuring [`FamilyId`] values are equivalent.
 pub type FamilyIdVerifier = EqualityVerifier<FamilyId>;
-impl IntoVerificationError for FamilyId {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::FamilyIdMismatch { expected, actual }
-    }
-}
 
 /// Verifier for ensuring [`IsvProductId`] values are equivalent.
 pub type IsvProductIdVerifier = EqualityVerifier<IsvProductId>;
-impl IntoVerificationError for IsvProductId {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::IsvProductIdMismatch { expected, actual }
-    }
-}
 
 /// Verifier for ensuring [`IsvSvn`] is greater than or equal to an expected
 /// [`IsvSvn`]
 pub type IsvSvnVerifier = GreaterThanEqualVerifier<IsvSvn>;
-impl IntoVerificationError for IsvSvn {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::IsvSvnTooSmall { expected, actual }
-    }
-}
 
 impl<E: Accessor<IsvSvn>> Verifier<E> for GreaterThanEqualVerifier<IsvSvn> {
-    type Value = VerificationError;
+    type Value = IsvSvn;
     fn verify(&self, evidence: &E) -> VerificationOutput<Self::Value> {
         let expected = self.expected;
         let actual = evidence.get();
 
         let is_success =
             actual.as_ref().ct_gt(expected.as_ref()) | actual.as_ref().ct_eq(expected.as_ref());
-        VerificationOutput::new(
-            IsvSvn::into_verification_error(expected, actual),
-            is_success,
-        )
+        VerificationOutput::new(actual, is_success)
     }
 }
 
 /// Verifier for ensuring [`MiscellaneousSelect`] values are equivalent.
 pub type MiscellaneousSelectVerifier = EqualityVerifier<MiscellaneousSelect>;
-impl IntoVerificationError for MiscellaneousSelect {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::MiscellaneousSelectMismatch { expected, actual }
-    }
-}
 
 /// Verifier for ensuring [`MrEnclave`] values are equivalent.
 ///
 /// The Intel SDK docs refer to this as "Strict Enclave Modification Policy"
 pub type MrEnclaveVerifier = EqualityVerifier<MrEnclave>;
-impl IntoVerificationError for MrEnclave {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::MrEnclaveMismatch { expected, actual }
-    }
+
+#[derive(Clone, Debug)]
+pub struct MrSignerValue {
+    mr_signer_key: VerificationOutput<MrSigner>,
+    product_id: VerificationOutput<IsvProductId>,
+    isv_svn: VerificationOutput<IsvSvn>,
 }
 
 /// Verifier for ensuring all of the MRSIGNER inputs are sufficient.
@@ -213,7 +163,7 @@ impl MrSignerVerifier {
 impl<E: Accessor<MrSigner> + Accessor<IsvProductId> + Accessor<IsvSvn>> Verifier<E>
     for MrSignerVerifier
 {
-    type Value = VerificationError;
+    type Value = MrSignerValue;
     fn verify(&self, evidence: &E) -> VerificationOutput<Self::Value> {
         let mr_signer_key = self.mr_signer_key.verify(evidence);
         let product_id = self.product_id.verify(evidence);
@@ -222,17 +172,44 @@ impl<E: Accessor<MrSigner> + Accessor<IsvProductId> + Accessor<IsvSvn>> Verifier
         let is_success =
             mr_signer_key.is_success() & product_id.is_success() & isv_svn.is_success();
 
-        VerificationOutput::new(VerificationError::General, is_success)
+        VerificationOutput::new(
+            MrSignerValue {
+                mr_signer_key,
+                product_id,
+                isv_svn,
+            },
+            is_success,
+        )
     }
 }
 
-/// Verifier for ensuring [`MrSigner`] key values are equivalent.
-type MrSignerKeyVerifier = EqualityVerifier<MrSigner>;
-impl IntoVerificationError for MrSigner {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError {
-        VerificationError::MrSignerKeyMismatch { expected, actual }
+impl VerificationMessage<MrSignerValue> for MrSignerVerifier {
+    fn fmt_padded(
+        &self,
+        f: &mut Formatter<'_>,
+        pad: usize,
+        output: &VerificationOutput<MrSignerValue>,
+    ) -> core::fmt::Result {
+        let status = choice_to_status_message(output.is_success());
+
+        write!(
+            f,
+            "{:pad$}{status} MRSIGNER all of the following must be true:",
+            ""
+        )?;
+        let pad = pad + MESSAGE_INDENT;
+        writeln!(f)?;
+        self.mr_signer_key
+            .fmt_padded(f, pad, &output.value.mr_signer_key)?;
+        writeln!(f)?;
+        self.product_id
+            .fmt_padded(f, pad, &output.value.product_id)?;
+        writeln!(f)?;
+        self.isv_svn.fmt_padded(f, pad, &output.value.isv_svn)
     }
 }
+
+pub type MrSignerKeyVerifier = EqualityVerifier<MrSigner>;
 
 /// Verifier for ensuring [`ReportData`] values are equivalent.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -266,12 +243,21 @@ impl<E: Accessor<ReportData>> Verifier<E> for ReportDataVerifier {
     }
 }
 
+impl Display for ReportDataVerifier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        let name = ReportData::spaced_struct_name();
+        let expected = &self.expected;
+        let mask = &self.mask;
+        write!(f, "The expected {name} is {expected} with mask {mask}")
+    }
+}
+
 #[cfg(test)]
 mod test {
     extern crate alloc;
 
     use super::*;
-    use crate::{struct_name::SpacedStructName, And};
+    use crate::{And, VerificationTreeDisplay};
     use alloc::{format, string::ToString};
     use mc_sgx_core_sys_types::{
         sgx_attributes_t, sgx_cpu_svn_t, sgx_measurement_t, sgx_report_body_t, sgx_report_data_t,
@@ -410,20 +396,67 @@ mod test {
     }
 
     #[test]
-    fn attributes_success() {
-        let attributes = Attributes::from(REPORT_BODY_SRC.attributes);
-        let verifier = AttributesVerifier::new(attributes);
-
-        assert_eq!(verifier.verify(&attributes).is_success().unwrap_u8(), 1);
+    fn attributes_size() {
+        // Because the verification of [`Attributes`] looks at each field, we
+        // check the size to ensure no new fields have been added.
+        // Both current fields, `flags` and `xfrm`, are u64s or 8 bytes each.
+        assert_eq!(core::mem::size_of::<Attributes>(), 16);
     }
 
     #[test]
-    fn attributes_fail() {
-        let mut attributes = Attributes::from(REPORT_BODY_SRC.attributes);
-        let verifier = AttributesVerifier::new(attributes);
+    fn attributes_success() {
+        // Note that numbers are used due to
+        // https://github.com/mobilecoinfoundation/sgx/issues/328
+        let attributes = Attributes::default()
+            .set_flags(3)
+            .set_extended_features_mask(230);
+
+        let attributes_verifier = AttributesVerifier::new(attributes);
+        let verification = attributes_verifier.verify(&attributes);
+
+        assert_eq!(verification.is_success().unwrap_u8(), 1);
+
+        let displayable = VerificationTreeDisplay::new(&attributes_verifier, verification);
+        let expected = r#"
+            - [x] The attributes should be Flags: INITTED | DEBUG Xfrm: AVX | AVX512"#;
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
+    }
+
+    #[test]
+    fn attributes_fail_for_flags() {
+        let mut attributes = Attributes::default()
+            .set_flags(3)
+            .set_extended_features_mask(230);
+        let attributes_verifier = AttributesVerifier::new(attributes);
+
         attributes = attributes.set_flags(0);
 
-        assert_eq!(verifier.verify(&attributes).is_failure().unwrap_u8(), 1);
+        let verification = attributes_verifier.verify(&attributes);
+
+        assert_eq!(verification.is_failure().unwrap_u8(), 1);
+
+        let displayable = VerificationTreeDisplay::new(&attributes_verifier, verification);
+        let expected = r#"
+            - [ ] The attributes should be Flags: INITTED | DEBUG Xfrm: AVX | AVX512, but the actual attributes was Flags: (none) Xfrm: AVX | AVX512"#;
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
+    }
+
+    #[test]
+    fn attributes_fail_for_feature_mask() {
+        let mut attributes = Attributes::default()
+            .set_flags(3)
+            .set_extended_features_mask(230);
+        let attributes_verifier = AttributesVerifier::new(attributes);
+        attributes = attributes.set_extended_features_mask(0);
+
+        let verification = attributes_verifier.verify(&attributes);
+
+        assert_eq!(verification.is_failure().unwrap_u8(), 1);
+
+        let displayable = VerificationTreeDisplay::new(&attributes_verifier, verification);
+        let expected = r#"
+            - [ ] The attributes should be Flags: INITTED | DEBUG Xfrm: AVX | AVX512, but the actual attributes was Flags: INITTED | DEBUG Xfrm: (none)"#;
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
     #[test]
@@ -464,9 +497,9 @@ mod test {
     }
 
     #[parameterized(
-    equal = { 25, 25 },
-    greater = { 17, 16 },
-    much_greater = { 100, 50 },
+        equal = { 25, 25 },
+        greater = { 17, 16 },
+        much_greater = { 100, 50 },
     )]
     fn isv_svn_succeeds(actual: u16, expected: u16) {
         let verifier = IsvSvnVerifier::new(expected.into());
@@ -551,19 +584,28 @@ mod test {
     #[test]
     fn report_data_success() {
         let report_data = ReportData::from(REPORT_BODY_SRC.report_data);
-        let verifier = ReportDataVerifier::new(report_data.clone());
+        let report_data_verifier = ReportDataVerifier::new(report_data.clone());
+        let verification = report_data_verifier.verify(&report_data);
 
-        assert_eq!(verifier.verify(&report_data).is_success().unwrap_u8(), 1);
+        assert_eq!(verification.is_success().unwrap_u8(), 1);
+
+        let displayable = VerificationTreeDisplay::new(&report_data_verifier, verification);
+        assert_eq!(format!("{displayable}"), "- [x] The expected report data is 0xA3A4_A5A6_A7A8_A9AA_ABAC_ADAE_AFB0_B1B2_B3B4_B5B6_B7B8_B9BA_BBBC_BDBE_BFC0_C1C2_C3C4_C5C6_C7C8_C9CA_CBCC_CDCE_CFD0_D1D2_D3D4_D5D6_D7D8_D9DA_DBDC_DDDE_DFE0_E1E2 with mask 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF");
     }
 
     #[test]
     fn report_data_fails() {
         let mut report_data = ReportData::from(REPORT_BODY_SRC.report_data);
-        let verifier = ReportDataVerifier::new(report_data.clone());
+        let report_data_verifier = ReportDataVerifier::new(report_data.clone());
+
         let bytes: &mut [u8] = report_data.as_mut();
         bytes[0] = 1;
 
-        assert_eq!(verifier.verify(&report_data).is_failure().unwrap_u8(), 1);
+        let verification = report_data_verifier.verify(&report_data);
+        assert_eq!(verification.is_failure().unwrap_u8(), 1);
+
+        let displayable = VerificationTreeDisplay::new(&report_data_verifier, verification);
+        assert_eq!(format!("{displayable}"), "- [ ] The expected report data is 0xA3A4_A5A6_A7A8_A9AA_ABAC_ADAE_AFB0_B1B2_B3B4_B5B6_B7B8_B9BA_BBBC_BDBE_BFC0_C1C2_C3C4_C5C6_C7C8_C9CA_CBCC_CDCE_CFD0_D1D2_D3D4_D5D6_D7D8_D9DA_DBDC_DDDE_DFE0_E1E2 with mask 0xFFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF_FFFF, but the actual report data was 0x01A4_A5A6_A7A8_A9AA_ABAC_ADAE_AFB0_B1B2_B3B4_B5B6_B7B8_B9BA_BBBC_BDBE_BFC0_C1C2_C3C4_C5C6_C7C8_C9CA_CBCC_CDCE_CFD0_D1D2_D3D4_D5D6_D7D8_D9DA_DBDC_DDDE_DFE0_E1E2");
     }
 
     #[test]
@@ -755,14 +797,17 @@ mod test {
         let isv_svn = report_body.isv_svn();
 
         let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
+        let verification = mr_signer_verifier.verify(&report_body);
 
-        assert_eq!(
-            mr_signer_verifier
-                .verify(&report_body)
-                .is_success()
-                .unwrap_u8(),
-            1
-        );
+        assert_eq!(verification.is_success().unwrap_u8(), 1);
+
+        let displayable = VerificationTreeDisplay::new(&mr_signer_verifier, verification);
+        let expected = r#"
+            - [x] MRSIGNER all of the following must be true:
+              - [x] The MRSIGNER key hash should be 0x3031_3233_3435_3637_3839_3A3B_3C3D_3E3F_4041_4243_4445_4647_4849_4A4B_4C4D_4E4F
+              - [x] The ISV product ID should be 144
+              - [x] The ISV SVN should be at least 145"#;
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
     #[test]
@@ -776,14 +821,17 @@ mod test {
         bytes[0] += 1;
 
         let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
+        let verification = mr_signer_verifier.verify(&report_body);
 
-        assert_eq!(
-            mr_signer_verifier
-                .verify(&report_body)
-                .is_failure()
-                .unwrap_u8(),
-            1
-        );
+        assert_eq!(verification.is_failure().unwrap_u8(), 1);
+
+        let displayable = VerificationTreeDisplay::new(&mr_signer_verifier, verification);
+        let expected = r#"
+            - [ ] MRSIGNER all of the following must be true:
+              - [ ] The MRSIGNER key hash should be 0x3131_3233_3435_3637_3839_3A3B_3C3D_3E3F_4041_4243_4445_4647_4849_4A4B_4C4D_4E4F, but the actual MRSIGNER key hash was 0x3031_3233_3435_3637_3839_3A3B_3C3D_3E3F_4041_4243_4445_4647_4849_4A4B_4C4D_4E4F
+              - [x] The ISV product ID should be 144
+              - [x] The ISV SVN should be at least 145"#;
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
     #[test]
@@ -796,14 +844,17 @@ mod test {
         *product_id.as_mut() += 1;
 
         let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
+        let verification = mr_signer_verifier.verify(&report_body);
 
-        assert_eq!(
-            mr_signer_verifier
-                .verify(&report_body)
-                .is_failure()
-                .unwrap_u8(),
-            1
-        );
+        assert_eq!(verification.is_failure().unwrap_u8(), 1);
+
+        let displayable = VerificationTreeDisplay::new(&mr_signer_verifier, verification);
+        let expected = r#"
+            - [ ] MRSIGNER all of the following must be true:
+              - [x] The MRSIGNER key hash should be 0x3031_3233_3435_3637_3839_3A3B_3C3D_3E3F_4041_4243_4445_4647_4849_4A4B_4C4D_4E4F
+              - [ ] The ISV product ID should be 145, but the actual ISV product ID was 144
+              - [x] The ISV SVN should be at least 145"#;
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
     #[test]
@@ -816,14 +867,17 @@ mod test {
         *isv_svn.as_mut() += 1;
 
         let mr_signer_verifier = MrSignerVerifier::new(mr_signer, product_id, isv_svn);
+        let verification = mr_signer_verifier.verify(&report_body);
 
-        assert_eq!(
-            mr_signer_verifier
-                .verify(&report_body)
-                .is_failure()
-                .unwrap_u8(),
-            1
-        );
+        assert_eq!(verification.is_failure().unwrap_u8(), 1);
+
+        let displayable = VerificationTreeDisplay::new(&mr_signer_verifier, verification);
+        let expected = r#"
+            - [ ] MRSIGNER all of the following must be true:
+              - [x] The MRSIGNER key hash should be 0x3031_3233_3435_3637_3839_3A3B_3C3D_3E3F_4041_4243_4445_4647_4849_4A4B_4C4D_4E4F
+              - [x] The ISV product ID should be 144
+              - [ ] The ISV SVN should be at least 146, but the actual ISV SVN was 145"#;
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
     #[test]
