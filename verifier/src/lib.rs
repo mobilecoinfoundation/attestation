@@ -4,6 +4,7 @@
 #![deny(missing_docs, missing_debug_implementations, unsafe_code)]
 #![no_std]
 
+mod certs;
 mod report_body;
 mod struct_name;
 
@@ -12,6 +13,8 @@ pub use report_body::{
     ExtendedProductIdVerifier, FamilyIdVerifier, IsvProductIdVerifier, IsvSvnVerifier,
     MiscellaneousSelectVerifier, MrEnclaveVerifier, MrSignerVerifier, ReportDataVerifier,
 };
+
+pub use certs::{Error as CertificateError, UnverifiedCertificate, VerifiedCertificate};
 
 use core::fmt::{Debug, Display, Formatter};
 use mc_sgx_core_types::{
