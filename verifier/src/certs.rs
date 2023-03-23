@@ -2,6 +2,7 @@
 
 //! Verifier(s) for [`CertificationData`]
 
+use core::time::Duration;
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
 use x509_cert::der::{Decode, Encode};
@@ -20,6 +21,8 @@ pub enum Error {
     SignatureDecoding,
     /// The certification signature does not match with the verifying key
     SignatureVerification,
+    /// The certificate has expired
+    CertificateExpired,
     /// An error occurred decoding the certificate
     CertificateDecoding(x509_cert::der::Error),
     /// An error occurred decoding the key from a certificate
@@ -56,19 +59,49 @@ pub struct VerifiedCertificate<'a> {
 }
 
 impl<'a> UnverifiedCertificate<'a> {
-    /// Verify the certificate signature.
-    pub fn verify(self, key: &VerifyingKey) -> Result<VerifiedCertificate<'a>> {
-        let tbs_length = self.certificate.tbs_certificate.encoded_len()?;
-        let tbs_size = u32::from(tbs_length) as usize;
-        let tbs_contents = &self.der_bytes[TBS_OFFSET..tbs_size + TBS_OFFSET];
-        key.verify(tbs_contents, &self.signature)
-            .map_err(|_| Error::SignatureVerification)?;
+    /// Verify the certificate signature and time are valid.
+    ///
+    /// # Arguments
+    /// - `key` - The public key to verify the certificate signature with
+    /// - `unix_time` - The duration since UNIX_EPOCH. This value can have
+    ///   `nanos`.
+    pub fn verify(
+        self,
+        key: &VerifyingKey,
+        unix_time: Duration,
+    ) -> Result<VerifiedCertificate<'a>> {
+        self.verify_time(unix_time)?;
+        self.verify_signature(key)?;
+
         Ok(VerifiedCertificate {
             _der_bytes: self.der_bytes,
             _certificate: self.certificate,
             _signature: self.signature,
             _key: self.key,
         })
+    }
+
+    fn verify_signature(&self, key: &VerifyingKey) -> Result<()> {
+        let tbs_length = self.certificate.tbs_certificate.encoded_len()?;
+        let tbs_size = u32::from(tbs_length) as usize;
+        let tbs_contents = &self.der_bytes[TBS_OFFSET..tbs_size + TBS_OFFSET];
+        key.verify(tbs_contents, &self.signature)
+            .map_err(|_| Error::SignatureVerification)?;
+        Ok(())
+    }
+
+    fn verify_time(&self, unix_time: Duration) -> Result<()> {
+        let validity = &self.certificate.tbs_certificate.validity;
+        let not_before = validity.not_before.to_unix_duration();
+        let not_after = validity.not_after.to_unix_duration();
+
+        // Per https://www.rfc-editor.org/rfc/rfc5280#section-4.1.2.5 time is
+        // inclusive
+        if (not_before..=not_after).contains(&unix_time) {
+            Ok(())
+        } else {
+            Err(Error::CertificateExpired)
+        }
     }
 }
 
@@ -191,8 +224,14 @@ mod test {
         // The root certificate is self-signed, ideally this key will be stored
         // by the application.
         let key = cert.key;
+        let unix_time = cert
+            .certificate
+            .tbs_certificate
+            .validity
+            .not_before
+            .to_unix_duration();
 
-        assert_eq!(cert.verify(&key).is_ok(), true);
+        assert_eq!(cert.verify(&key, unix_time).is_ok(), true);
     }
 
     #[test]
@@ -209,7 +248,14 @@ mod test {
         let cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
             .expect("Failed to decode certificate from DER");
 
-        assert_eq!(cert.verify(&root_cert.key).is_ok(), true);
+        let unix_time = cert
+            .certificate
+            .tbs_certificate
+            .validity
+            .not_before
+            .to_unix_duration();
+
+        assert_eq!(cert.verify(&root_cert.key, unix_time).is_ok(), true);
     }
 
     #[test]
@@ -226,7 +272,14 @@ mod test {
         let cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
             .expect("Failed to decode certificate from DER");
 
-        assert_eq!(cert.verify(&intermediate_cert.key).is_ok(), true);
+        let unix_time = cert
+            .certificate
+            .tbs_certificate
+            .validity
+            .not_before
+            .to_unix_duration();
+
+        assert_eq!(cert.verify(&intermediate_cert.key, unix_time).is_ok(), true);
     }
 
     #[test]
@@ -237,13 +290,110 @@ mod test {
         let intermediate_cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
             .expect("Failed to decode certificate from DER");
 
+        let unix_time = intermediate_cert
+            .certificate
+            .tbs_certificate
+            .validity
+            .not_before
+            .to_unix_duration();
+
         // The intermediate cert should *not* be self signed so using it's key
         // should fail verification
         let key = intermediate_cert.key;
 
         assert_eq!(
-            intermediate_cert.verify(&key),
+            intermediate_cert.verify(&key, unix_time),
             Err(Error::SignatureVerification)
+        );
+    }
+
+    #[test]
+    fn verify_certificate_succeeds_at_not_before_time() {
+        let root = textwrap::dedent(ROOT_CA);
+        let (_, der_bytes) =
+            pem_rfc7468::decode_vec(root.trim().as_bytes()).expect("Failed to decode DER from PEM");
+        let root_cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
+            .expect("Failed to decode certificate from DER");
+
+        let key = root_cert.key;
+
+        let unix_time = root_cert
+            .certificate
+            .tbs_certificate
+            .validity
+            .not_before
+            .to_unix_duration();
+
+        assert!(root_cert.verify(&key, unix_time).is_ok());
+    }
+
+    #[test]
+    fn verify_certificate_succeeds_at_not_after_time() {
+        let root = textwrap::dedent(ROOT_CA);
+        let (_, der_bytes) =
+            pem_rfc7468::decode_vec(root.trim().as_bytes()).expect("Failed to decode DER from PEM");
+        let root_cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
+            .expect("Failed to decode certificate from DER");
+
+        let key = root_cert.key;
+
+        let unix_time = root_cert
+            .certificate
+            .tbs_certificate
+            .validity
+            .not_after
+            .to_unix_duration();
+
+        assert!(root_cert.verify(&key, unix_time).is_ok());
+    }
+
+    #[test]
+    fn verify_certificate_fails_for_before_time() {
+        let root = textwrap::dedent(ROOT_CA);
+        let (_, der_bytes) =
+            pem_rfc7468::decode_vec(root.trim().as_bytes()).expect("Failed to decode DER from PEM");
+        let root_cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
+            .expect("Failed to decode certificate from DER");
+
+        let key = root_cert.key;
+
+        let mut unix_time = root_cert
+            .certificate
+            .tbs_certificate
+            .validity
+            .not_before
+            .to_unix_duration();
+
+        unix_time -= Duration::new(0, 1);
+
+        assert_eq!(
+            root_cert.verify(&key, unix_time),
+            Err(Error::CertificateExpired)
+        );
+    }
+
+    #[test]
+    fn verify_certificate_fails_for_after_time() {
+        let root = textwrap::dedent(ROOT_CA);
+        let (_, der_bytes) =
+            pem_rfc7468::decode_vec(root.trim().as_bytes()).expect("Failed to decode DER from PEM");
+        let root_cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
+            .expect("Failed to decode certificate from DER");
+
+        let key = root_cert.key;
+
+        let mut unix_time = root_cert
+            .certificate
+            .tbs_certificate
+            .validity
+            .not_after
+            .to_unix_duration();
+
+        unix_time += Duration::new(0, 1);
+
+        assert_eq!(
+            root_cert.verify(&key, unix_time),
+            Err(Error::CertificateExpired)
         );
     }
 }
