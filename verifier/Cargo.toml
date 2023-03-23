@@ -3,7 +3,7 @@ name = "mc-attestation-verifier"
 version = "0.1.0"
 authors = { workspace = true }
 # See https://crates.io/category_slugs for valid categories
-categories = ["authentication", "no-std"]
+categories = ["authentication", "no-std", "no-std::no-alloc"]
 description = "SGX Enclave Attestation Report Verification"
 edition = { workspace = true }
 # See https://crates.io/keywords for the common keywords
@@ -13,14 +13,17 @@ readme = "README.md"
 repository = { workspace = true }
 rust-version = { workspace = true }
 
+[features]
+alloc = ["pem-rfc7468/alloc", "dep:const-oid", "dep:p256", "dep:x509-cert"]
+
 [dependencies]
-const-oid = { version = "0.9.2", default-features = false }
+const-oid = { version = "0.9.2", default-features = false, optional = true }
 displaydoc = { version = "0.2.1", default-features = false }
 mc-sgx-core-types = "0.6.0"
-p256 = { version = "0.13.0", default-features = false, features = ["ecdsa"] }
-pem-rfc7468 = { version = "0.7.0", default-features = false, features = ["alloc"] }
+p256 = { version = "0.13.0", default-features = false, features = ["ecdsa"], optional = true }
+pem-rfc7468 = { version = "0.7.0", default-features = false, optional = true }
 subtle = { version = "2.4.0", default-features = false }
-x509-cert = { version = "0.2.0", default-features = false }
+x509-cert = { version = "0.2.0", default-features = false, optional = true }
 
 [dev-dependencies]
 mc-sgx-core-sys-types = "0.6.0"

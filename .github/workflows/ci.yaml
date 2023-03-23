@@ -196,7 +196,7 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
       - uses: r7kamura/rust-problem-matchers@v1
-      - run: cargo +${{ matrix.rust }} build --release
+      - run: cargo +${{ matrix.rust }} build --release --all-features
 
   test:
     runs-on: ubuntu-22.04
@@ -216,7 +216,7 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
       - uses: r7kamura/rust-problem-matchers@v1
-      - run: cargo +${{ matrix.rust }} test --release
+      - run: cargo +${{ matrix.rust }} test --release --all-features
 
   doc:
     runs-on: ubuntu-22.04
@@ -237,7 +237,7 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
       - uses: r7kamura/rust-problem-matchers@v1
-      - run: cargo +${{ matrix.rust }} doc --release --no-deps
+      - run: cargo +${{ matrix.rust }} doc --release --no-deps --all-features
 
   coverage:
     runs-on: ubuntu-22.04
@@ -253,10 +253,43 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov
-      - run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+      - run: |
+          cargo llvm-cov --all-features --workspace --lcov \
+            --output-path lcov.info
       - uses: codecov/codecov-action@v3
         with:
           files: lcov.info
+
+  # Ensure that verifier is able to build without alloc.
+  build-no-alloc:
+    runs-on: ubuntu-22.04
+    needs:
+      - lint
+    strategy:
+      matrix:
+        target:
+          - thumbv6m-none-eabi
+          - thumbv7m-none-eabi
+          - thumbv8m.main-none-eabi
+          - aarch64-linux-android
+          - aarch64-apple-ios
+    steps:
+      - uses: actions/checkout@v3
+      # The building of mc-sgx-core-types needs C headers. We leverage the
+      # SGX_SDK to get a somewhat portable version of the C headers.
+      - uses: mobilecoinfoundation/actions/sgxsdk@main
+        with:
+          version: 2.18.100.3
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2023-01-04
+          targets: ${{ matrix.target }},x86_64-unknown-linux-gnu
+          components: rust-src
+      - uses: r7kamura/rust-problem-matchers@v1
+      - name: Build no alloc crate on various platfroms
+        run: |
+          CFLAGS="-isystem$SGX_SDK/include/tlibc" cargo +nightly-2023-01-04 \
+            build -Z build-std=core --target ${{ matrix.target }}
 
   notify:
     runs-on: ubuntu-latest
