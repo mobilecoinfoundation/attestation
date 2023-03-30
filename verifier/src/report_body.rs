@@ -2,8 +2,9 @@
 
 //! Verifiers which operate on the [`ReportBody`]
 
+use crate::struct_name::SpacedStructName;
 use crate::{VerificationError, Verifier};
-use core::fmt::Debug;
+use core::fmt::{Debug, Display, Formatter};
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
     MiscellaneousSelect, MrEnclave, MrSigner, ReportBody, ReportData,
@@ -79,6 +80,15 @@ pub struct EqualityVerifier<T> {
 impl<T> EqualityVerifier<T> {
     pub fn new(expected: T) -> Self {
         Self { expected }
+    }
+}
+
+impl<T> Display for EqualityVerifier<T>
+where
+    T: SpacedStructName + Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "The {} is {:?}", T::spaced_struct_name(), self.expected)
     }
 }
 
@@ -339,6 +349,7 @@ impl<E: Accessor<ReportData>> Verifier<E> for ReportDataVerifier {
 mod test {
     use super::*;
     use crate::And;
+    use alloc::format;
     use mc_sgx_core_sys_types::{
         sgx_attributes_t, sgx_cpu_svn_t, sgx_measurement_t, sgx_report_body_t, sgx_report_data_t,
     };
@@ -877,5 +888,19 @@ mod test {
                 .unwrap_u8(),
             1
         );
+    }
+
+    #[test]
+    fn attributes_verifier_error_display() {
+        let attributes = Attributes::from(REPORT_BODY_SRC.attributes);
+        let verifier = AttributesVerifier::new(attributes);
+        let display_string = format!("{}", verifier);
+        let expected = format!(
+            "The {} is {:?}",
+            Attributes::spaced_struct_name(),
+            attributes
+        );
+
+        assert_eq!(display_string, expected)
     }
 }
