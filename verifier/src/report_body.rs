@@ -85,10 +85,10 @@ impl<T> EqualityVerifier<T> {
 
 impl<T> Display for EqualityVerifier<T>
 where
-    T: SpacedStructName + Debug,
+    T: SpacedStructName + Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "The {} is {:?}", T::spaced_struct_name(), self.expected)
+        write!(f, "The {} is {}", T::spaced_struct_name(), self.expected)
     }
 }
 
