@@ -347,6 +347,8 @@ impl<E: Accessor<ReportData>> Verifier<E> for ReportDataVerifier {
 
 #[cfg(test)]
 mod test {
+    extern crate alloc;
+
     use super::*;
     use crate::And;
     use alloc::format;
@@ -891,15 +893,13 @@ mod test {
     }
 
     #[test]
-    fn attributes_verifier_error_display() {
+    fn attributes_verifier_display() {
         let attributes = Attributes::from(REPORT_BODY_SRC.attributes);
+        let attributes_formatted = format!("{}", attributes);
         let verifier = AttributesVerifier::new(attributes);
         let display_string = format!("{}", verifier);
-        let expected = format!(
-            "The {} is {:?}",
-            Attributes::spaced_struct_name(),
-            attributes
-        );
+
+        let expected = format!("The {} is {attributes}", Attributes::spaced_struct_name());
 
         assert_eq!(display_string, expected)
     }

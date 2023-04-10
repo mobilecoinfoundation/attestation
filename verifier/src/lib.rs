@@ -4,8 +4,6 @@
 #![deny(missing_docs, missing_debug_implementations, unsafe_code)]
 #![no_std]
 
-extern crate alloc;
-
 mod report_body;
 mod struct_name;
 
