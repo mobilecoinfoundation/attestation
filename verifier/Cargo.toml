@@ -15,7 +15,7 @@ rust-version = "1.62.1"
 
 [dependencies]
 displaydoc = { version = "0.2.1", default-features = false }
-mc-sgx-core-types = "0.5.0"
+mc-sgx-core-types = "0.6.0"
 subtle = { version = "2.4.0", default-features = false }
 
 [dev-dependencies]
