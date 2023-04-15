@@ -1,0 +1,37 @@
+{
+  "template": "git@github.com:mobilecoinfoundation/cookiecutters.git",
+  "commit": "d096caa74098eb608eefeec1d9ff64485d40b797",
+  "checkout": null,
+  "context": {
+    "cookiecutter": {
+      "_copy_without_render": [
+        ".github/workflows/ci.yaml",
+        ".github/workflows/issues.yaml",
+        ".github/workflows/pr-assign.yaml",
+        ".github/workflows/pr.yaml"
+      ],
+      "repo_name": "attestation",
+      "repo_homepage": "https://mobilecoin.foundation/",
+      "github_org": "mobilecoinfoundation",
+      "github_teams": "coredev",
+      "github_username": "@nick-mobilecoin",
+      "default_branch": "main",
+      "owners": "@nick-mobilecoin @jcape @samdealy",
+      "type": "workspace",
+      "license": "Apache-2.0",
+      "arch": "any",
+      "workspace_description": "SGX Enclave Attestation",
+      "workspace_readme_title": "MobileCoin: SGX Enclave Attestation",
+      "crate_name": "mc-attestation-verifier",
+      "crate_namespace_prefix": "mc-attestation-",
+      "crate_description": "SGX Enclave Attestation Report Verification",
+      "crate_readme_title": "MobileCoin: SGX Enclave Attestation Report Verification",
+      "crate_sub_dir": "verifier",
+      "version": "0.1.0",
+      "crate_keywords": "no-std security",
+      "crate_categories": "authentication no-std no-std::no-alloc",
+      "_template": "git@github.com:mobilecoinfoundation/cookiecutters.git"
+    }
+  },
+  "directory": "rust/repo"
+}
