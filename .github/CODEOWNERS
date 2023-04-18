@@ -1,12 +1,18 @@
-/Cargo.toml
-/Cargo.lock
-/LICENSE
-/deny.toml
+# These lines impact repository security
+/.github/CODEOWNERS        @nick-mobilecoin @jcape @samdealy
+/.github/settings.yml      @nick-mobilecoin @jcape @samdealy
+
+# These lines prevent reviews of trivial changes blocking on particular users
 /.gitattributes
 /.gitconfig
 /.gitignore
 /.markdownlint-cli2.jsonrc
 /CHANGELOG.md
+/Cargo.toml
+/Cargo.lock
+/LICENSE
+/README.md
+/deny.toml
 /rust-toolchain.toml
 /rustfmt.toml
 * @nick-mobilecoin @jcape @samdealy

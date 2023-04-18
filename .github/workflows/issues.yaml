@@ -1,6 +1,7 @@
+---
 name: issues
 
-on:
+"on":
   issues:
     types:
       - opened
@@ -9,19 +10,13 @@ on:
 jobs:
   triage:
     runs-on: ubuntu-latest
-    permissions:
-      issues: write
     steps:
-    - uses: github/issue-labeler@v3.1
-      with:
-        repo-token: "${{ secrets.GITHUB_TOKEN }}"
-        configuration-path: .github/triage-labeler.yaml
-        enable-versioned-regex: 0
-
-  add-to-project:
-    runs-on: ubuntu-latest
-    steps:
+      - uses: github/issue-labeler@v3
+        with:
+          repo-token: "${{ secrets.GITHUB_TOKEN }}"
+          configuration-path: .github/triage-labeler.yaml
+          enable-versioned-regex: 0
       - uses: actions/add-to-project@v0.5.0
         with:
-          github-token: "${{ secrets.ADD_TO_PROJECT_PAT }}"
+          github-token: "${{ secrets.MEOWBLECOIN_PAT }}"
           project-url: https://github.com/orgs/mobilecoinfoundation/projects/5

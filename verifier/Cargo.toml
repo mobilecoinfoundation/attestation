@@ -1,17 +1,17 @@
 [package]
 name = "mc-attestation-verifier"
 version = "0.1.0"
-authors = ["MobileCoin"]
+authors = { workspace = true }
 # See https://crates.io/category_slugs for valid categories
 categories = ["authentication", "no-std", "no-std::no-alloc"]
 description = "SGX Enclave Attestation Report Verification"
-edition = "2021"
+edition = { workspace = true }
 # See https://crates.io/keywords for the common keywords
 keywords = ["no-std", "security"]
-license = "Apache-2.0"
+license = { workspace = true }
 readme = "README.md"
-repository = "https://github.com/mobilecoinfoundation/attestation"
-rust-version = "1.62.1"
+repository = { workspace = true }
+rust-version = { workspace = true }
 
 [dependencies]
 displaydoc = { version = "0.2.1", default-features = false }
@@ -22,3 +22,13 @@ subtle = { version = "2.4.0", default-features = false }
 mc-sgx-core-sys-types = "0.5.0"
 textwrap = "0.16.0"
 yare = "1.0.2"
+
+# At least one crate must have this configuration
+[package.metadata.release]
+pre-release-replacements = [
+    { file = "../../CHANGELOG.md", search = "Unreleased", replace = "{{version}}", min = 1 },
+    { file = "../../CHANGELOG.md", search = "\\.\\.\\.HEAD", replace="...{{tag_name}}", exactly = 1 },
+    { file = "../../CHANGELOG.md", search = "ReleaseDate", replace= "{{date}}", min = 1 },
+    { file = "../../CHANGELOG.md", search = "<!-- next-header -->", replace="<!-- next-header -->\n## [Unreleased] - ReleaseDate\n", exactly = 1 },
+    { file = "../../CHANGELOG.md", search = "<!-- next-url -->", replace="<!-- next-url -->\n[Unreleased]: https://github.com/mobilecoinfoundation/attestation/compare/{{tag_name}}...HEAD", exactly = 1 },
+]

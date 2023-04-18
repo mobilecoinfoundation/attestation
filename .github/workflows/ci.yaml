@@ -1,6 +1,7 @@
+---
 name: ci
 
-on:
+"on":
   push:
     branches:
       - 'main'
@@ -9,83 +10,178 @@ on:
 env:
   CARGO_INCREMENTAL: 0
   RUSTFLAGS: "-Dwarnings"
-  CARGO_UNSTABLE_SPARSE_REGISTRY: true
+  # This works around `dtolnay/rust-toolchain@master` it defaults to "sparse"
+  # when 1.68 is used, but the current nightly version (nightly-2023-01-04) is
+  # before the official support that doesn't use `-Z sparse`
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: "git"
 
 jobs:
-  rustfmt:
+  # TODO: Fix automatically
+  lint:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
       - uses: r7kamura/rust-problem-matchers@v1
       - run: cargo fmt --all -- --check
-
-  markdown-lint:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v3
       - uses: xt0rted/markdownlint-problem-matcher@v2
       - uses: DavidAnson/markdownlint-cli2-action@v9
         with:
           globs: "**/*.md"
+      # FIXME: Add yamllint problem matcher
+      - run: yamllint -s .
+
+  crev:
+    runs-on: ubuntu-22.04
+    needs:
+      - lint
+    # TODO: once we have enough reviews, make this a required check
+    continue-on-error: true
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v3
+        continue-on-error: false
+        with:
+          path: |
+            Cargo.lock
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+      - uses: taiki-e/install-action@v2
+        with:
+          # Pinning to 0.23 due to
+          # https://github.com/crev-dev/cargo-crev/issues/598
+          tool: cargo-crev@0.23
+      - name: Configure Crev
+        run: |
+          cargo crev trust \
+            --level high \
+            --no-commit https://github.com/mobilecoinfoundation/crev-proofs
+      - name: Run Cargo Crev
+        id: cargo-crev
+        run: |
+          set +e
+          export MARKER=$RANDOM
+          echo "UNREVIEWED_DEPENDENCIES<<EOF${MARKER}" >> $GITHUB_OUTPUT
+          # GH does not like colors in crev output
+          export TERM=xterm-mono
+          # - Get a TSV-formatted table of dependencies without reviews
+          # - Skip any "local" dependencies
+          # - Convert the table to GHF markdown
+          # - Sort descending by the "LoC" value (first column preceeds first
+          #   pipe)
+
+          cargo generate-lockfile --offline
+          cargo crev crate verify \
+              --for-id vMr-9g5KzKQLsCpkp1tc8o7AR6a0OptjOICjf7NMyHE \
+              --show-all \
+              --skip-indirect \
+              --skip-verified \
+              --skip-known-owners \
+              --trust medium \
+              --thoroughness medium \
+              --understanding medium \
+              --redundancy 2 | \
+            grep -v '^local ' | \
+            awk '{
+              printf("| %s | %s | %s | %s | %s | %s | %s |\n",
+                     $14, $15, $2, $10, $11, $12, $13)
+            }' | \
+            sort -t\| -n -k5 | \
+            tee /dev/stderr >> $GITHUB_OUTPUT
+          STATUS=$?
+          echo "EOF${MARKER}" >> $GITHUB_OUTPUT
+
+          set -e
+
+          # TODO: When we're ready to make this required
+          # exit $STATUS
+          exit 0
+        shell: bash
+      - uses: mshick/add-pr-comment@v2
+        with:
+          # yamllint disable rule:line-length
+          message: |
+            #### :x: Unreviewed dependencies found
+
+            | Crate | Version | Reviews (N/2) | LoC | Left-Pad Index | Geiger | Flags |
+            | ----- | ------- | ------------- | --- | -------------- | ------ | ----- |
+            ${{ steps.cargo-crev.outputs.UNREVIEWED_DEPENDENCIES }}
+          # yamllint enable rule:line-length
 
   deny:
     runs-on: ubuntu-22.04
     needs:
-      - "rustfmt"
-      - "markdown-lint"
+      - lint
     strategy:
       matrix:
         checks:
           - advisories
           - bans licenses sources
-    # Prevent sudden announcement of a new advisory from failing ci:
-    continue-on-error: ${{ matrix.checks == 'advisories' }}
+      fail-fast: false
     steps:
-    - uses: actions/checkout@v3
-    - uses: EmbarkStudios/cargo-deny-action@v1
-      with:
-        command: check ${{ matrix.checks }}
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: EmbarkStudios/cargo-deny-action@v1
+        with:
+          command: check ${{ matrix.checks }}
 
   sort:
     runs-on: ubuntu-22.04
     needs:
-      - "rustfmt"
-      - "markdown-lint"
+      - lint
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo install cargo-sort
-      - run: cargo sort --workspace --check >/dev/null
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-sort
+      - run: cargo sort --workspace --grouped --check >/dev/null
+      # TODO: Fix automatically
 
   clippy:
     runs-on: ubuntu-22.04
     needs:
-      - "rustfmt"
-      - "markdown-lint"
+      - lint
     strategy:
       matrix:
         rust:
           - stable
           - beta
-    # Prevent beta clippy warnings from causing CI failure
-    continue-on-error: ${{ matrix.rust == 'beta' }}
+      fail-fast: false
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: recursive
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
           components: clippy
       - uses: r7kamura/rust-problem-matchers@v1
-      - run: cargo +${{ matrix.rust }} clippy --all --all-features -- -D warnings
+      - run: |
+          cargo +${{ matrix.rust }} clippy --all --all-features -- -D warnings
+      # TODO: Fix automatically, or post GH-suggestions comments
 
   build:
     runs-on: ubuntu-22.04
     needs:
-      - "rustfmt"
-      - "markdown-lint"
+      - lint
     strategy:
       matrix:
         rust:
@@ -94,6 +190,8 @@ jobs:
           - nightly-2023-01-04
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: recursive
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
@@ -103,8 +201,7 @@ jobs:
   test:
     runs-on: ubuntu-22.04
     needs:
-      - "rustfmt"
-      - "markdown-lint"
+      - lint
     strategy:
       matrix:
         rust:
@@ -113,6 +210,8 @@ jobs:
           - nightly-2023-01-04
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: recursive
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
@@ -122,8 +221,7 @@ jobs:
   doc:
     runs-on: ubuntu-22.04
     needs:
-      - "rustfmt"
-      - "markdown-lint"
+      - lint
     strategy:
       matrix:
         rust:
@@ -133,6 +231,8 @@ jobs:
     continue-on-error: ${{ matrix.rust == 'beta' }}
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: recursive
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
@@ -142,14 +242,17 @@ jobs:
   coverage:
     runs-on: ubuntu-22.04
     needs:
-      - "rustfmt"
-      - "markdown-lint"
+      - lint
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
-      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
       - run: cargo llvm-cov --workspace --lcov --output-path lcov.info
       - uses: codecov/codecov-action@v3
         with:
@@ -159,8 +262,7 @@ jobs:
   build-no-alloc:
     runs-on: ubuntu-22.04
     needs:
-      - "rustfmt"
-      - "markdown-lint"
+      - lint
     strategy:
       matrix:
         target:
@@ -171,6 +273,8 @@ jobs:
           - aarch64-apple-ios
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: recursive
       # The building of mc-sgx-core-types needs C headers. We leverage the
       # SGX_SDK to get a somewhat portable version of the C headers.
       - uses: mobilecoinfoundation/actions/sgxsdk@main
@@ -182,20 +286,21 @@ jobs:
           targets: ${{ matrix.target }},x86_64-unknown-linux-gnu
           components: rust-src
       - uses: r7kamura/rust-problem-matchers@v1
-      - name: Build no alloc crate on various platfroms
+      - name: Build no alloc crate on various platforms
         run: |
-            CFLAGS="-isystem$SGX_SDK/include/tlibc" cargo +nightly-2023-01-04 build -Z build-std=core --target ${{ matrix.target }} 
+            CFLAGS="-isystem$SGX_SDK/include/tlibc" cargo +nightly-2023-01-04 \
+            build -Z build-std=core --target ${{ matrix.target }}
 
   notify:
     runs-on: ubuntu-latest
-    if: failure() && ${{ github.event_name }} == 'push'
+    if: github.event_name == 'push' && failure()
     needs:
-      - rustfmt
-      - markdown-lint
+      - lint
       - deny
       - sort
       - clippy
       - build
+      - build-no-alloc
       - test
       - doc
       - coverage
@@ -203,12 +308,18 @@ jobs:
       - name: Notify Discord on failure
         uses: sarisia/actions-status-discord@v1
         with:
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
           username: "Github Actions"
           status: Failure
+          color: 0xff0000
           nodetail: true
-          title: "Workflow: ${{ github.workflow }}"
-          url: ${{ github.repository_url }}/actions/runs/${{ github.run_id }}
-          description: |
-            [@${{ github.pusher }}](${{ github.url }}/${{ github.pusher }}] was the last one to touch ${{ github.repository }}, is all I'm saying...
+          # yamllint disable rule:line-length
+          title: "${{ github.repository }} ${{ github.workflow }} has failed on ${{ github.event_name }} to ${{ github.ref_name }}"
+          url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          description: >
+            [`@${{ github.actor }}`](${{ github.server_url }}/${{ github.actor }})
+            was the last one to touch
+            [that repository](${{ github.server_url }}/${{ github.repository }}),
+            is all I'm saying.
           avatar_url: "https://media0.giphy.com/media/oe33xf3B50fsc/200.gif"
-          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+          # yamllint enable rule:line-length
