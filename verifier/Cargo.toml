@@ -19,7 +19,7 @@ mc-sgx-core-types = "0.5.0"
 subtle = { version = "2.4.0", default-features = false }
 
 [dev-dependencies]
-mc-sgx-core-sys-types = "0.5.0"
+mc-sgx-core-sys-types = "0.6.0"
 textwrap = "0.16.0"
 yare = "1.0.2"
 
