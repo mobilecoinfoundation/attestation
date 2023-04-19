@@ -120,6 +120,15 @@ impl<T> GreaterThanEqualVerifier<T> {
     }
 }
 
+impl<T> Display for GreaterThanEqualVerifier<T>
+    where
+        T: SpacedStructName + Display,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "The {} is {}", T::spaced_struct_name(), self.expected)
+    }
+}
+
 /// Verifier for ensuring [`Attributes`] values are equivalent.
 pub type AttributesVerifier = EqualityVerifier<Attributes>;
 impl IntoVerificationError for Attributes {
@@ -894,12 +903,110 @@ mod test {
 
     #[test]
     fn attributes_verifier_display() {
-        let attributes = Attributes::from(REPORT_BODY_SRC.attributes);
-        let attributes_formatted = format!("{}", attributes);
-        let verifier = AttributesVerifier::new(attributes);
+        let inner = Attributes::from(REPORT_BODY_SRC.attributes);
+        let verifier = AttributesVerifier::new(inner);
         let display_string = format!("{}", verifier);
 
-        let expected = format!("The {} is {attributes}", Attributes::spaced_struct_name());
+        let expected = format!("The {} is {inner}", Attributes::spaced_struct_name());
+
+        assert_eq!(display_string, expected)
+    }
+
+    #[test]
+    fn config_id_verifier_display() {
+        let inner = ConfigId::from(REPORT_BODY_SRC.config_id);
+        let verifier = ConfigIdVerifier::new(inner.clone());
+        let display_string = format!("{}", verifier);
+
+        let expected = format!("The {} is {inner}", ConfigId::spaced_struct_name());
+
+        assert_eq!(display_string, expected)
+    }
+
+    #[test]
+    fn config_svn_verifier_display() {
+        let inner = ConfigSvn::from(REPORT_BODY_SRC.config_svn);
+        let verifier = ConfigSvnVerifier::new(inner.clone());
+        let display_string = format!("{}", verifier);
+
+        let expected = format!("The {} is {inner}", ConfigSvn::spaced_struct_name());
+
+        assert_eq!(display_string, expected)
+    }
+
+    #[test]
+    fn cpu_svn_verifier_display() {
+        let inner = CpuSvn::from(REPORT_BODY_SRC.cpu_svn);
+        let verifier = CpuSvnVerifier::new(inner.clone());
+        let display_string = format!("{}", verifier);
+
+        let expected = format!("The {} is {inner}", CpuSvn::spaced_struct_name());
+
+        assert_eq!(display_string, expected)
+    }
+
+    #[test]
+    fn extended_product_id_verifier_display() {
+        let inner = ExtendedProductId::from(REPORT_BODY_SRC.isv_ext_prod_id);
+        let verifier = ExtendedProductIdVerifier::new(inner.clone());
+        let display_string = format!("{}", verifier);
+
+        let expected = format!("The {} is {inner}", ExtendedProductId::spaced_struct_name());
+
+        assert_eq!(display_string, expected)
+    }
+
+    #[test]
+    fn family_id_verifier_display() {
+        let inner = FamilyId::from(REPORT_BODY_SRC.isv_family_id);
+        let verifier = FamilyIdVerifier::new(inner.clone());
+        let display_string = format!("{}", verifier);
+
+        let expected = format!("The {} is {inner}", FamilyId::spaced_struct_name());
+
+        assert_eq!(display_string, expected)
+    }
+
+    #[test]
+    fn isv_product_id_verifier_display() {
+        let inner = IsvProductId::from(REPORT_BODY_SRC.isv_prod_id);
+        let verifier = IsvProductIdVerifier::new(inner.clone());
+        let display_string = format!("{}", verifier);
+
+        let expected = format!("The {} is {inner}", IsvProductId::spaced_struct_name());
+
+        assert_eq!(display_string, expected)
+    }
+
+    #[test]
+    fn isv_svn_verifier_display() {
+        let inner = IsvSvn::from(REPORT_BODY_SRC.isv_svn);
+        let verifier = IsvSvnVerifier::new(inner.clone());
+        let display_string = format!("{}", verifier);
+
+        let expected = format!("The {} is {inner}", IsvSvn::spaced_struct_name());
+
+        assert_eq!(display_string, expected)
+    }
+
+    #[test]
+    fn miscellaneous_select_verifier_display() {
+        let inner = MiscellaneousSelect::from(REPORT_BODY_SRC.misc_select);
+        let verifier = MiscellaneousSelectVerifier::new(inner.clone());
+        let display_string = format!("{}", verifier);
+
+        let expected = format!("The {} is {inner}", MiscellaneousSelect::spaced_struct_name());
+
+        assert_eq!(display_string, expected)
+    }
+
+    #[test]
+    fn mr_enclave_verifier_display() {
+        let inner = MrEnclave::from(REPORT_BODY_SRC.mr_enclave);
+        let verifier = MrEnclaveVerifier::new(inner.clone());
+        let display_string = format!("{}", verifier);
+
+        let expected = format!("The {} is {inner}", MrEnclave::spaced_struct_name());
 
         assert_eq!(display_string, expected)
     }
