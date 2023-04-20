@@ -110,73 +110,9 @@ mod test {
     use const_oid::ObjectIdentifier;
     use yare::parameterized;
 
-    const LEAF_CERT: &str = "
-        -----BEGIN CERTIFICATE-----
-        MIIEjzCCBDSgAwIBAgIVAPtJxlxRlleZOb/spRh9U8K7AT/3MAoGCCqGSM49BAMC
-        MHExIzAhBgNVBAMMGkludGVsIFNHWCBQQ0sgUHJvY2Vzc29yIENBMRowGAYDVQQK
-        DBFJbnRlbCBDb3Jwb3JhdGlvbjEUMBIGA1UEBwwLU2FudGEgQ2xhcmExCzAJBgNV
-        BAgMAkNBMQswCQYDVQQGEwJVUzAeFw0yMjA2MTMyMTQ2MzRaFw0yOTA2MTMyMTQ2
-        MzRaMHAxIjAgBgNVBAMMGUludGVsIFNHWCBQQ0sgQ2VydGlmaWNhdGUxGjAYBgNV
-        BAoMEUludGVsIENvcnBvcmF0aW9uMRQwEgYDVQQHDAtTYW50YSBDbGFyYTELMAkG
-        A1UECAwCQ0ExCzAJBgNVBAYTAlVTMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE
-        j/Ee1lkGJofDX745Ks5qxqu7Mk7Mqcwkx58TCSTsabRCSvobSl/Ts8b0dltKUW3j
-        qRd+SxnPEWJ+jUw+SpzwWaOCAqgwggKkMB8GA1UdIwQYMBaAFNDoqtp11/kuSReY
-        PHsUZdDV8llNMGwGA1UdHwRlMGMwYaBfoF2GW2h0dHBzOi8vYXBpLnRydXN0ZWRz
-        ZXJ2aWNlcy5pbnRlbC5jb20vc2d4L2NlcnRpZmljYXRpb24vdjMvcGNrY3JsP2Nh
-        PXByb2Nlc3NvciZlbmNvZGluZz1kZXIwHQYDVR0OBBYEFKy9gk624HzNnDyCw7QW
-        nhmVfE31MA4GA1UdDwEB/wQEAwIGwDAMBgNVHRMBAf8EAjAAMIIB1AYJKoZIhvhN
-        AQ0BBIIBxTCCAcEwHgYKKoZIhvhNAQ0BAQQQ36FQl3ntUr3KUwbEFvmRGzCCAWQG
-        CiqGSIb4TQENAQIwggFUMBAGCyqGSIb4TQENAQIBAgERMBAGCyqGSIb4TQENAQIC
-        AgERMBAGCyqGSIb4TQENAQIDAgECMBAGCyqGSIb4TQENAQIEAgEEMBAGCyqGSIb4
-        TQENAQIFAgEBMBEGCyqGSIb4TQENAQIGAgIAgDAQBgsqhkiG+E0BDQECBwIBBjAQ
-        BgsqhkiG+E0BDQECCAIBADAQBgsqhkiG+E0BDQECCQIBADAQBgsqhkiG+E0BDQEC
-        CgIBADAQBgsqhkiG+E0BDQECCwIBADAQBgsqhkiG+E0BDQECDAIBADAQBgsqhkiG
-        +E0BDQECDQIBADAQBgsqhkiG+E0BDQECDgIBADAQBgsqhkiG+E0BDQECDwIBADAQ
-        BgsqhkiG+E0BDQECEAIBADAQBgsqhkiG+E0BDQECEQIBCzAfBgsqhkiG+E0BDQEC
-        EgQQERECBAGABgAAAAAAAAAAADAQBgoqhkiG+E0BDQEDBAIAADAUBgoqhkiG+E0B
-        DQEEBAYAkG7VAAAwDwYKKoZIhvhNAQ0BBQoBADAKBggqhkjOPQQDAgNJADBGAiEA
-        1XJi0ht4hw8YtC6E4rYscp9bF+7UOhVGeKePA5TW2FQCIQCIUAaewOuWOIvstZN4
-        V8Zu8NFCC4vFg+cZqO6QfezEaA==
-        -----END CERTIFICATE-----
-        ";
-
-    const INTERMEDIATE_CA: &str = "
-        -----BEGIN CERTIFICATE-----
-        MIICmDCCAj6gAwIBAgIVANDoqtp11/kuSReYPHsUZdDV8llNMAoGCCqGSM49BAMC
-        MGgxGjAYBgNVBAMMEUludGVsIFNHWCBSb290IENBMRowGAYDVQQKDBFJbnRlbCBD
-        b3Jwb3JhdGlvbjEUMBIGA1UEBwwLU2FudGEgQ2xhcmExCzAJBgNVBAgMAkNBMQsw
-        CQYDVQQGEwJVUzAeFw0xODA1MjExMDUwMTBaFw0zMzA1MjExMDUwMTBaMHExIzAh
-        BgNVBAMMGkludGVsIFNHWCBQQ0sgUHJvY2Vzc29yIENBMRowGAYDVQQKDBFJbnRl
-        bCBDb3Jwb3JhdGlvbjEUMBIGA1UEBwwLU2FudGEgQ2xhcmExCzAJBgNVBAgMAkNB
-        MQswCQYDVQQGEwJVUzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABL9q+NMp2IOg
-        tdl1bk/uWZ5+TGQm8aCi8z78fs+fKCQ3d+uDzXnVTAT2ZhDCifyIuJwvN3wNBp9i
-        HBSSMJMJrBOjgbswgbgwHwYDVR0jBBgwFoAUImUM1lqdNInzg7SVUr9QGzknBqww
-        UgYDVR0fBEswSTBHoEWgQ4ZBaHR0cHM6Ly9jZXJ0aWZpY2F0ZXMudHJ1c3RlZHNl
-        cnZpY2VzLmludGVsLmNvbS9JbnRlbFNHWFJvb3RDQS5kZXIwHQYDVR0OBBYEFNDo
-        qtp11/kuSReYPHsUZdDV8llNMA4GA1UdDwEB/wQEAwIBBjASBgNVHRMBAf8ECDAG
-        AQH/AgEAMAoGCCqGSM49BAMCA0gAMEUCIQCJgTbtVqOyZ1m3jqiAXM6QYa6r5sWS
-        4y/G7y8uIJGxdwIgRqPvBSKzzQagBLQq5s5A70pdoiaRJ8z/0uDz4NgV91k=
-        -----END CERTIFICATE-----
-        ";
-
-    const ROOT_CA: &str = "
-        -----BEGIN CERTIFICATE-----
-        MIICjzCCAjSgAwIBAgIUImUM1lqdNInzg7SVUr9QGzknBqwwCgYIKoZIzj0EAwIw
-        aDEaMBgGA1UEAwwRSW50ZWwgU0dYIFJvb3QgQ0ExGjAYBgNVBAoMEUludGVsIENv
-        cnBvcmF0aW9uMRQwEgYDVQQHDAtTYW50YSBDbGFyYTELMAkGA1UECAwCQ0ExCzAJ
-        BgNVBAYTAlVTMB4XDTE4MDUyMTEwNDUxMFoXDTQ5MTIzMTIzNTk1OVowaDEaMBgG
-        A1UEAwwRSW50ZWwgU0dYIFJvb3QgQ0ExGjAYBgNVBAoMEUludGVsIENvcnBvcmF0
-        aW9uMRQwEgYDVQQHDAtTYW50YSBDbGFyYTELMAkGA1UECAwCQ0ExCzAJBgNVBAYT
-        AlVTMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEC6nEwMDIYZOj/iPWsCzaEKi7
-        1OiOSLRFhWGjbnBVJfVnkY4u3IjkDYYL0MxO4mqsyYjlBalTVYxFP2sJBK5zlKOB
-        uzCBuDAfBgNVHSMEGDAWgBQiZQzWWp00ifODtJVSv1AbOScGrDBSBgNVHR8ESzBJ
-        MEegRaBDhkFodHRwczovL2NlcnRpZmljYXRlcy50cnVzdGVkc2VydmljZXMuaW50
-        ZWwuY29tL0ludGVsU0dYUm9vdENBLmRlcjAdBgNVHQ4EFgQUImUM1lqdNInzg7SV
-        Ur9QGzknBqwwDgYDVR0PAQH/BAQDAgEGMBIGA1UdEwEB/wQIMAYBAf8CAQEwCgYI
-        KoZIzj0EAwIDSQAwRgIhAOW/5QkR+S9CiSDcNoowLuPRLsWGf/Yi7GSX94BgwTwg
-        AiEA4J0lrHoMs+Xo5o/sX6O9QWxHRAvZUGOdRQ7cvqRXaqI=
-        -----END CERTIFICATE-----
-        ";
+    const LEAF_CERT: &str = include_str!("../data/tests/leaf_cert.pem");
+    const INTERMEDIATE_CA: &str = include_str!("../data/tests/intermediate_ca.pem");
+    const ROOT_CA: &str = include_str!("../data/tests/root_ca.pem");
 
     #[parameterized(
         root = { ROOT_CA },
@@ -184,17 +120,16 @@ mod test {
         leaf = { LEAF_CERT },
     )]
     fn try_from_der(pem: &str) {
-        let dedent = textwrap::dedent(pem);
-        let (_, der_bytes) = pem_rfc7468::decode_vec(dedent.trim().as_bytes())
-            .expect("Failed to decode DER from PEM");
+        let (_, der_bytes) =
+            pem_rfc7468::decode_vec(pem.as_bytes()).expect("Failed to decode DER from PEM");
         assert!(UnverifiedCertificate::try_from(der_bytes.as_slice()).is_ok());
     }
 
     #[test]
     fn certificate_decoding_error_with_invalid_der() {
-        let pem = textwrap::dedent(ROOT_CA);
+        let pem = ROOT_CA;
         let (_, der_bytes) =
-            pem_rfc7468::decode_vec(pem.trim().as_bytes()).expect("Failed to decode DER from PEM");
+            pem_rfc7468::decode_vec(pem.as_bytes()).expect("Failed to decode DER from PEM");
         assert!(matches!(
             UnverifiedCertificate::try_from(&der_bytes.as_slice()[1..]),
             Err(Error::CertificateDecoding(_))
@@ -203,9 +138,9 @@ mod test {
 
     #[test]
     fn signature_decoding_error() {
-        let pem = textwrap::dedent(ROOT_CA);
+        let pem = ROOT_CA;
         let (_, mut der_bytes) =
-            pem_rfc7468::decode_vec(pem.trim().as_bytes()).expect("Failed to decode DER from PEM");
+            pem_rfc7468::decode_vec(pem.as_bytes()).expect("Failed to decode DER from PEM");
 
         // The signature is and the end of the certificate.
         // If iether of the points are 0 it will fail to decode so we force the
@@ -221,9 +156,9 @@ mod test {
 
     #[test]
     fn key_decoding_error() {
-        let pem = textwrap::dedent(ROOT_CA);
+        let pem = ROOT_CA;
         let (_, mut der_bytes) =
-            pem_rfc7468::decode_vec(pem.trim().as_bytes()).expect("Failed to decode DER from PEM");
+            pem_rfc7468::decode_vec(pem.as_bytes()).expect("Failed to decode DER from PEM");
 
         // There isn't a good way to get the offset to the key, so we look for
         // the bytes that represent the key object identifier (OID)
@@ -247,9 +182,9 @@ mod test {
 
     #[test]
     fn verify_root_certificate() {
-        let root = textwrap::dedent(ROOT_CA);
+        let root = ROOT_CA;
         let (_, der_bytes) =
-            pem_rfc7468::decode_vec(root.trim().as_bytes()).expect("Failed to decode DER from PEM");
+            pem_rfc7468::decode_vec(root.as_bytes()).expect("Failed to decode DER from PEM");
         let cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
             .expect("Failed to decode certificate from DER");
 
@@ -262,14 +197,14 @@ mod test {
 
     #[test]
     fn verify_intermediate_certificate() {
-        let root = textwrap::dedent(ROOT_CA);
+        let root = ROOT_CA;
         let (_, der_bytes) =
-            pem_rfc7468::decode_vec(root.trim().as_bytes()).expect("Failed to decode DER from PEM");
+            pem_rfc7468::decode_vec(root.as_bytes()).expect("Failed to decode DER from PEM");
         let root_cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
             .expect("Failed to decode certificate from DER");
 
-        let intermediate = textwrap::dedent(INTERMEDIATE_CA);
-        let (_, der_bytes) = pem_rfc7468::decode_vec(intermediate.trim().as_bytes())
+        let intermediate = INTERMEDIATE_CA;
+        let (_, der_bytes) = pem_rfc7468::decode_vec(intermediate.as_bytes())
             .expect("Failed to decode DER from PEM");
         let cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
             .expect("Failed to decode certificate from DER");
@@ -279,15 +214,15 @@ mod test {
 
     #[test]
     fn verify_leaf_certificate() {
-        let intermediate = textwrap::dedent(INTERMEDIATE_CA);
-        let (_, der_bytes) = pem_rfc7468::decode_vec(intermediate.trim().as_bytes())
+        let intermediate = INTERMEDIATE_CA;
+        let (_, der_bytes) = pem_rfc7468::decode_vec(intermediate.as_bytes())
             .expect("Failed to decode DER from PEM");
         let intermediate_cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
             .expect("Failed to decode certificate from DER");
 
-        let leaf = textwrap::dedent(LEAF_CERT);
+        let leaf = LEAF_CERT;
         let (_, der_bytes) =
-            pem_rfc7468::decode_vec(leaf.trim().as_bytes()).expect("Failed to decode DER from PEM");
+            pem_rfc7468::decode_vec(leaf.as_bytes()).expect("Failed to decode DER from PEM");
         let cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
             .expect("Failed to decode certificate from DER");
 
@@ -296,8 +231,8 @@ mod test {
 
     #[test]
     fn verify_certificate_fails_with_wrong_key() {
-        let intermediate = textwrap::dedent(INTERMEDIATE_CA);
-        let (_, der_bytes) = pem_rfc7468::decode_vec(intermediate.trim().as_bytes())
+        let intermediate = INTERMEDIATE_CA;
+        let (_, der_bytes) = pem_rfc7468::decode_vec(intermediate.as_bytes())
             .expect("Failed to decode DER from PEM");
         let intermediate_cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
             .expect("Failed to decode certificate from DER");
