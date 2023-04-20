@@ -121,8 +121,8 @@ impl<T> GreaterThanEqualVerifier<T> {
 }
 
 impl<T> Display for GreaterThanEqualVerifier<T>
-    where
-        T: SpacedStructName + Display,
+where
+    T: SpacedStructName + Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "The {} is {}", T::spaced_struct_name(), self.expected)
@@ -995,7 +995,10 @@ mod test {
         let verifier = MiscellaneousSelectVerifier::new(inner.clone());
         let display_string = format!("{}", verifier);
 
-        let expected = format!("The {} is {inner}", MiscellaneousSelect::spaced_struct_name());
+        let expected = format!(
+            "The {} is {inner}",
+            MiscellaneousSelect::spaced_struct_name()
+        );
 
         assert_eq!(display_string, expected)
     }
