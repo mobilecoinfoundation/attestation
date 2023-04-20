@@ -88,7 +88,7 @@ where
     T: SpacedStructName + Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "The {} is {}", T::spaced_struct_name(), self.expected)
+        write!(f, "The {} should be {}", T::spaced_struct_name(), self.expected)
     }
 }
 
@@ -125,7 +125,7 @@ where
     T: SpacedStructName + Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(f, "The {} is {}", T::spaced_struct_name(), self.expected)
+        write!(f, "The {} should be {}", T::spaced_struct_name(), self.expected)
     }
 }
 
@@ -907,7 +907,7 @@ mod test {
         let verifier = AttributesVerifier::new(inner);
         let display_string = format!("{}", verifier);
 
-        let expected = format!("The {} is {inner}", Attributes::spaced_struct_name());
+        let expected = format!("The {} should be {inner}", Attributes::spaced_struct_name());
 
         assert_eq!(display_string, expected)
     }
@@ -918,7 +918,7 @@ mod test {
         let verifier = ConfigIdVerifier::new(inner.clone());
         let display_string = format!("{}", verifier);
 
-        let expected = format!("The {} is {inner}", ConfigId::spaced_struct_name());
+        let expected = format!("The {} should be {inner}", ConfigId::spaced_struct_name());
 
         assert_eq!(display_string, expected)
     }
@@ -929,7 +929,7 @@ mod test {
         let verifier = ConfigSvnVerifier::new(inner.clone());
         let display_string = format!("{}", verifier);
 
-        let expected = format!("The {} is {inner}", ConfigSvn::spaced_struct_name());
+        let expected = format!("The {} should be {inner}", ConfigSvn::spaced_struct_name());
 
         assert_eq!(display_string, expected)
     }
@@ -940,7 +940,7 @@ mod test {
         let verifier = CpuSvnVerifier::new(inner.clone());
         let display_string = format!("{}", verifier);
 
-        let expected = format!("The {} is {inner}", CpuSvn::spaced_struct_name());
+        let expected = format!("The {} should be {inner}", CpuSvn::spaced_struct_name());
 
         assert_eq!(display_string, expected)
     }
@@ -951,7 +951,7 @@ mod test {
         let verifier = ExtendedProductIdVerifier::new(inner.clone());
         let display_string = format!("{}", verifier);
 
-        let expected = format!("The {} is {inner}", ExtendedProductId::spaced_struct_name());
+        let expected = format!("The {} should be {inner}", ExtendedProductId::spaced_struct_name());
 
         assert_eq!(display_string, expected)
     }
@@ -962,7 +962,7 @@ mod test {
         let verifier = FamilyIdVerifier::new(inner.clone());
         let display_string = format!("{}", verifier);
 
-        let expected = format!("The {} is {inner}", FamilyId::spaced_struct_name());
+        let expected = format!("The {} should be {inner}", FamilyId::spaced_struct_name());
 
         assert_eq!(display_string, expected)
     }
@@ -973,7 +973,7 @@ mod test {
         let verifier = IsvProductIdVerifier::new(inner.clone());
         let display_string = format!("{}", verifier);
 
-        let expected = format!("The {} is {inner}", IsvProductId::spaced_struct_name());
+        let expected = format!("The {} should be {inner}", IsvProductId::spaced_struct_name());
 
         assert_eq!(display_string, expected)
     }
@@ -984,7 +984,7 @@ mod test {
         let verifier = IsvSvnVerifier::new(inner.clone());
         let display_string = format!("{}", verifier);
 
-        let expected = format!("The {} is {inner}", IsvSvn::spaced_struct_name());
+        let expected = format!("The {} should be {inner}", IsvSvn::spaced_struct_name());
 
         assert_eq!(display_string, expected)
     }
@@ -996,7 +996,7 @@ mod test {
         let display_string = format!("{}", verifier);
 
         let expected = format!(
-            "The {} is {inner}",
+            "The {} should be {inner}",
             MiscellaneousSelect::spaced_struct_name()
         );
 
@@ -1009,7 +1009,7 @@ mod test {
         let verifier = MrEnclaveVerifier::new(inner.clone());
         let display_string = format!("{}", verifier);
 
-        let expected = format!("The {} is {inner}", MrEnclave::spaced_struct_name());
+        let expected = format!("The {} should be {inner}", MrEnclave::spaced_struct_name());
 
         assert_eq!(display_string, expected)
     }
