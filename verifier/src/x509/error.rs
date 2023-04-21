@@ -7,16 +7,22 @@ pub enum Error {
     SignatureVerification,
     /// The certificate has expired
     CertificateExpired,
-    /// An error occurred decoding the certificate
-    CertificateDecoding(x509_cert::der::Error),
+    /// An error occurred decoding the DER representation
+    DerDecoding(x509_cert::der::Error),
     /// The certificate is not yet valid
     CertificateNotYetValid,
     /// An error occurred decoding the key from a certificate
     KeyDecoding,
+    /// The certificate revocation list has expired
+    CrlExpired,
+    /// The certificate revocation list is not yet valid
+    CrlNotYetValid,
+    /// Certificate revocation list missing next update time
+    CrlMissingNextUpdate,
 }
 
 impl From<x509_cert::der::Error> for Error {
     fn from(src: x509_cert::der::Error) -> Self {
-        Error::CertificateDecoding(src)
+        Error::DerDecoding(src)
     }
 }
