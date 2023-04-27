@@ -2,6 +2,7 @@
 
 //! Verifier(s) for [`CertificationData`](`mc-sgx-dcap-types::CertificationData`).
 
+use super::{Error, Result};
 use core::time::Duration;
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
@@ -11,31 +12,6 @@ use x509_cert::Certificate as X509Certificate;
 /// Offset from the start of a certificate to the "to be signed" (TBS) portion
 /// of the certificate.
 const TBS_OFFSET: usize = 4;
-
-pub type Result<T> = core::result::Result<T, Error>;
-
-/// Error type for decoding and verifying certificates.
-#[derive(Debug, displaydoc::Display, PartialEq, Eq)]
-pub enum Error {
-    /// An error occurred decoding the signature from a certificate
-    SignatureDecoding,
-    /// The certification signature does not match with the verifying key
-    SignatureVerification,
-    /// The certificate has expired
-    CertificateExpired,
-    /// An error occurred decoding the certificate
-    CertificateDecoding(x509_cert::der::Error),
-    /// The certificate is not yet valid
-    CertificateNotYetValid,
-    /// An error occurred decoding the key from a certificate
-    KeyDecoding,
-}
-
-impl From<x509_cert::der::Error> for Error {
-    fn from(src: x509_cert::der::Error) -> Self {
-        Error::CertificateDecoding(src)
-    }
-}
 
 /// A certificate whose signature has not been verified.
 #[derive(Debug, PartialEq, Eq)]
@@ -152,9 +128,9 @@ mod test {
     use const_oid::ObjectIdentifier;
     use yare::parameterized;
 
-    const LEAF_CERT: &str = include_str!("../data/tests/leaf_cert.pem");
-    const INTERMEDIATE_CA: &str = include_str!("../data/tests/intermediate_ca.pem");
-    const ROOT_CA: &str = include_str!("../data/tests/root_ca.pem");
+    const LEAF_CERT: &str = include_str!("../../data/tests/leaf_cert.pem");
+    const INTERMEDIATE_CA: &str = include_str!("../../data/tests/intermediate_ca.pem");
+    const ROOT_CA: &str = include_str!("../../data/tests/root_ca.pem");
 
     #[parameterized(
         root = { ROOT_CA },
