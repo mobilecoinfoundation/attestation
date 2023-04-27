@@ -2,7 +2,10 @@
 
 //! Verifier(s) for [`CertificationData`](`mc-sgx-dcap-types::CertificationData`).
 
+extern crate alloc;
+
 use super::{Error, Result};
+use alloc::vec::Vec;
 use core::time::Duration;
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
@@ -11,28 +14,36 @@ use x509_cert::Certificate as X509Certificate;
 
 /// A certificate whose signature has not been verified.
 #[derive(Debug, PartialEq, Eq)]
-pub struct UnverifiedCertificate<'a> {
+pub struct UnverifiedCertificate {
     // In order to verify the signature, we need to access the original DER
     // bytes
-    der_bytes: &'a [u8],
-    certificate: X509Certificate,
+    der_bytes: Vec<u8>,
+    pub(crate) certificate: X509Certificate,
     // The signature and key are persisted here since they are fallible
     // operations and it's more ergonomic to fail fast than fail later for a
     // bad key or signature
     signature: Signature,
-    pub(crate) key: VerifyingKey,
+    key: VerifyingKey,
 }
 
 /// A certificate whose signature has been verified.
 #[derive(Debug, PartialEq, Eq)]
-pub struct VerifiedCertificate<'a> {
-    _der_bytes: &'a [u8],
+pub struct VerifiedCertificate {
     _certificate: X509Certificate,
-    _signature: Signature,
-    _key: VerifyingKey,
+    key: VerifyingKey,
 }
 
-impl<'a> UnverifiedCertificate<'a> {
+impl VerifiedCertificate {
+    pub(crate) fn public_key(&self) -> VerifyingKey {
+        self.key
+    }
+}
+
+impl UnverifiedCertificate {
+    pub fn verify_self_signed(&self, unix_time: Duration) -> Result<VerifiedCertificate> {
+        self.verify(&self.key, unix_time)
+    }
+
     /// Verify the certificate signature and time are valid.
     ///
     /// # Arguments
@@ -44,19 +55,13 @@ impl<'a> UnverifiedCertificate<'a> {
     ///     SystemTime::now().duration_since(UNIX_EPOCH)
     ///     ```
     ///   or equivalent
-    pub fn verify(
-        self,
-        key: &VerifyingKey,
-        unix_time: Duration,
-    ) -> Result<VerifiedCertificate<'a>> {
+    pub fn verify(&self, key: &VerifyingKey, unix_time: Duration) -> Result<VerifiedCertificate> {
         self.verify_time(unix_time)?;
         self.verify_signature(key)?;
 
         Ok(VerifiedCertificate {
-            _der_bytes: self.der_bytes,
-            _certificate: self.certificate,
-            _signature: self.signature,
-            _key: self.key,
+            _certificate: self.certificate.clone(),
+            key: self.key,
         })
     }
 
@@ -91,11 +96,21 @@ impl<'a> UnverifiedCertificate<'a> {
     }
 }
 
-/// Convert a DER-encoded certificate into an [`UnverifiedCertificate`].
-impl<'a> TryFrom<&'a [u8]> for UnverifiedCertificate<'a> {
+/// Convert a PEM-encoded certificate into an [`UnverifiedCertificate`].
+impl TryFrom<&str> for UnverifiedCertificate {
     type Error = Error;
 
-    fn try_from(der_bytes: &'a [u8]) -> ::core::result::Result<Self, Self::Error> {
+    fn try_from(pem: &str) -> ::core::result::Result<Self, Self::Error> {
+        let (_, der_bytes) = pem_rfc7468::decode_vec(pem.as_bytes())?;
+        Self::try_from(&der_bytes[..])
+    }
+}
+
+/// Convert a DER-encoded certificate into an [`UnverifiedCertificate`].
+impl TryFrom<&[u8]> for UnverifiedCertificate {
+    type Error = Error;
+
+    fn try_from(der_bytes: &[u8]) -> ::core::result::Result<Self, Self::Error> {
         let certificate = X509Certificate::from_der(der_bytes)?;
         let signature_bytes = certificate
             .signature
@@ -113,7 +128,7 @@ impl<'a> TryFrom<&'a [u8]> for UnverifiedCertificate<'a> {
         )
         .map_err(|_| Error::KeyDecoding)?;
         Ok(UnverifiedCertificate {
-            der_bytes,
+            der_bytes: der_bytes.to_vec(),
             certificate,
             signature,
             key,
@@ -123,15 +138,34 @@ impl<'a> TryFrom<&'a [u8]> for UnverifiedCertificate<'a> {
 
 #[cfg(test)]
 mod test {
-    extern crate alloc;
-
     use super::*;
+    use alloc::string::ToString;
     use const_oid::ObjectIdentifier;
     use yare::parameterized;
 
     const LEAF_CERT: &str = include_str!("../../data/tests/leaf_cert.pem");
     const PROCESSOR_CA: &str = include_str!("../../data/tests/processor_ca.pem");
     const ROOT_CA: &str = include_str!("../../data/tests/root_ca.pem");
+
+    #[parameterized(
+        root = { ROOT_CA },
+        processor = { PROCESSOR_CA },
+        leaf = { LEAF_CERT },
+    )]
+    fn try_from_pem(pem: &str) {
+        assert!(UnverifiedCertificate::try_from(pem).is_ok());
+    }
+
+    #[test]
+    fn try_from_bad_pem_errors() {
+        let pem = ROOT_CA.to_string();
+        let bad_pem = pem.replace("-----END CERTIFICATE-----", "");
+
+        assert!(matches!(
+            UnverifiedCertificate::try_from(bad_pem.as_str()),
+            Err(Error::PemDecoding(_))
+        ));
+    }
 
     #[parameterized(
         root = { ROOT_CA },
@@ -378,6 +412,41 @@ mod test {
 
         assert_eq!(
             root_cert.verify(&key, unix_time),
+            Err(Error::CertificateExpired)
+        );
+    }
+
+    #[test]
+    fn verify_self_signed_root_ca() {
+        let root_cert = UnverifiedCertificate::try_from(ROOT_CA)
+            .expect("Failed to decode certificate from PEM");
+
+        let unix_time = root_cert
+            .certificate
+            .tbs_certificate
+            .validity
+            .not_after
+            .to_unix_duration();
+
+        assert_eq!(root_cert.verify_self_signed(unix_time).is_ok(), true);
+    }
+
+    #[test]
+    fn verify_self_signed_root_ca_fails_when_expired() {
+        let root_cert = UnverifiedCertificate::try_from(ROOT_CA)
+            .expect("Failed to decode certificate from PEM");
+
+        let mut unix_time = root_cert
+            .certificate
+            .tbs_certificate
+            .validity
+            .not_after
+            .to_unix_duration();
+
+        unix_time += Duration::new(0, 1);
+
+        assert_eq!(
+            root_cert.verify_self_signed(unix_time),
             Err(Error::CertificateExpired)
         );
     }

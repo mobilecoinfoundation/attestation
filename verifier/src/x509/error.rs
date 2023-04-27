@@ -9,6 +9,8 @@ pub enum Error {
     CertificateExpired,
     /// An error occurred decoding the DER representation
     DerDecoding(x509_cert::der::Error),
+    /// An error occurred decoding the PEM representation
+    PemDecoding(pem_rfc7468::Error),
     /// The certificate is not yet valid
     CertificateNotYetValid,
     /// An error occurred decoding the key from a certificate
@@ -24,5 +26,11 @@ pub enum Error {
 impl From<x509_cert::der::Error> for Error {
     fn from(src: x509_cert::der::Error) -> Self {
         Error::DerDecoding(src)
+    }
+}
+
+impl From<pem_rfc7468::Error> for Error {
+    fn from(src: pem_rfc7468::Error) -> Self {
+        Error::PemDecoding(src)
     }
 }

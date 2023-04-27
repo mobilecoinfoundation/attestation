@@ -3,6 +3,7 @@
 // TODO: Remove dead_code exception once this is connected up to the rest of the codebase
 #![allow(dead_code)]
 mod certs;
+mod chain;
 mod crl;
 mod error;
 

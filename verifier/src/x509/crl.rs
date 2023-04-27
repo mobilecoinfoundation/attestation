@@ -2,7 +2,11 @@
 
 //! Certificate Revocation List (CRL) support.
 
+extern crate alloc;
+
 use super::{Error, Result};
+use alloc::borrow::ToOwned;
+use alloc::vec::Vec;
 use core::time::Duration;
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
@@ -12,10 +16,10 @@ use x509_cert::time::Time;
 
 /// A certificate revocation list (CRL).
 #[derive(Debug, PartialEq, Eq)]
-pub struct UnverifiedCrl<'a> {
+pub struct UnverifiedCrl {
     // In order to verify the signature, we need to access the original DER
     // bytes
-    der_bytes: &'a [u8],
+    der_bytes: Vec<u8>,
     crl: CertificateList,
     // The signature is persisted here since they are fallible
     // operations and it's more ergonomic to fail fast than fail later for a
@@ -30,12 +34,11 @@ pub struct UnverifiedCrl<'a> {
 
 /// A certificate whose signature has been verified.
 #[derive(Debug, PartialEq, Eq)]
-pub struct VerifiedCrl<'a> {
-    _der_bytes: &'a [u8],
+pub struct VerifiedCrl {
     _crl: CertificateList,
 }
 
-impl<'a> UnverifiedCrl<'a> {
+impl UnverifiedCrl {
     /// Verify the CRL signature is valid.
     ///
     /// # Arguments
@@ -47,14 +50,11 @@ impl<'a> UnverifiedCrl<'a> {
     ///     SystemTime::now().duration_since(UNIX_EPOCH)
     ///     ```
     ///   or equivalent
-    pub fn verify(self, key: &VerifyingKey, unix_time: Duration) -> Result<VerifiedCrl<'a>> {
+    pub fn verify(self, key: &VerifyingKey, unix_time: Duration) -> Result<VerifiedCrl> {
         self.verify_signature(key)?;
         self.verify_time(unix_time)?;
 
-        Ok(VerifiedCrl {
-            _der_bytes: self.der_bytes,
-            _crl: self.crl,
-        })
+        Ok(VerifiedCrl { _crl: self.crl })
     }
 
     fn verify_signature(&self, key: &VerifyingKey) -> Result<()> {
@@ -84,11 +84,21 @@ impl<'a> UnverifiedCrl<'a> {
     }
 }
 
-/// Convert a DER-encoded certificate into an [`UnverifiedCrl`].
-impl<'a> TryFrom<&'a [u8]> for UnverifiedCrl<'a> {
+/// Convert a PEM-encoded CRL into an [`UnverifiedCrl`].
+impl TryFrom<&str> for UnverifiedCrl {
     type Error = Error;
 
-    fn try_from(der_bytes: &'a [u8]) -> ::core::result::Result<Self, Self::Error> {
+    fn try_from(pem: &str) -> ::core::result::Result<Self, Self::Error> {
+        let (_, der_bytes) = pem_rfc7468::decode_vec(pem.as_bytes())?;
+        Self::try_from(&der_bytes[..])
+    }
+}
+
+/// Convert a DER-encoded CRL into an [`UnverifiedCrl`].
+impl TryFrom<&[u8]> for UnverifiedCrl {
+    type Error = Error;
+
+    fn try_from(der_bytes: &[u8]) -> ::core::result::Result<Self, Self::Error> {
         let crl = CertificateList::from_der(der_bytes)?;
         let signature_bytes = crl.signature.as_bytes().ok_or(Error::SignatureDecoding)?;
         let signature =
@@ -100,7 +110,7 @@ impl<'a> TryFrom<&'a [u8]> for UnverifiedCrl<'a> {
             .ok_or(Error::CrlMissingNextUpdate)?;
 
         Ok(UnverifiedCrl {
-            der_bytes,
+            der_bytes: der_bytes.to_owned(),
             crl,
             signature,
             next_update,
@@ -110,15 +120,37 @@ impl<'a> TryFrom<&'a [u8]> for UnverifiedCrl<'a> {
 
 #[cfg(test)]
 mod test {
-
     use super::super::certs::UnverifiedCertificate;
     use super::*;
+    use alloc::string::ToString;
+    use x509_cert::der::Decode;
+    use x509_cert::Certificate as X509Certificate;
 
     use yare::parameterized;
+
     const ROOT_CRL: &str = include_str!("../../data/tests/root_crl.pem");
     const ROOT_CA: &str = include_str!("../../data/tests/root_ca.pem");
     const PROCESSOR_CRL: &str = include_str!("../../data/tests/processor_crl.pem");
     const PROCESSOR_CA: &str = include_str!("../../data/tests/processor_ca.pem");
+
+    #[parameterized(
+        root = { ROOT_CRL },
+        processor = { PROCESSOR_CRL },
+    )]
+    fn try_from_pem(pem: &str) {
+        assert!(UnverifiedCrl::try_from(pem).is_ok());
+    }
+
+    #[test]
+    fn try_from_bad_pem_errors() {
+        let pem = ROOT_CRL.to_string();
+        let bad_pem = pem.replace("-----END X509 CRL-----", "");
+
+        assert!(matches!(
+            UnverifiedCrl::try_from(bad_pem.as_str()),
+            Err(Error::PemDecoding(_))
+        ));
+    }
 
     #[parameterized(
     root = { ROOT_CRL },
@@ -179,64 +211,66 @@ mod test {
         processor = { PROCESSOR_CA, PROCESSOR_CRL, },
     }]
     fn verify_crl(ca_pem: &str, crl_pem: &str) {
-        let (_, der_bytes) =
-            pem_rfc7468::decode_vec(ca_pem.as_bytes()).expect("Failed to decode DER from PEM");
-        let ca = UnverifiedCertificate::try_from(der_bytes.as_slice())
-            .expect("Failed to decode certificate from DER");
-
-        let (_, der_bytes) =
-            pem_rfc7468::decode_vec(crl_pem.as_bytes()).expect("Failed to decode DER from PEM");
-        let crl = UnverifiedCrl::try_from(der_bytes.as_slice()).expect("Failed to decode CRL");
+        let crl = UnverifiedCrl::try_from(crl_pem).expect("Failed to decode CRL");
         let unix_time = crl.crl.tbs_cert_list.this_update.to_unix_duration();
 
-        assert_eq!(crl.verify(&ca.key, unix_time).is_ok(), true);
+        let (_, der_bytes) =
+            pem_rfc7468::decode_vec(ca_pem.as_bytes()).expect("Failed decoding PEM");
+        let x509_cert =
+            X509Certificate::from_der(der_bytes.as_slice()).expect("Falied decoding DER");
+
+        let signing_key = VerifyingKey::from_sec1_bytes(
+            x509_cert
+                .tbs_certificate
+                .subject_public_key_info
+                .subject_public_key
+                .as_bytes()
+                .expect("Failed decoding key"),
+        )
+        .expect("Failed decoding key");
+
+        assert_eq!(crl.verify(&signing_key, unix_time).is_ok(), true);
     }
 
     #[test]
     fn verify_fails_with_wrong_key() {
-        let (_, der_bytes) =
-            pem_rfc7468::decode_vec(ROOT_CA.as_bytes()).expect("Failed to decode DER from PEM");
-        let ca = UnverifiedCertificate::try_from(der_bytes.as_slice())
-            .expect("Failed to decode certificate from DER");
-
-        let (_, der_bytes) = pem_rfc7468::decode_vec(PROCESSOR_CRL.as_bytes())
-            .expect("Failed to decode DER from PEM");
-        let crl = UnverifiedCrl::try_from(der_bytes.as_slice()).expect("Failed to decode CRL");
+        let crl = UnverifiedCrl::try_from(PROCESSOR_CRL).expect("Failed to decode CRL");
         let unix_time = crl.crl.tbs_cert_list.this_update.to_unix_duration();
 
+        let unverified_ca =
+            UnverifiedCertificate::try_from(ROOT_CA).expect("Failed to decode certificate");
+        let ca = unverified_ca
+            .verify_self_signed(unix_time)
+            .expect("Failed to verify certificate");
+
         assert_eq!(
-            crl.verify(&ca.key, unix_time),
+            crl.verify(&ca.public_key(), unix_time),
             Err(Error::SignatureVerification)
         );
     }
 
     #[test]
     fn clr_before_this_update_fails() {
-        let (_, der_bytes) =
-            pem_rfc7468::decode_vec(ROOT_CA.as_bytes()).expect("Failed to decode DER from PEM");
-        let ca = UnverifiedCertificate::try_from(der_bytes.as_slice())
-            .expect("Failed to decode certificate from DER");
-
-        let (_, der_bytes) =
-            pem_rfc7468::decode_vec(ROOT_CRL.as_bytes()).expect("Failed to decode DER from PEM");
-        let crl = UnverifiedCrl::try_from(der_bytes.as_slice()).expect("Failed to decode CRL");
+        let crl = UnverifiedCrl::try_from(ROOT_CRL).expect("Failed to decode CRL");
         let mut unix_time = crl.crl.tbs_cert_list.this_update.to_unix_duration();
+
+        let unverified_ca =
+            UnverifiedCertificate::try_from(ROOT_CA).expect("Failed to decode certificate");
+        let ca = unverified_ca
+            .verify_self_signed(unix_time)
+            .expect("Failed to verify certificate");
 
         unix_time -= Duration::from_nanos(1);
 
-        assert_eq!(crl.verify(&ca.key, unix_time), Err(Error::CrlNotYetValid));
+        assert_eq!(
+            crl.verify(&ca.public_key(), unix_time),
+            Err(Error::CrlNotYetValid)
+        );
     }
 
     #[test]
     fn clr_before_next_update_succeeds() {
-        let (_, der_bytes) =
-            pem_rfc7468::decode_vec(ROOT_CA.as_bytes()).expect("Failed to decode DER from PEM");
-        let ca = UnverifiedCertificate::try_from(der_bytes.as_slice())
-            .expect("Failed to decode certificate from DER");
-
-        let (_, der_bytes) =
-            pem_rfc7468::decode_vec(ROOT_CRL.as_bytes()).expect("Failed to decode DER from PEM");
-        let crl = UnverifiedCrl::try_from(der_bytes.as_slice()).expect("Failed to decode CRL");
+        let crl = UnverifiedCrl::try_from(ROOT_CRL).expect("Failed to decode CRL");
         let mut unix_time = crl
             .crl
             .tbs_cert_list
@@ -244,21 +278,20 @@ mod test {
             .expect("Expected a valid update time")
             .to_unix_duration();
 
+        let unverified_ca =
+            UnverifiedCertificate::try_from(ROOT_CA).expect("Failed to decode certificate");
+        let ca = unverified_ca
+            .verify_self_signed(unix_time)
+            .expect("Failed to verify certificate");
+
         unix_time -= Duration::from_nanos(1);
 
-        assert_eq!(crl.verify(&ca.key, unix_time).is_ok(), true);
+        assert_eq!(crl.verify(&ca.public_key(), unix_time).is_ok(), true);
     }
 
     #[test]
     fn clr_at_next_update_fails() {
-        let (_, der_bytes) =
-            pem_rfc7468::decode_vec(ROOT_CA.as_bytes()).expect("Failed to decode DER from PEM");
-        let ca = UnverifiedCertificate::try_from(der_bytes.as_slice())
-            .expect("Failed to decode certificate from DER");
-
-        let (_, der_bytes) =
-            pem_rfc7468::decode_vec(ROOT_CRL.as_bytes()).expect("Failed to decode DER from PEM");
-        let crl = UnverifiedCrl::try_from(der_bytes.as_slice()).expect("Failed to decode CRL");
+        let crl = UnverifiedCrl::try_from(ROOT_CRL).expect("Failed to decode CRL");
         let unix_time = crl
             .crl
             .tbs_cert_list
@@ -266,6 +299,15 @@ mod test {
             .expect("Expected a valid update time")
             .to_unix_duration();
 
-        assert_eq!(crl.verify(&ca.key, unix_time), Err(Error::CrlExpired));
+        let unverified_ca =
+            UnverifiedCertificate::try_from(ROOT_CA).expect("Failed to decode certificate");
+        let ca = unverified_ca
+            .verify_self_signed(unix_time)
+            .expect("Failed to verify certificate");
+
+        assert_eq!(
+            crl.verify(&ca.public_key(), unix_time),
+            Err(Error::CrlExpired)
+        );
     }
 }
