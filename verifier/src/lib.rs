@@ -164,7 +164,8 @@ impl<'a, T> DisplayableCtOption<'a, T> for CtOption<T> {
 }
 
 #[derive(Debug, Clone)]
-/// Helper struct for displaying [`CtOption`] with [`format!`] and `{}`.
+/// Helper struct for displaying [`CtOption`] with
+/// [`format`](https://doc.rust-lang.org/std/macro.format.html) and `{}`.
 pub struct CtOptionDisplay<'a, T>(&'a CtOption<T>);
 impl<'a, T: DisplayableError> CtOptionDisplay<'a, T> {
     /// Format the instance with preceding padding
