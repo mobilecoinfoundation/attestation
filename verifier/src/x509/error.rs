@@ -13,6 +13,8 @@ pub enum Error {
     PemDecoding(pem_rfc7468::Error),
     /// The certificate is not yet valid
     CertificateNotYetValid,
+    /// The certificate has been revoked
+    CertificateRevoked,
     /// An error occurred decoding the key from a certificate
     KeyDecoding,
     /// The certificate revocation list has expired

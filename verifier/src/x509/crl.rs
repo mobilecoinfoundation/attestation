@@ -12,6 +12,8 @@ use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
 use x509_cert::crl::CertificateList;
 use x509_cert::der::{Decode, Encode};
+use x509_cert::name::Name;
+use x509_cert::serial_number::SerialNumber;
 use x509_cert::time::Time;
 
 /// A certificate revocation list (CRL).
@@ -32,12 +34,6 @@ pub struct UnverifiedCrl {
     next_update: Time,
 }
 
-/// A certificate whose signature has been verified.
-#[derive(Debug, PartialEq, Eq)]
-pub struct VerifiedCrl {
-    _crl: CertificateList,
-}
-
 impl UnverifiedCrl {
     /// Verify the CRL signature is valid.
     ///
@@ -50,11 +46,18 @@ impl UnverifiedCrl {
     ///     SystemTime::now().duration_since(UNIX_EPOCH)
     ///     ```
     ///   or equivalent
-    pub fn verify(self, key: &VerifyingKey, unix_time: Duration) -> Result<VerifiedCrl> {
+    pub fn verify(&self, key: &VerifyingKey, unix_time: Duration) -> Result<VerifiedCrl> {
         self.verify_signature(key)?;
         self.verify_time(unix_time)?;
 
-        Ok(VerifiedCrl { _crl: self.crl })
+        Ok(VerifiedCrl {
+            crl: self.crl.clone(),
+        })
+    }
+
+    /// Get the issuer of the CRL
+    pub fn issuer(&self) -> &Name {
+        &self.crl.tbs_cert_list.issuer
     }
 
     fn verify_signature(&self, key: &VerifyingKey) -> Result<()> {
@@ -115,6 +118,25 @@ impl TryFrom<&[u8]> for UnverifiedCrl {
             signature,
             next_update,
         })
+    }
+}
+
+/// A certificate whose signature has been verified.
+#[derive(Debug, PartialEq, Eq)]
+pub struct VerifiedCrl {
+    crl: CertificateList,
+}
+
+impl VerifiedCrl {
+    /// Is a certificate (serial number) revoked?
+    pub fn is_cert_revoked(&self, serial_number: &SerialNumber) -> bool {
+        let revoked_certs = match &self.crl.tbs_cert_list.revoked_certificates {
+            None => return false,
+            Some(revoked_certs) => revoked_certs,
+        };
+        revoked_certs
+            .iter()
+            .any(|r| r.serial_number == *serial_number)
     }
 }
 
