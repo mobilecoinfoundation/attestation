@@ -14,3 +14,6 @@
 * `processor_crl.pem` - CRL for the processor CA in a certificate chain. This
   was retrieved from
   <https://api.trustedservices.intel.com/sgx/certification/v4/pckcrl?ca=processor>.
+* The `pkits` directory contains test data from the NIST PKITS test suite.
+  See <https://csrc.nist.gov/projects/pki-testing> for more information.
+* The `pub_keys` directory contains some pre-canned public keys.

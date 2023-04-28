@@ -4,11 +4,10 @@
 
 extern crate alloc;
 
+use super::algorithm::{PublicKey, Signature};
 use super::{Error, Result};
 use alloc::vec::Vec;
 use core::time::Duration;
-use p256::ecdsa::signature::Verifier;
-use p256::ecdsa::{Signature, VerifyingKey};
 use x509_cert::der::{Decode, Encode};
 use x509_cert::name::Name;
 use x509_cert::serial_number::SerialNumber;
@@ -25,7 +24,7 @@ pub struct UnverifiedCertificate {
     // operations and it's more ergonomic to fail fast than fail later for a
     // bad key or signature
     signature: Signature,
-    key: VerifyingKey,
+    key: PublicKey,
 }
 
 impl UnverifiedCertificate {
@@ -44,17 +43,17 @@ impl UnverifiedCertificate {
     ///     SystemTime::now().duration_since(UNIX_EPOCH)
     ///     ```
     ///   or equivalent
-    pub fn verify(&self, key: &VerifyingKey, unix_time: Duration) -> Result<VerifiedCertificate> {
+    pub fn verify(&self, key: &PublicKey, unix_time: Duration) -> Result<VerifiedCertificate> {
         self.verify_time(unix_time)?;
         self.verify_signature(key)?;
 
         Ok(VerifiedCertificate {
             certificate: self.certificate.clone(),
-            key: self.key,
+            key: self.key.clone(),
         })
     }
 
-    fn verify_signature(&self, key: &VerifyingKey) -> Result<()> {
+    fn verify_signature(&self, key: &PublicKey) -> Result<()> {
         let tbs_size = u32::from(self.certificate.tbs_certificate.encoded_len()?) as usize;
         let signature_size = u32::from(self.certificate.signature.encoded_len()?) as usize;
         let algorithm_size =
@@ -105,17 +104,11 @@ impl TryFrom<&[u8]> for UnverifiedCertificate {
             .signature
             .as_bytes()
             .ok_or(Error::SignatureDecoding)?;
-        let signature =
-            Signature::from_der(signature_bytes).map_err(|_| Error::SignatureDecoding)?;
-        let key = VerifyingKey::from_sec1_bytes(
-            certificate
-                .tbs_certificate
-                .subject_public_key_info
-                .subject_public_key
-                .as_bytes()
-                .ok_or(Error::KeyDecoding)?,
-        )
-        .map_err(|_| Error::KeyDecoding)?;
+        let signature = Signature::try_from_algorithm_and_signature(
+            &certificate.signature_algorithm,
+            signature_bytes,
+        )?;
+        let key = PublicKey::try_from(&certificate.tbs_certificate.subject_public_key_info)?;
         Ok(UnverifiedCertificate {
             der_bytes: der_bytes.to_vec(),
             certificate,
@@ -129,7 +122,7 @@ impl TryFrom<&[u8]> for UnverifiedCertificate {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct VerifiedCertificate {
     certificate: X509Certificate,
-    key: VerifyingKey,
+    key: PublicKey,
 }
 
 impl VerifiedCertificate {
@@ -150,8 +143,8 @@ impl VerifiedCertificate {
     }
 
     /// Get the public signing key of the certificate
-    pub fn public_key(&self) -> VerifyingKey {
-        self.key
+    pub fn public_key(&self) -> &PublicKey {
+        &self.key
     }
 
     /// Get the subject name of the certificate
@@ -264,15 +257,12 @@ mod test {
 
     #[test]
     fn verify_root_certificate() {
-        let root = ROOT_CA;
-        let (_, der_bytes) =
-            pem_rfc7468::decode_vec(root.as_bytes()).expect("Failed to decode DER from PEM");
-        let cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
-            .expect("Failed to decode certificate from DER");
+        let cert = UnverifiedCertificate::try_from(ROOT_CA)
+            .expect("Failed to decode certificate from PEM");
 
         // The root certificate is self-signed, ideally this key will be stored
         // by the application.
-        let key = cert.key;
+        let key = cert.key.clone();
         let unix_time = cert
             .certificate
             .tbs_certificate
@@ -285,11 +275,8 @@ mod test {
 
     #[test]
     fn verify_intermediate_certificate() {
-        let root = ROOT_CA;
-        let (_, der_bytes) =
-            pem_rfc7468::decode_vec(root.as_bytes()).expect("Failed to decode DER from PEM");
-        let root_cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
-            .expect("Failed to decode certificate from DER");
+        let root_cert = UnverifiedCertificate::try_from(ROOT_CA)
+            .expect("Failed to decode certificate from PEM");
 
         let (_, der_bytes) = pem_rfc7468::decode_vec(PROCESSOR_CA.as_bytes())
             .expect("Failed to decode DER from PEM");
@@ -332,11 +319,8 @@ mod test {
 
     #[test]
     fn verify_certificate_fails_with_wrong_key() {
-        let intermediate = PROCESSOR_CA;
-        let (_, der_bytes) = pem_rfc7468::decode_vec(intermediate.as_bytes())
-            .expect("Failed to decode DER from PEM");
-        let intermediate_cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
-            .expect("Failed to decode certificate from DER");
+        let intermediate_cert = UnverifiedCertificate::try_from(PROCESSOR_CA)
+            .expect("Failed to decode certificate from PEM");
 
         let unix_time = intermediate_cert
             .certificate
@@ -347,7 +331,7 @@ mod test {
 
         // The intermediate cert should *not* be self signed so using it's key
         // should fail verification
-        let key = intermediate_cert.key;
+        let key = intermediate_cert.key.clone();
 
         assert_eq!(
             intermediate_cert.verify(&key, unix_time),
@@ -357,13 +341,10 @@ mod test {
 
     #[test]
     fn verify_certificate_succeeds_at_not_before_time() {
-        let root = textwrap::dedent(ROOT_CA);
-        let (_, der_bytes) =
-            pem_rfc7468::decode_vec(root.trim().as_bytes()).expect("Failed to decode DER from PEM");
-        let root_cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
-            .expect("Failed to decode certificate from DER");
+        let root_cert = UnverifiedCertificate::try_from(ROOT_CA)
+            .expect("Failed to decode certificate from PEM");
 
-        let key = root_cert.key;
+        let key = root_cert.key.clone();
 
         let unix_time = root_cert
             .certificate
@@ -377,13 +358,10 @@ mod test {
 
     #[test]
     fn verify_certificate_succeeds_at_not_after_time() {
-        let root = textwrap::dedent(ROOT_CA);
-        let (_, der_bytes) =
-            pem_rfc7468::decode_vec(root.trim().as_bytes()).expect("Failed to decode DER from PEM");
-        let root_cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
-            .expect("Failed to decode certificate from DER");
+        let root_cert = UnverifiedCertificate::try_from(ROOT_CA)
+            .expect("Failed to decode certificate from PEM");
 
-        let key = root_cert.key;
+        let key = root_cert.key.clone();
 
         let unix_time = root_cert
             .certificate
@@ -397,13 +375,10 @@ mod test {
 
     #[test]
     fn verify_certificate_fails_for_before_time() {
-        let root = textwrap::dedent(ROOT_CA);
-        let (_, der_bytes) =
-            pem_rfc7468::decode_vec(root.trim().as_bytes()).expect("Failed to decode DER from PEM");
-        let root_cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
-            .expect("Failed to decode certificate from DER");
+        let root_cert = UnverifiedCertificate::try_from(ROOT_CA)
+            .expect("Failed to decode certificate from PEM");
 
-        let key = root_cert.key;
+        let key = root_cert.key.clone();
 
         let mut unix_time = root_cert
             .certificate
@@ -422,13 +397,10 @@ mod test {
 
     #[test]
     fn verify_certificate_fails_for_after_time() {
-        let root = textwrap::dedent(ROOT_CA);
-        let (_, der_bytes) =
-            pem_rfc7468::decode_vec(root.trim().as_bytes()).expect("Failed to decode DER from PEM");
-        let root_cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
-            .expect("Failed to decode certificate from DER");
+        let root_cert = UnverifiedCertificate::try_from(ROOT_CA)
+            .expect("Failed to decode certificate from PEM");
 
-        let key = root_cert.key;
+        let key = root_cert.key.clone();
 
         let mut unix_time = root_cert
             .certificate

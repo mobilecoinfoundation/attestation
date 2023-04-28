@@ -5,11 +5,10 @@
 extern crate alloc;
 
 use super::{Error, Result};
+use crate::x509::algorithm::{PublicKey, Signature};
 use alloc::borrow::ToOwned;
 use alloc::vec::Vec;
 use core::time::Duration;
-use p256::ecdsa::signature::Verifier;
-use p256::ecdsa::{Signature, VerifyingKey};
 use x509_cert::crl::CertificateList;
 use x509_cert::der::{Decode, Encode};
 use x509_cert::name::Name;
@@ -46,7 +45,7 @@ impl UnverifiedCrl {
     ///     SystemTime::now().duration_since(UNIX_EPOCH)
     ///     ```
     ///   or equivalent
-    pub fn verify(&self, key: &VerifyingKey, unix_time: Duration) -> Result<VerifiedCrl> {
+    pub fn verify(&self, key: &PublicKey, unix_time: Duration) -> Result<VerifiedCrl> {
         self.verify_signature(key)?;
         self.verify_time(unix_time)?;
 
@@ -60,7 +59,7 @@ impl UnverifiedCrl {
         &self.crl.tbs_cert_list.issuer
     }
 
-    fn verify_signature(&self, key: &VerifyingKey) -> Result<()> {
+    fn verify_signature(&self, key: &PublicKey) -> Result<()> {
         let tbs_size = u32::from(self.crl.tbs_cert_list.encoded_len()?) as usize;
         let signature_size = u32::from(self.crl.signature.encoded_len()?) as usize;
         let algorithm_size = u32::from(self.crl.signature_algorithm.encoded_len()?) as usize;
@@ -105,7 +104,7 @@ impl TryFrom<&[u8]> for UnverifiedCrl {
         let crl = CertificateList::from_der(der_bytes)?;
         let signature_bytes = crl.signature.as_bytes().ok_or(Error::SignatureDecoding)?;
         let signature =
-            Signature::from_der(signature_bytes).map_err(|_| Error::SignatureDecoding)?;
+            Signature::try_from_algorithm_and_signature(&crl.signature_algorithm, signature_bytes)?;
 
         let next_update = crl
             .tbs_cert_list
@@ -145,7 +144,7 @@ mod test {
     use super::super::certs::UnverifiedCertificate;
     use super::*;
     use alloc::string::ToString;
-    use x509_cert::der::Decode;
+    use x509_cert::der::{Decode, DecodePem};
     use x509_cert::Certificate as X509Certificate;
 
     use yare::parameterized;
@@ -236,20 +235,10 @@ mod test {
         let crl = UnverifiedCrl::try_from(crl_pem).expect("Failed to decode CRL");
         let unix_time = crl.crl.tbs_cert_list.this_update.to_unix_duration();
 
-        let (_, der_bytes) =
-            pem_rfc7468::decode_vec(ca_pem.as_bytes()).expect("Failed decoding PEM");
-        let x509_cert =
-            X509Certificate::from_der(der_bytes.as_slice()).expect("Falied decoding DER");
+        let x509_cert = X509Certificate::from_pem(ca_pem).expect("Failed decoding PEM");
 
-        let signing_key = VerifyingKey::from_sec1_bytes(
-            x509_cert
-                .tbs_certificate
-                .subject_public_key_info
-                .subject_public_key
-                .as_bytes()
-                .expect("Failed decoding key"),
-        )
-        .expect("Failed decoding key");
+        let signing_key = PublicKey::try_from(&x509_cert.tbs_certificate.subject_public_key_info)
+            .expect("Failed decoding key");
 
         assert_eq!(crl.verify(&signing_key, unix_time).is_ok(), true);
     }

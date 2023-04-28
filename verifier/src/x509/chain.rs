@@ -6,11 +6,11 @@ extern crate alloc;
 
 use super::certs::UnverifiedCertificate;
 use super::{Error, Result};
+use crate::x509::algorithm::PublicKey;
 use crate::x509::certs::VerifiedCertificate;
 use crate::x509::crl::UnverifiedCrl;
 use alloc::vec::Vec;
 use core::time::Duration;
-use p256::ecdsa::VerifyingKey;
 
 /// An X509 certificate chain. This is a valid path from the trust root to the
 /// leaf certificate.
@@ -50,15 +50,15 @@ impl CertificateChain {
         trust_anchor: &VerifiedCertificate,
         unix_time: Duration,
         crls: &[UnverifiedCrl],
-    ) -> Result<VerifyingKey> {
+    ) -> Result<PublicKey> {
         let mut signing_cert = trust_anchor.clone();
         for cert in &self.certificates {
             let key = signing_cert.public_key();
-            let verified_cert = cert.verify(&key, unix_time)?;
+            let verified_cert = cert.verify(key, unix_time)?;
             verify_certificate_not_revoked(&verified_cert, &signing_cert, crls, unix_time)?;
             signing_cert = verified_cert;
         }
-        Ok(signing_cert.public_key())
+        Ok(signing_cert.public_key().clone())
     }
 }
 
@@ -80,6 +80,24 @@ impl TryFrom<&[&str]> for CertificateChain {
     }
 }
 
+/// Convert a series DER-encoded certificates into a [`CertificateChain`].
+///
+/// The DERs must be in order from the trust anchor to the leaf certificate.
+impl TryFrom<&[&[u8]]> for CertificateChain {
+    type Error = Error;
+
+    fn try_from(ders: &[&[u8]]) -> ::core::result::Result<Self, Self::Error> {
+        let certificates = ders
+            .iter()
+            .map(|der| UnverifiedCertificate::try_from(*der))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(Self { certificates })
+    }
+}
+
 fn verify_certificate_not_revoked(
     cert: &VerifiedCertificate,
     trust_anchor: &VerifiedCertificate,
@@ -88,7 +106,7 @@ fn verify_certificate_not_revoked(
 ) -> Result<()> {
     for crl in crls {
         if crl.issuer() == trust_anchor.subject_name() {
-            let verified_crl = crl.verify(&trust_anchor.public_key(), unix_time)?;
+            let verified_crl = crl.verify(trust_anchor.public_key(), unix_time)?;
             if verified_crl.is_cert_revoked(cert.serial_number()) {
                 return Err(Error::CertificateRevoked);
             }
@@ -100,11 +118,10 @@ fn verify_certificate_not_revoked(
 
 #[cfg(test)]
 mod test {
-    use super::super::Error;
     use super::*;
 
     use x509_cert::crl::CertificateList;
-    use x509_cert::der::Decode;
+    use x509_cert::der::{Decode, DecodePem};
     use x509_cert::Certificate as X509Certificate;
     use yare::parameterized;
 
@@ -114,20 +131,13 @@ mod test {
     const ROOT_CRL: &str = include_str!("../../data/tests/root_crl.pem");
     const PROCESSOR_CRL: &str = include_str!("../../data/tests/processor_crl.pem");
 
-    fn key_and_start_time(cert: &str) -> (VerifyingKey, Duration) {
-        let (_, der_bytes) = pem_rfc7468::decode_vec(cert.as_bytes()).expect("Failed decoding PEM");
-        let cert = X509Certificate::from_der(der_bytes.as_slice()).expect("Falied decoding DER");
+    fn key_and_start_time(cert: &str) -> (PublicKey, Duration) {
+        let cert = X509Certificate::from_pem(cert).expect("Failed decoding PEM");
 
         // The leaf certificate should have the narrowest time range.
         let unix_time = cert.tbs_certificate.validity.not_before.to_unix_duration();
-        let key = VerifyingKey::from_sec1_bytes(
-            cert.tbs_certificate
-                .subject_public_key_info
-                .subject_public_key
-                .as_bytes()
-                .expect("Failed decoding key"),
-        )
-        .expect("Failed decoding key");
+        let key = PublicKey::try_from(&cert.tbs_certificate.subject_public_key_info)
+            .expect("failed decoding key");
 
         (key, unix_time)
     }
@@ -201,7 +211,7 @@ mod test {
     }
 
     #[test]
-    fn certifiate_chain_with_crls() {
+    fn certificate_chain_with_crls() {
         let chain = CertificateChain::try_from([ROOT_CA, PROCESSOR_CA, LEAF_CERT].as_slice())
             .expect("Failed decoding pems");
 
@@ -215,7 +225,7 @@ mod test {
         // CRLs are often only for a month, while certs are for years, so use CRL's time
         let (_, der_bytes) =
             pem_rfc7468::decode_vec(PROCESSOR_CRL.as_bytes()).expect("Failed decoding PEM");
-        let crl = CertificateList::from_der(der_bytes.as_slice()).expect("Falied decoding DER");
+        let crl = CertificateList::from_der(der_bytes.as_slice()).expect("Failed decoding DER");
         let mut unix_time = crl
             .tbs_cert_list
             .next_update
@@ -244,7 +254,7 @@ mod test {
 
         let (_, der_bytes) =
             pem_rfc7468::decode_vec(PROCESSOR_CRL.as_bytes()).expect("Failed decoding PEM");
-        let crl = CertificateList::from_der(der_bytes.as_slice()).expect("Falied decoding DER");
+        let crl = CertificateList::from_der(der_bytes.as_slice()).expect("Failed decoding DER");
         let unix_time = crl
             .tbs_cert_list
             .next_update
@@ -258,5 +268,69 @@ mod test {
             chain.signing_key(&root, unix_time, crls.as_slice()),
             Err(Error::CrlExpired)
         );
+    }
+}
+
+#[cfg(test)]
+mod pkits {
+    use super::*;
+
+    use x509_cert::crl::CertificateList;
+    use x509_cert::der::Decode;
+    use x509_cert::Certificate as X509Certificate;
+
+    const TRUST_ANCHOR_ROOT_CERTIFICATE: &[u8] =
+        include_bytes!("../../data/tests/pkits/certs/TrustAnchorRootCertificate.crt");
+    const GOOD_CA_CERT: &[u8] = include_bytes!("../../data/tests/pkits/certs/GoodCACert.crt");
+    const VALID_CERTIFICATE_PATH_TEST_1EE: &[u8] =
+        include_bytes!("../../data/tests/pkits/certs/ValidCertificatePathTest1EE.crt");
+    const TRUST_ANCHOR_ROOT_CRL: &[u8] =
+        include_bytes!("../../data/tests/pkits/crls/TrustAnchorRootCRL.crl");
+    const GOOD_CA_CRL: &[u8] = include_bytes!("../../data/tests/pkits/crls/GoodCACRL.crl");
+
+    fn chain_and_leaf_key(certs: &[&[u8]]) -> (CertificateChain, PublicKey) {
+        let chain = CertificateChain::try_from(certs).expect("Failed decoding certs");
+
+        let leaf_der = certs.last().expect("Should be at least one cert");
+        let leaf_cert = X509Certificate::from_der(leaf_der).expect("Falied decoding DER");
+        let key = PublicKey::try_from(&leaf_cert.tbs_certificate.subject_public_key_info)
+            .expect("Failed decoding key");
+
+        (chain, key)
+    }
+
+    fn crls_and_time(der_crls: &[&[u8]]) -> (Vec<UnverifiedCrl>, Duration) {
+        let crls = der_crls
+            .iter()
+            .map(|crl| UnverifiedCrl::try_from(*crl).expect("Failed decoding CRL"))
+            .collect::<Vec<_>>();
+
+        let last_der = der_crls.last().expect("Should be at least one CRL");
+        let crl = CertificateList::from_der(last_der).expect("Falied decoding DER");
+        let unix_time = crl.tbs_cert_list.this_update.to_unix_duration();
+        (crls, unix_time)
+    }
+
+    #[test]
+    fn valid_signatures_test_1_4_1_1() {
+        let (chain, expected_key) = chain_and_leaf_key(
+            [
+                TRUST_ANCHOR_ROOT_CERTIFICATE,
+                GOOD_CA_CERT,
+                VALID_CERTIFICATE_PATH_TEST_1EE,
+            ]
+            .as_slice(),
+        );
+        let (crls, unix_time) = crls_and_time([TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL].as_slice());
+
+        let root = chain.certificates[0]
+            .verify_self_signed(unix_time)
+            .expect("Failed verifying root");
+
+        let signing_key = chain
+            .signing_key(&root, unix_time, crls.as_slice())
+            .expect("Failed getting signing key");
+
+        assert_eq!(signing_key, expected_key);
     }
 }
