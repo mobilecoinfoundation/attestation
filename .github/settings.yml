@@ -82,7 +82,8 @@ branches:
     protection:
       required_pull_request_reviews:
         require_code_owner_reviews: true
-        required_approving_review_count: 1
+        required_approving_review_count: 2
+        dismissal_restrictions: null
       required_conversation_resolution: true
       required_status_checks:
         strict: false
