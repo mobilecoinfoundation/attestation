@@ -1,4 +1,4 @@
-# Test data for `mc-attestation-verifier`
+# Test data for `mc-attestation-verifier` unit tests
 
 * `root_ca.pem` - Root CA of a certificate chain. This is a copy of an Intel
   root CA which was in an actual hardware quote.
@@ -14,6 +14,4 @@
 * `processor_crl.pem` - CRL for the processor CA in a certificate chain. This
   was retrieved from
   <https://api.trustedservices.intel.com/sgx/certification/v4/pckcrl?ca=processor>.
-* The `pkits` directory contains test data from the NIST PKITS test suite.
-  See <https://csrc.nist.gov/projects/pki-testing> for more information.
 * The `pub_keys` directory contains some pre-canned public keys.

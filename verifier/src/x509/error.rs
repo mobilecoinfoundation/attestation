@@ -1,3 +1,8 @@
+// Copyright (c) 2023 The MobileCoin Foundation
+
+/// Result type for certificate processing
+pub type Result<T> = core::result::Result<T, Error>;
+
 /// Error type for decoding and verifying certificates.
 #[derive(Debug, displaydoc::Display, PartialEq, Eq)]
 pub enum Error {

@@ -28,6 +28,8 @@ pub struct UnverifiedCertificate {
 }
 
 impl UnverifiedCertificate {
+    /// Verify a self signed certificate has its own signature and that the
+    /// `unix_time` is valid.
     pub fn verify_self_signed(&self, unix_time: Duration) -> Result<VerifiedCertificate> {
         self.verify(&self.key, unix_time)
     }

@@ -26,7 +26,9 @@ const OID_SIG_ECDSA_WITH_SHA256: ObjectIdentifier =
 /// Public key used in PKI signature verification
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum PublicKey {
+    /// Elliptic curve public key
     Ecdsa(ecdsa::VerifyingKey),
+    /// RSA public key
     Rsa(rsa::RsaPublicKey),
 }
 
@@ -81,7 +83,9 @@ impl TryFrom<&SubjectPublicKeyInfoOwned> for PublicKey {
 /// Signature used in PKI verification
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Signature {
+    /// Elliptic curve signature
     Ecdsa(ecdsa::Signature),
+    /// RSA signature
     Rsa(Vec<u8>),
 }
 

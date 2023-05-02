@@ -6,8 +6,10 @@
 
 mod report_body;
 mod struct_name;
+
+/// X509 certificate processing
 #[cfg(feature = "alloc")]
-mod x509;
+pub mod x509;
 
 pub use report_body::{
     AttributesVerifier, ConfigIdVerifier, ConfigSvnVerifier, CpuSvnVerifier,

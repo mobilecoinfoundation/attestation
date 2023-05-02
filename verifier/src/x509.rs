@@ -9,5 +9,8 @@ mod chain;
 mod crl;
 mod error;
 
-pub use error::Error;
-pub type Result<T> = core::result::Result<T, Error>;
+pub use algorithm::{PublicKey, Signature};
+pub use certs::{UnverifiedCertificate, VerifiedCertificate};
+pub use chain::CertificateChain;
+pub use crl::UnverifiedCrl;
+pub use error::{Error, Result};
