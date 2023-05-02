@@ -4,7 +4,7 @@
   root CA which was in an actual hardware quote.
 * `processor_ca.pem` - Processor CA in a certificate chain. This is a copy
   of an Intel intermediate CA which was in an actual hardware quote. There are
-  two types of certificate chains "processor" and "platform". "Platform" isn't
+  two types of certificate chains: "processor" and "platform". "Platform" isn't
   currently used by Intel.
 * `leaf_cert.pem` - Leaf of a certificate chain. This is a copy of an Intel
   leaf certificate which was in an actual hardware quote.
