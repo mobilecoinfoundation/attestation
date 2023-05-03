@@ -133,6 +133,19 @@ pub enum VerificationError {
 
 impl DisplayableError for VerificationError {}
 
+/// Trait to display the output of a [`Verifier<T>`]
+///
+/// # Examples
+/// ```
+/// TODO: FILL OUT
+/// ```
+pub trait VerifierOutputDisplay<'v, 'e, E> {
+    /// Displays the output of a [`Verifier<T>`]
+    fn display(&'v self, error: &'e CtOption<E>, f: &mut Formatter) -> core::fmt::Result
+        where
+            Self: Sized;
+}
+
 /// Trait to convert a [`CtOption<T>`] into a [`CtOptionDisplay<'a, T>`].
 ///
 /// # Examples

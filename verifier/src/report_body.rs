@@ -3,7 +3,7 @@
 //! Verifiers which operate on the [`ReportBody`]
 
 use crate::struct_name::SpacedStructName;
-use crate::{VerificationError, Verifier};
+use crate::{CtOptionDisplay, DisplayableError, VerificationError, Verifier, VerifierOutputDisplay};
 use core::fmt::{Debug, Display, Formatter};
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
@@ -70,9 +70,8 @@ trait IntoVerificationError {
     fn into_verification_error(expected: Self, actual: Self) -> VerificationError;
 }
 
-/// Common implementation for [`Verifier`]s that test for equality between
-/// an expected and actual value.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+/// Common implementation for [`Verifier`]s that test for equality between an expected and actual value.
+#[derive(Clone, Debug, displaydoc::Display, Eq, Hash, PartialEq)]
 pub struct EqualityVerifier<T> {
     expected: T,
 }
@@ -109,6 +108,24 @@ where
         // TODO - This should be a constant time comparison.
         let is_some = if expected == actual { 0 } else { 1 };
         CtOption::new(T::into_verification_error(expected, actual), is_some.into())
+    }
+}
+
+impl<'v, 'e, T, E> VerifierOutputDisplay<'v, 'e, E> for EqualityVerifier<T>
+    where
+        T: Display,
+        E: DisplayableError,
+{
+    fn display(&'v self, error: &'e CtOption<E>, f: &mut Formatter) -> core::fmt::Result
+        where
+            Self: Sized,
+    {
+        let error_display = CtOptionDisplay::from(error);
+        if error.is_some().unwrap_u8() == 1u8 {
+            write!(f, "[ ] {self}, found {error_display}")
+        } else {
+           write!(f, "[x] {self}")
+        }
     }
 }
 
