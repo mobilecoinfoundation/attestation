@@ -28,6 +28,8 @@ pub enum Error {
     CrlNotYetValid,
     /// Certificate revocation list missing next update time
     CrlMissingNextUpdate,
+    /// Issuer name does not match CAs subject name
+    NameChaining,
 }
 
 impl From<x509_cert::der::Error> for Error {

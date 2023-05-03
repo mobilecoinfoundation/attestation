@@ -8,6 +8,8 @@ mod certs;
 mod chain;
 mod crl;
 mod error;
+mod name;
+mod rfc4518;
 
 pub use algorithm::{PublicKey, Signature};
 pub use certs::{UnverifiedCertificate, VerifiedCertificate};

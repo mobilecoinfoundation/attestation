@@ -155,6 +155,11 @@ impl VerifiedCertificate {
         &self.key
     }
 
+    /// Get the issuer of the certificate
+    pub fn issuer(&self) -> &Name {
+        &self.certificate.tbs_certificate.issuer
+    }
+
     /// Get the subject name of the certificate
     pub fn subject_name(&self) -> &Name {
         &self.certificate.tbs_certificate.subject

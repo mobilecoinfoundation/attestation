@@ -9,6 +9,7 @@ use super::{Error, Result};
 use crate::x509::algorithm::PublicKey;
 use crate::x509::certs::VerifiedCertificate;
 use crate::x509::crl::UnverifiedCrl;
+use crate::x509::name::DistinguishedName;
 use alloc::vec::Vec;
 use core::time::Duration;
 
@@ -56,6 +57,7 @@ impl CertificateChain {
         for cert in &self.certificates {
             let key = signing_cert.public_key();
             let verified_cert = cert.verify(key, unix_time)?;
+            verify_name_chain(&verified_cert, &signing_cert)?;
             verify_certificate_not_revoked(&verified_cert, &signing_cert, crls, unix_time)?;
             signing_cert = verified_cert;
         }
@@ -105,15 +107,28 @@ impl TryFrom<&[&[u8]]> for CertificateChain {
     }
 }
 
+/// Ensures the issuer matches the subject as specified in
+/// https://datatracker.ietf.org/doc/html/rfc5280#section-7.1
+fn verify_name_chain(cert: &VerifiedCertificate, ca: &VerifiedCertificate) -> Result<()> {
+    let issuer = DistinguishedName::from(cert.issuer());
+    let subject = DistinguishedName::from(ca.subject_name());
+
+    if issuer == subject {
+        Ok(())
+    } else {
+        Err(Error::NameChaining)
+    }
+}
+
 fn verify_certificate_not_revoked(
     cert: &VerifiedCertificate,
-    trust_anchor: &VerifiedCertificate,
+    ca: &VerifiedCertificate,
     crls: &[UnverifiedCrl],
     unix_time: Duration,
 ) -> Result<()> {
     for crl in crls {
-        if crl.issuer() == trust_anchor.subject_name() {
-            let verified_crl = crl.verify(trust_anchor.public_key(), unix_time)?;
+        if crl.issuer() == ca.subject_name() {
+            let verified_crl = crl.verify(ca.public_key(), unix_time)?;
             if verified_crl.is_cert_revoked(cert.serial_number()) {
                 return Err(Error::CertificateRevoked);
             }
