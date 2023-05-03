@@ -120,6 +120,12 @@ impl TryFrom<&[u8]> for UnverifiedCertificate {
     }
 }
 
+impl AsRef<X509Certificate> for UnverifiedCertificate {
+    fn as_ref(&self) -> &X509Certificate {
+        &self.certificate
+    }
+}
+
 /// A certificate whose signature has been verified.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct VerifiedCertificate {

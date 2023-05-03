@@ -27,10 +27,11 @@ subtle = { version = "2.4.0", default-features = false }
 x509-cert = { version = "0.2.0", default-features = false, optional = true }
 
 [dev-dependencies]
+chrono = { version = "0.4.24", default-features = false }
 mc-sgx-core-sys-types = "0.6.0"
 rand = { version = "0.8.4", default-features = false, features = ["std_rng"] }
 textwrap = "0.16.0"
-x509-cert = { version = "0.2.0", default-features = false, features = ["pem"] }
+x509-cert = { version = "0.2.0", default-features = false, features = ["pem", "std"] }
 yare = "1.0.2"
 
 # At least one crate must have this configuration
