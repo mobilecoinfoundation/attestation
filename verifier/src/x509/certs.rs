@@ -9,10 +9,6 @@ use p256::ecdsa::{Signature, VerifyingKey};
 use x509_cert::der::{Decode, Encode};
 use x509_cert::Certificate as X509Certificate;
 
-/// Offset from the start of a certificate to the "to be signed" (TBS) portion
-/// of the certificate.
-const TBS_OFFSET: usize = 4;
-
 /// A certificate whose signature has not been verified.
 #[derive(Debug, PartialEq, Eq)]
 pub struct UnverifiedCertificate<'a> {
@@ -24,7 +20,7 @@ pub struct UnverifiedCertificate<'a> {
     // operations and it's more ergonomic to fail fast than fail later for a
     // bad key or signature
     signature: Signature,
-    key: VerifyingKey,
+    pub(crate) key: VerifyingKey,
 }
 
 /// A certificate whose signature has been verified.
@@ -65,9 +61,14 @@ impl<'a> UnverifiedCertificate<'a> {
     }
 
     fn verify_signature(&self, key: &VerifyingKey) -> Result<()> {
-        let tbs_length = self.certificate.tbs_certificate.encoded_len()?;
-        let tbs_size = u32::from(tbs_length) as usize;
-        let tbs_contents = &self.der_bytes[TBS_OFFSET..tbs_size + TBS_OFFSET];
+        let tbs_size = u32::from(self.certificate.tbs_certificate.encoded_len()?) as usize;
+        let signature_size = u32::from(self.certificate.signature.encoded_len()?) as usize;
+        let algorithm_size =
+            u32::from(self.certificate.signature_algorithm.encoded_len()?) as usize;
+        let overall_size = u32::from(self.certificate.encoded_len()?) as usize;
+
+        let tbs_offset = overall_size - (tbs_size + signature_size + algorithm_size);
+        let tbs_contents = &self.der_bytes[tbs_offset..tbs_size + tbs_offset];
         key.verify(tbs_contents, &self.signature)
             .map_err(|_| Error::SignatureVerification)?;
         Ok(())
@@ -129,12 +130,12 @@ mod test {
     use yare::parameterized;
 
     const LEAF_CERT: &str = include_str!("../../data/tests/leaf_cert.pem");
-    const INTERMEDIATE_CA: &str = include_str!("../../data/tests/intermediate_ca.pem");
+    const PROCESSOR_CA: &str = include_str!("../../data/tests/processor_ca.pem");
     const ROOT_CA: &str = include_str!("../../data/tests/root_ca.pem");
 
     #[parameterized(
         root = { ROOT_CA },
-        intermediate = { INTERMEDIATE_CA },
+        processor = { PROCESSOR_CA },
         leaf = { LEAF_CERT },
     )]
     fn try_from_der(pem: &str) {
@@ -150,7 +151,7 @@ mod test {
             pem_rfc7468::decode_vec(pem.as_bytes()).expect("Failed to decode DER from PEM");
         assert!(matches!(
             UnverifiedCertificate::try_from(&der_bytes.as_slice()[1..]),
-            Err(Error::CertificateDecoding(_))
+            Err(Error::DerDecoding(_))
         ));
     }
 
@@ -227,8 +228,7 @@ mod test {
         let root_cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
             .expect("Failed to decode certificate from DER");
 
-        let intermediate = INTERMEDIATE_CA;
-        let (_, der_bytes) = pem_rfc7468::decode_vec(intermediate.as_bytes())
+        let (_, der_bytes) = pem_rfc7468::decode_vec(PROCESSOR_CA.as_bytes())
             .expect("Failed to decode DER from PEM");
         let cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
             .expect("Failed to decode certificate from DER");
@@ -245,7 +245,7 @@ mod test {
 
     #[test]
     fn verify_leaf_certificate() {
-        let intermediate = INTERMEDIATE_CA;
+        let intermediate = PROCESSOR_CA;
         let (_, der_bytes) = pem_rfc7468::decode_vec(intermediate.as_bytes())
             .expect("Failed to decode DER from PEM");
         let intermediate_cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
@@ -269,7 +269,7 @@ mod test {
 
     #[test]
     fn verify_certificate_fails_with_wrong_key() {
-        let intermediate = INTERMEDIATE_CA;
+        let intermediate = PROCESSOR_CA;
         let (_, der_bytes) = pem_rfc7468::decode_vec(intermediate.as_bytes())
             .expect("Failed to decode DER from PEM");
         let intermediate_cert = UnverifiedCertificate::try_from(der_bytes.as_slice())
