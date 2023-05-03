@@ -15,6 +15,10 @@ pub use report_body::{
     MiscellaneousSelectVerifier, MrEnclaveVerifier, MrSignerVerifier, ReportDataVerifier,
 };
 
+#[cfg(feature = "alloc")]
+pub use certs::{Error as CertificateError, UnverifiedCertificate, VerifiedCertificate};
+
+use crate::report_body::EqualityVerifier;
 use core::fmt::{Debug, Display, Formatter};
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
@@ -139,11 +143,62 @@ impl DisplayableError for VerificationError {}
 /// ```
 /// TODO: FILL OUT
 /// ```
-pub trait VerifierOutputDisplay<'v, 'e, E> {
+pub trait DisplayableVerifierOutput<'v, 'e, T, E> {
     /// Displays the output of a [`Verifier<T>`]
-    fn display(&'v self, error: &'e CtOption<E>, f: &mut Formatter) -> core::fmt::Result
-        where
-            Self: Sized;
+    fn display(&'v self, error: &'e CtOption<E>) -> EqualityVerifierOutputDisplay<'v, 'e, T, E>
+    where
+        T: Display,
+        E: DisplayableError,
+        Self: Sized;
+}
+
+#[derive(Debug, Clone)]
+/// TODO
+pub struct EqualityVerifierOutputDisplay<'v, 'e, T, E>(&'v EqualityVerifier<T>, &'e CtOption<E>);
+
+impl<'v, 'e, T, E> DisplayableVerifierOutput<'v, 'e, T, E> for EqualityVerifier<T> {
+    fn display(&'v self, error: &'e CtOption<E>) -> EqualityVerifierOutputDisplay<'v, 'e, T, E>
+    where
+        T: Display,
+        Self: Sized,
+    {
+        EqualityVerifierOutputDisplay::new(self, error)
+    }
+}
+
+impl<'v, 'e, T, E> EqualityVerifierOutputDisplay<'v, 'e, T, E> {
+    fn new(verifier: &'v EqualityVerifier<T>, error: &'e CtOption<E>) -> Self {
+        Self(verifier, error)
+    }
+}
+
+impl<'v, 'a, T, E> EqualityVerifierOutputDisplay<'v, 'a, T, E>
+where
+    T: Display,
+    E: DisplayableError,
+{
+    /// Format the instance with preceding padding
+    ///
+    /// The `pad` is the number of spaces to precede each line of the displayed
+    /// representation with.
+    pub fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        let maybe_error: Option<E> = Option::<E>::from(self.1.clone());
+        match maybe_error {
+            Some(error) => error.fmt_padded(f, pad)?,
+            None => write!(f, "{:pad$}[ ] {}", "", self.0)?,
+        }
+        Ok(())
+    }
+}
+
+impl<'v, 'a, T, E> Display for EqualityVerifierOutputDisplay<'v, 'a, T, E>
+where
+    T: Display,
+    E: DisplayableError,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        self.fmt_padded(f, 0)
+    }
 }
 
 /// Trait to convert a [`CtOption<T>`] into a [`CtOptionDisplay<'a, T>`].
@@ -177,6 +232,7 @@ impl<'a, T> DisplayableCtOption<'a, T> for CtOption<T> {
 /// Helper struct for displaying [`CtOption`] with
 /// [`format`](https://doc.rust-lang.org/std/macro.format.html) and `{}`.
 pub struct CtOptionDisplay<'a, T>(&'a CtOption<T>);
+
 impl<'a, T: DisplayableError> CtOptionDisplay<'a, T> {
     /// Format the instance with preceding padding
     ///

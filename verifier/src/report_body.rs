@@ -111,24 +111,6 @@ where
     }
 }
 
-impl<'v, 'e, T, E> VerifierOutputDisplay<'v, 'e, E> for EqualityVerifier<T>
-    where
-        T: Display,
-        E: DisplayableError,
-{
-    fn display(&'v self, error: &'e CtOption<E>, f: &mut Formatter) -> core::fmt::Result
-        where
-            Self: Sized,
-    {
-        let error_display = CtOptionDisplay::from(error);
-        if error.is_some().unwrap_u8() == 1u8 {
-            write!(f, "[ ] {self}, found {error_display}")
-        } else {
-           write!(f, "[x] {self}")
-        }
-    }
-}
-
 /// Common implementation for [`Verifier`]s that test for an actual value being
 /// greater than or equal to an expected value
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
