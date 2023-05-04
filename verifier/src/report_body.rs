@@ -2,9 +2,7 @@
 
 //! Verifiers which operate on the [`ReportBody`]
 
-use crate::{
-    struct_name::SpacedStructName, VerificationError, Verifier,
-};
+use crate::{struct_name::SpacedStructName, VerificationError, Verifier};
 use core::fmt::{Debug, Display, Formatter};
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
