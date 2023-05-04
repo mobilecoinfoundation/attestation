@@ -180,8 +180,8 @@ where
     pub fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
         let maybe_error: Option<E> = Option::<E>::from(self.1.clone());
         match maybe_error {
-            Some(error) => error.fmt_padded(f, pad)?,
-            None => write!(f, "{:pad$}[ ] {}", "", self.0)?,
+            Some(error) => write!(f, "[ ] {}, found {}", self.0, error)?,
+            None => write!(f, "{:pad$}[x] {}", "", self.0)?,
         }
         Ok(())
     }
