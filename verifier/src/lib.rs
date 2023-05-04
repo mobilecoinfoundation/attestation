@@ -138,11 +138,6 @@ pub enum VerificationError {
 impl DisplayableError for VerificationError {}
 
 /// Trait to display the output of a [`Verifier<T>`]
-///
-/// # Examples
-/// ```
-/// TODO: FILL OUT
-/// ```
 pub trait DisplayableVerifierOutput<'v, 'e, T, E> {
     /// Displays the output of a [`Verifier<T>`]
     fn display(&'v self, error: &'e CtOption<E>) -> EqualityVerifierOutputDisplay<'v, 'e, T, E>
@@ -783,5 +778,15 @@ mod tests {
         let not = Not::new(AlwaysFalse);
         let verification = not.verify(NO_EVIDENCE);
         assert_eq!(verification.is_none().unwrap_u8(), 1);
+    }
+
+    #[test]
+    fn equality_verifier_success_displays() {
+        let equality_verifier = EqualityVerifier::new(5);
+        let error = CtOption::new(VerificationError::General, 0.into());
+
+        let displayable_verifier_output = equality_verifier.display(&error);
+
+        assert_eq!(format!("{displayable_verifier_output}"), "");
     }
 }
