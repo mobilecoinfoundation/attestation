@@ -25,6 +25,7 @@ use mc_sgx_core_types::{
     MiscellaneousSelect, MrEnclave, MrSigner, ReportData,
 };
 use subtle::{Choice, CtOption};
+use crate::struct_name::SpacedStructName;
 
 /// Number of spaces to indent nested error messages.
 const ERROR_INDENT: usize = 2;
@@ -142,7 +143,7 @@ pub trait DisplayableVerifierOutput<'v, 'e, T, E> {
     /// Displays the output of a [`Verifier<T>`]
     fn display(&'v self, error: &'e CtOption<E>) -> EqualityVerifierOutputDisplay<'v, 'e, T, E>
     where
-        T: Display,
+        T: Display + SpacedStructName,
         E: DisplayableError,
         Self: Sized;
 }
@@ -154,7 +155,7 @@ pub struct EqualityVerifierOutputDisplay<'v, 'e, T, E>(&'v EqualityVerifier<T>, 
 impl<'v, 'e, T, E> DisplayableVerifierOutput<'v, 'e, T, E> for EqualityVerifier<T> {
     fn display(&'v self, error: &'e CtOption<E>) -> EqualityVerifierOutputDisplay<'v, 'e, T, E>
     where
-        T: Display,
+        T: Display + SpacedStructName,
         Self: Sized,
     {
         EqualityVerifierOutputDisplay::new(self, error)
@@ -169,7 +170,7 @@ impl<'v, 'e, T, E> EqualityVerifierOutputDisplay<'v, 'e, T, E> {
 
 impl<'v, 'a, T, E> EqualityVerifierOutputDisplay<'v, 'a, T, E>
 where
-    T: Display,
+    T: Display + SpacedStructName,
     E: DisplayableError,
 {
     /// Format the instance with preceding padding
@@ -188,7 +189,7 @@ where
 
 impl<'v, 'a, T, E> Display for EqualityVerifierOutputDisplay<'v, 'a, T, E>
 where
-    T: Display,
+    T: Display + SpacedStructName,
     E: DisplayableError,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
@@ -782,7 +783,8 @@ mod tests {
 
     #[test]
     fn equality_verifier_success_displays() {
-        let equality_verifier = EqualityVerifier::new(5);
+        let inner = Attributes::default();
+        let equality_verifier = EqualityVerifier::new(inner);
         let error = CtOption::new(VerificationError::General, 0.into());
 
         let displayable_verifier_output = equality_verifier.display(&error);

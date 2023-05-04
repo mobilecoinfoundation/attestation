@@ -2,8 +2,9 @@
 
 //! Verifiers which operate on the [`ReportBody`]
 
-use crate::struct_name::SpacedStructName;
-use crate::{CtOptionDisplay, DisplayableError, VerificationError, Verifier, VerifierOutputDisplay};
+use crate::{
+    struct_name::SpacedStructName, VerificationError, Verifier,
+};
 use core::fmt::{Debug, Display, Formatter};
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
@@ -71,7 +72,7 @@ trait IntoVerificationError {
 }
 
 /// Common implementation for [`Verifier`]s that test for equality between an expected and actual value.
-#[derive(Clone, Debug, displaydoc::Display, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct EqualityVerifier<T> {
     expected: T,
 }
