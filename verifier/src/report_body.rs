@@ -69,7 +69,8 @@ trait IntoVerificationError {
     fn into_verification_error(expected: Self, actual: Self) -> VerificationError;
 }
 
-/// Common implementation for [`Verifier`]s that test for equality between an expected and actual value.
+/// Common implementation for [`Verifier`]s that test for equality between
+/// an expected and actual value.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct EqualityVerifier<T> {
     expected: T,
