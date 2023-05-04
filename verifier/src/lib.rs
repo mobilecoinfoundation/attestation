@@ -18,8 +18,7 @@ pub use report_body::{
 #[cfg(feature = "alloc")]
 pub use certs::{Error as CertificateError, UnverifiedCertificate, VerifiedCertificate};
 
-use crate::report_body::EqualityVerifier;
-use crate::struct_name::SpacedStructName;
+use crate::{report_body::EqualityVerifier, struct_name::SpacedStructName};
 use core::fmt::{Debug, Display, Formatter};
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
