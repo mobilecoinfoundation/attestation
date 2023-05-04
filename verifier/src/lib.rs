@@ -180,7 +180,7 @@ where
     pub fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
         let maybe_error: Option<E> = Option::<E>::from(self.1.clone());
         match maybe_error {
-            Some(error) => write!(f, "[ ] {}, found {}", self.0, error)?,
+            Some(error) => write!(f, "[ ] {}. Found: {}", self.0, error)?,
             None => write!(f, "{:pad$}[x] {}", "", self.0)?,
         }
         Ok(())
@@ -788,7 +788,21 @@ mod tests {
         let error = CtOption::new(VerificationError::General, 0.into());
 
         let displayable_verifier_output = equality_verifier.display(&error);
+        let expected = format!("[x] {equality_verifier}");
 
-        assert_eq!(format!("{displayable_verifier_output}"), "");
+        assert_eq!(format!("{displayable_verifier_output}"), expected);
+    }
+
+    #[test]
+    fn equality_verifier_failure_displays() {
+        let inner = Attributes::default();
+        let equality_verifier = EqualityVerifier::new(inner);
+        let inner_error = VerificationError::General;
+        let error = CtOption::new(inner_error.clone(), 1.into());
+
+        let displayable_verifier_output = equality_verifier.display(&error);
+        let expected = format!("[ ] {equality_verifier}. Found: {inner_error}");
+
+        assert_eq!(format!("{displayable_verifier_output}"), expected);
     }
 }
