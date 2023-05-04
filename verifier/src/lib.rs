@@ -137,8 +137,21 @@ pub enum VerificationError {
 
 impl DisplayableError for VerificationError {}
 
-/// Trait to display the output of a [`Verifier<T>`]
-pub trait DisplayableVerifierOutput<'v, 'e, T, E> {
+/// Trait to display the output of an  [`EqualityVerifier<T>`]
+/// # Examples
+/// ```
+/// use mc_attestation_verifier::{AttributesVerifier, DisplayableEqualityVerifierOutput, VerificationError};
+/// use mc_sgx_core_types::Attributes;
+/// use subtle::CtOption;;
+///
+/// let attributes = Attributes::default();
+/// // [`AttributesVerifier`] is a type of [`EqualityVerifier`].
+/// let attributes_verifier = AttributesVerifier::new(attributes);
+/// let ct_option = CtOption::new(VerificationError::General, 0.into());
+///
+/// let expected = "[x] The attributes should be Flags: (none) Xfrm: (none)";
+/// assert_eq!(format!("{}", attributes_verifier.display(&ct_option)), expected);
+pub trait DisplayableEqualityVerifierOutput<'v, 'e, T, E> {
     /// Displays the output of a [`Verifier<T>`]
     fn display(&'v self, error: &'e CtOption<E>) -> EqualityVerifierOutputDisplay<'v, 'e, T, E>
     where
@@ -148,10 +161,11 @@ pub trait DisplayableVerifierOutput<'v, 'e, T, E> {
 }
 
 #[derive(Debug, Clone)]
-/// TODO
+/// Helper struct for displaying [`EqualityVerifier<T>`] with
+/// [`format`](https://doc.rust-lang.org/std/macro.format.html) and `{}`.
 pub struct EqualityVerifierOutputDisplay<'v, 'e, T, E>(&'v EqualityVerifier<T>, &'e CtOption<E>);
 
-impl<'v, 'e, T, E> DisplayableVerifierOutput<'v, 'e, T, E> for EqualityVerifier<T> {
+impl<'v, 'e, T, E> DisplayableEqualityVerifierOutput<'v, 'e, T, E> for EqualityVerifier<T> {
     fn display(&'v self, error: &'e CtOption<E>) -> EqualityVerifierOutputDisplay<'v, 'e, T, E>
     where
         T: Display + SpacedStructName,
