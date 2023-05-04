@@ -137,7 +137,7 @@ pub enum VerificationError {
 
 impl DisplayableError for VerificationError {}
 
-/// Trait to display the output of an  [`EqualityVerifier<T>`]
+/// Displays the output of an  [`EqualityVerifier<T>`]
 /// # Examples
 /// ```
 /// use mc_attestation_verifier::{AttributesVerifier, DisplayableEqualityVerifierOutput, VerificationError};
