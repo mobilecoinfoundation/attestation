@@ -60,7 +60,7 @@ fn invalid_ca_not_before_date_4_2_1() {
 }
 
 #[test]
-fn invalid_ca_not_before_date_4_2_2() {
+fn invalid_ee_not_before_date_4_2_2() {
     let (chain, _) = common::chain_and_leaf_key(
         [
             TRUST_ANCHOR_ROOT_CERTIFICATE,
@@ -82,7 +82,7 @@ fn invalid_ca_not_before_date_4_2_2() {
 }
 
 #[test]
-fn valid_pre2000_before_date_4_2_4() {
+fn valid_generalizedtime_before_date_4_2_4() {
     let (chain, expected_key) = common::chain_and_leaf_key(
         [
             TRUST_ANCHOR_ROOT_CERTIFICATE,
