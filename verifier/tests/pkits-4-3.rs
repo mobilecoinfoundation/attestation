@@ -56,19 +56,13 @@ const UTF8_STRING_CASE_INSENSITIVE_MATCH_CA_CRL: &[u8] =
 
 #[test]
 fn invalid_name_chaining_ee_4_3_1() {
-    let (chain, _) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            GOOD_CA_CERT,
-            INVALID_NAME_CHAINING_TEST_1EE,
-        ]
-        .as_slice(),
-    );
-    let (crls, unix_time) = common::crls_and_time([TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL].as_slice());
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+    let (chain, _) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        GOOD_CA_CERT,
+        INVALID_NAME_CHAINING_TEST_1EE,
+    ]);
+    let (crls, unix_time) = common::crls_and_time(&[TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL]);
+    let root = common::verified_root(&chain, unix_time);
 
     assert_eq!(
         chain.signing_key(&root, unix_time, crls.as_slice()),
@@ -78,20 +72,13 @@ fn invalid_name_chaining_ee_4_3_1() {
 
 #[test]
 fn invalid_name_chaining_order_4_3_2() {
-    let (chain, _) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            NAME_ORDERING_CA_CERT,
-            INVALID_NAME_CHAINING_ORDER_TEST_2EE,
-        ]
-        .as_slice(),
-    );
-    let (crls, unix_time) =
-        common::crls_and_time([TRUST_ANCHOR_ROOT_CRL, NAME_ORDER_CA_CRL].as_slice());
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+    let (chain, _) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        NAME_ORDERING_CA_CERT,
+        INVALID_NAME_CHAINING_ORDER_TEST_2EE,
+    ]);
+    let (crls, unix_time) = common::crls_and_time(&[TRUST_ANCHOR_ROOT_CRL, NAME_ORDER_CA_CRL]);
+    let root = common::verified_root(&chain, unix_time);
 
     assert_eq!(
         chain.signing_key(&root, unix_time, crls.as_slice()),
@@ -101,19 +88,13 @@ fn invalid_name_chaining_order_4_3_2() {
 
 #[test]
 fn valid_name_chaining_whitespace_4_3_3() {
-    let (chain, expected_key) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            GOOD_CA_CERT,
-            VALID_NAME_CHAINING_WHITESPACE_TEST_3EE,
-        ]
-        .as_slice(),
-    );
-    let (crls, unix_time) = common::crls_and_time([TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL].as_slice());
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+    let (chain, expected_key) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        GOOD_CA_CERT,
+        VALID_NAME_CHAINING_WHITESPACE_TEST_3EE,
+    ]);
+    let (crls, unix_time) = common::crls_and_time(&[TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL]);
+    let root = common::verified_root(&chain, unix_time);
 
     let signing_key = chain
         .signing_key(&root, unix_time, crls.as_slice())
@@ -124,19 +105,13 @@ fn valid_name_chaining_whitespace_4_3_3() {
 
 #[test]
 fn valid_name_chaining_whitespace_4_3_4() {
-    let (chain, expected_key) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            GOOD_CA_CERT,
-            VALID_NAME_CHAINING_WHITESPACE_TEST_4EE,
-        ]
-        .as_slice(),
-    );
-    let (crls, unix_time) = common::crls_and_time([TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL].as_slice());
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+    let (chain, expected_key) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        GOOD_CA_CERT,
+        VALID_NAME_CHAINING_WHITESPACE_TEST_4EE,
+    ]);
+    let (crls, unix_time) = common::crls_and_time(&[TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL]);
+    let root = common::verified_root(&chain, unix_time);
 
     let signing_key = chain
         .signing_key(&root, unix_time, crls.as_slice())
@@ -147,19 +122,13 @@ fn valid_name_chaining_whitespace_4_3_4() {
 
 #[test]
 fn valid_name_chaining_capitalization_4_3_5() {
-    let (chain, expected_key) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            GOOD_CA_CERT,
-            VALID_NAME_CHAINING_CAPITALIZATION_TEST_5EE,
-        ]
-        .as_slice(),
-    );
-    let (crls, unix_time) = common::crls_and_time([TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL].as_slice());
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+    let (chain, expected_key) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        GOOD_CA_CERT,
+        VALID_NAME_CHAINING_CAPITALIZATION_TEST_5EE,
+    ]);
+    let (crls, unix_time) = common::crls_and_time(&[TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL]);
+    let root = common::verified_root(&chain, unix_time);
 
     let signing_key = chain
         .signing_key(&root, unix_time, crls.as_slice())
@@ -170,19 +139,13 @@ fn valid_name_chaining_capitalization_4_3_5() {
 
 #[test]
 fn valid_name_chaining_uids_4_3_6() {
-    let (chain, expected_key) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            UID_CA_CERT,
-            VALID_NAME_UIDS_TEST_6EE,
-        ]
-        .as_slice(),
-    );
-    let (crls, unix_time) = common::crls_and_time([TRUST_ANCHOR_ROOT_CRL, UID_CA_CRL].as_slice());
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+    let (chain, expected_key) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        UID_CA_CERT,
+        VALID_NAME_UIDS_TEST_6EE,
+    ]);
+    let (crls, unix_time) = common::crls_and_time(&[TRUST_ANCHOR_ROOT_CRL, UID_CA_CRL]);
+    let root = common::verified_root(&chain, unix_time);
 
     let signing_key = chain
         .signing_key(&root, unix_time, crls.as_slice())
@@ -193,25 +156,16 @@ fn valid_name_chaining_uids_4_3_6() {
 
 #[test]
 fn valid_rfc3280_mandatory_attribute_types_4_3_7() {
-    let (chain, expected_key) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            RFC3280_MANDATORY_ATTRIBUTE_TYPES_CA_CERT,
-            VALID_RFC3280_MANDATORY_ATTRIBUTE_TYPES_TEST_7EE,
-        ]
-        .as_slice(),
-    );
-    let (crls, unix_time) = common::crls_and_time(
-        [
-            TRUST_ANCHOR_ROOT_CRL,
-            RFC3280_MANDATORY_ATTRIBUTE_TYPES_CA_CRL,
-        ]
-        .as_slice(),
-    );
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+    let (chain, expected_key) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        RFC3280_MANDATORY_ATTRIBUTE_TYPES_CA_CERT,
+        VALID_RFC3280_MANDATORY_ATTRIBUTE_TYPES_TEST_7EE,
+    ]);
+    let (crls, unix_time) = common::crls_and_time(&[
+        TRUST_ANCHOR_ROOT_CRL,
+        RFC3280_MANDATORY_ATTRIBUTE_TYPES_CA_CRL,
+    ]);
+    let root = common::verified_root(&chain, unix_time);
 
     let signing_key = chain
         .signing_key(&root, unix_time, crls.as_slice())
@@ -222,25 +176,16 @@ fn valid_rfc3280_mandatory_attribute_types_4_3_7() {
 
 #[test]
 fn valid_rfc3280_optional_attribute_types_4_3_8() {
-    let (chain, expected_key) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            RFC3280_OPTIONAL_ATTRIBUTE_TYPES_CA_CERT,
-            VALID_RFC3280_OPTIONAL_ATTRIBUTE_TYPES_TEST_8EE,
-        ]
-        .as_slice(),
-    );
-    let (crls, unix_time) = common::crls_and_time(
-        [
-            TRUST_ANCHOR_ROOT_CRL,
-            RFC3280_OPTIONAL_ATTRIBUTE_TYPES_CA_CRL,
-        ]
-        .as_slice(),
-    );
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+    let (chain, expected_key) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        RFC3280_OPTIONAL_ATTRIBUTE_TYPES_CA_CERT,
+        VALID_RFC3280_OPTIONAL_ATTRIBUTE_TYPES_TEST_8EE,
+    ]);
+    let (crls, unix_time) = common::crls_and_time(&[
+        TRUST_ANCHOR_ROOT_CRL,
+        RFC3280_OPTIONAL_ATTRIBUTE_TYPES_CA_CRL,
+    ]);
+    let root = common::verified_root(&chain, unix_time);
 
     let signing_key = chain
         .signing_key(&root, unix_time, crls.as_slice())
@@ -251,20 +196,14 @@ fn valid_rfc3280_optional_attribute_types_4_3_8() {
 
 #[test]
 fn valid_utf8_string_encoded_names_4_3_9() {
-    let (chain, expected_key) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            UTF8_STRING_ENCODED_NAMES_CA_CERT,
-            VALID_UTF8_STRING_ENCODED_NAMES_TEST_9EE,
-        ]
-        .as_slice(),
-    );
+    let (chain, expected_key) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        UTF8_STRING_ENCODED_NAMES_CA_CERT,
+        VALID_UTF8_STRING_ENCODED_NAMES_TEST_9EE,
+    ]);
     let (crls, unix_time) =
-        common::crls_and_time([TRUST_ANCHOR_ROOT_CRL, UTF8_STRING_ENCODED_NAMES_CA_CRL].as_slice());
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+        common::crls_and_time(&[TRUST_ANCHOR_ROOT_CRL, UTF8_STRING_ENCODED_NAMES_CA_CRL]);
+    let root = common::verified_root(&chain, unix_time);
 
     let signing_key = chain
         .signing_key(&root, unix_time, crls.as_slice())
@@ -275,25 +214,16 @@ fn valid_utf8_string_encoded_names_4_3_9() {
 
 #[test]
 fn valid_rollover_from_printable_to_utf8_4_3_10() {
-    let (chain, expected_key) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            ROLLOVER_FROM_PRINTABLE_STRING_TO_UTF8_STRING_CA_CERT,
-            VALID_ROLLOVER_FROM_PRINTABLE_STRING_TO_UTF8_STRING_TEST_10EE,
-        ]
-        .as_slice(),
-    );
-    let (crls, unix_time) = common::crls_and_time(
-        [
-            TRUST_ANCHOR_ROOT_CRL,
-            ROLLOVER_FROM_PRINTABLE_STRING_TO_UTF8_STRING_CA_CRL,
-        ]
-        .as_slice(),
-    );
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+    let (chain, expected_key) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        ROLLOVER_FROM_PRINTABLE_STRING_TO_UTF8_STRING_CA_CERT,
+        VALID_ROLLOVER_FROM_PRINTABLE_STRING_TO_UTF8_STRING_TEST_10EE,
+    ]);
+    let (crls, unix_time) = common::crls_and_time(&[
+        TRUST_ANCHOR_ROOT_CRL,
+        ROLLOVER_FROM_PRINTABLE_STRING_TO_UTF8_STRING_CA_CRL,
+    ]);
+    let root = common::verified_root(&chain, unix_time);
 
     let signing_key = chain
         .signing_key(&root, unix_time, crls.as_slice())
@@ -304,25 +234,16 @@ fn valid_rollover_from_printable_to_utf8_4_3_10() {
 
 #[test]
 fn valid_utf8_string_case_insensitive_match_4_3_11() {
-    let (chain, expected_key) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            UTF8_STRING_CASE_INSENSITIVE_MATCH_CA_CERT,
-            VALID_UTF8_STRING_CASE_INSENSITIVE_MATCH_TEST_11EE,
-        ]
-        .as_slice(),
-    );
-    let (crls, unix_time) = common::crls_and_time(
-        [
-            TRUST_ANCHOR_ROOT_CRL,
-            UTF8_STRING_CASE_INSENSITIVE_MATCH_CA_CRL,
-        ]
-        .as_slice(),
-    );
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+    let (chain, expected_key) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        UTF8_STRING_CASE_INSENSITIVE_MATCH_CA_CERT,
+        VALID_UTF8_STRING_CASE_INSENSITIVE_MATCH_TEST_11EE,
+    ]);
+    let (crls, unix_time) = common::crls_and_time(&[
+        TRUST_ANCHOR_ROOT_CRL,
+        UTF8_STRING_CASE_INSENSITIVE_MATCH_CA_CRL,
+    ]);
+    let root = common::verified_root(&chain, unix_time);
 
     let signing_key = chain
         .signing_key(&root, unix_time, crls.as_slice())

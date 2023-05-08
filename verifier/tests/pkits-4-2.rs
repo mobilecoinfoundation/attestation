@@ -39,20 +39,14 @@ const BAD_NOT_AFTER_DATE_CA_CRL: &[u8] = include_bytes!("data/pkits/crls/BadnotA
 
 #[test]
 fn invalid_ca_not_before_date_4_2_1() {
-    let (chain, _) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            BAD_NOT_BEFORE_DATE_CA_CERT,
-            INVALID_CA_NOT_BEFORE_DATE_TEST_1EE,
-        ]
-        .as_slice(),
-    );
+    let (chain, _) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        BAD_NOT_BEFORE_DATE_CA_CERT,
+        INVALID_CA_NOT_BEFORE_DATE_TEST_1EE,
+    ]);
     let (crls, unix_time) =
-        common::crls_and_time([TRUST_ANCHOR_ROOT_CRL, BAD_NOT_BEFORE_DATE_CA_CRL].as_slice());
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+        common::crls_and_time(&[TRUST_ANCHOR_ROOT_CRL, BAD_NOT_BEFORE_DATE_CA_CRL]);
+    let root = common::verified_root(&chain, unix_time);
 
     assert_eq!(
         chain.signing_key(&root, unix_time, crls.as_slice()),
@@ -62,19 +56,13 @@ fn invalid_ca_not_before_date_4_2_1() {
 
 #[test]
 fn invalid_ee_not_before_date_4_2_2() {
-    let (chain, _) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            GOOD_CA_CERT,
-            INVALID_EE_NOT_BEFORE_DATE_TEST_2EE,
-        ]
-        .as_slice(),
-    );
-    let (crls, unix_time) = common::crls_and_time([TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL].as_slice());
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+    let (chain, _) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        GOOD_CA_CERT,
+        INVALID_EE_NOT_BEFORE_DATE_TEST_2EE,
+    ]);
+    let (crls, unix_time) = common::crls_and_time(&[TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL]);
+    let root = common::verified_root(&chain, unix_time);
 
     assert_eq!(
         chain.signing_key(&root, unix_time, crls.as_slice()),
@@ -171,19 +159,13 @@ fn valid_pre2000_utc_before_date_4_2_3() {
 
 #[test]
 fn valid_generalizedtime_before_date_4_2_4() {
-    let (chain, expected_key) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            GOOD_CA_CERT,
-            VALID_GENERALIZED_TIME_NOT_BEFORE_DATE_TEST_4EE,
-        ]
-        .as_slice(),
-    );
-    let (crls, unix_time) = common::crls_and_time([TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL].as_slice());
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+    let (chain, expected_key) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        GOOD_CA_CERT,
+        VALID_GENERALIZED_TIME_NOT_BEFORE_DATE_TEST_4EE,
+    ]);
+    let (crls, unix_time) = common::crls_and_time(&[TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL]);
+    let root = common::verified_root(&chain, unix_time);
 
     let signing_key = chain
         .signing_key(&root, unix_time, crls.as_slice())
@@ -194,20 +176,14 @@ fn valid_generalizedtime_before_date_4_2_4() {
 
 #[test]
 fn invalid_ca_not_after_date_4_2_5() {
-    let (chain, _) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            BAD_NOT_AFTER_DATE_CA_CERT,
-            INVALID_CA_NOT_AFTER_DATE_TEST_5EE,
-        ]
-        .as_slice(),
-    );
+    let (chain, _) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        BAD_NOT_AFTER_DATE_CA_CERT,
+        INVALID_CA_NOT_AFTER_DATE_TEST_5EE,
+    ]);
     let (crls, unix_time) =
-        common::crls_and_time([TRUST_ANCHOR_ROOT_CRL, BAD_NOT_AFTER_DATE_CA_CRL].as_slice());
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+        common::crls_and_time(&[TRUST_ANCHOR_ROOT_CRL, BAD_NOT_AFTER_DATE_CA_CRL]);
+    let root = common::verified_root(&chain, unix_time);
 
     assert_eq!(
         chain.signing_key(&root, unix_time, crls.as_slice()),
@@ -217,19 +193,13 @@ fn invalid_ca_not_after_date_4_2_5() {
 
 #[test]
 fn invalid_ee_not_after_date_4_2_6() {
-    let (chain, _) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            GOOD_CA_CERT,
-            INVALID_EE_NOT_AFTER_DATE_TEST_6EE,
-        ]
-        .as_slice(),
-    );
-    let (crls, unix_time) = common::crls_and_time([TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL].as_slice());
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+    let (chain, _) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        GOOD_CA_CERT,
+        INVALID_EE_NOT_AFTER_DATE_TEST_6EE,
+    ]);
+    let (crls, unix_time) = common::crls_and_time(&[TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL]);
+    let root = common::verified_root(&chain, unix_time);
 
     assert_eq!(
         chain.signing_key(&root, unix_time, crls.as_slice()),
@@ -239,19 +209,13 @@ fn invalid_ee_not_after_date_4_2_6() {
 
 #[test]
 fn invalid_pre_2000_utc_ee_not_after_date_4_2_7() {
-    let (chain, _) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            GOOD_CA_CERT,
-            INVALID_PRE_2000_UTC_EE_NOT_AFTER_DATE_TEST_7EE,
-        ]
-        .as_slice(),
-    );
-    let (crls, unix_time) = common::crls_and_time([TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL].as_slice());
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+    let (chain, _) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        GOOD_CA_CERT,
+        INVALID_PRE_2000_UTC_EE_NOT_AFTER_DATE_TEST_7EE,
+    ]);
+    let (crls, unix_time) = common::crls_and_time(&[TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL]);
+    let root = common::verified_root(&chain, unix_time);
 
     assert_eq!(
         chain.signing_key(&root, unix_time, crls.as_slice()),
@@ -261,19 +225,13 @@ fn invalid_pre_2000_utc_ee_not_after_date_4_2_7() {
 
 #[test]
 fn valid_generalized_time_after_date_4_2_8() {
-    let (chain, expected_key) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            GOOD_CA_CERT,
-            VALID_GENERALIZED_TIME_NOT_AFTER_DATE_TEST_8EE,
-        ]
-        .as_slice(),
-    );
-    let (crls, unix_time) = common::crls_and_time([TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL].as_slice());
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+    let (chain, expected_key) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        GOOD_CA_CERT,
+        VALID_GENERALIZED_TIME_NOT_AFTER_DATE_TEST_8EE,
+    ]);
+    let (crls, unix_time) = common::crls_and_time(&[TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL]);
+    let root = common::verified_root(&chain, unix_time);
 
     let signing_key = chain
         .signing_key(&root, unix_time, crls.as_slice())

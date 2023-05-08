@@ -21,19 +21,13 @@ const INVALID_EE_SIGNATURE_TEST_3EE: &[u8] =
 
 #[test]
 fn valid_signatures_test_4_1_1() {
-    let (chain, expected_key) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            GOOD_CA_CERT,
-            VALID_CERTIFICATE_PATH_TEST_1EE,
-        ]
-        .as_slice(),
-    );
-    let (crls, unix_time) = common::crls_and_time([TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL].as_slice());
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+    let (chain, expected_key) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        GOOD_CA_CERT,
+        VALID_CERTIFICATE_PATH_TEST_1EE,
+    ]);
+    let (crls, unix_time) = common::crls_and_time(&[TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL]);
+    let root = common::verified_root(&chain, unix_time);
 
     let signing_key = chain
         .signing_key(&root, unix_time, crls.as_slice())
@@ -60,19 +54,13 @@ fn invalid_ca_signature_test_4_1_2() {
 
 #[test]
 fn invalid_ee_signature_test_4_1_3() {
-    let (chain, _) = common::chain_and_leaf_key(
-        [
-            TRUST_ANCHOR_ROOT_CERTIFICATE,
-            GOOD_CA_CERT,
-            INVALID_EE_SIGNATURE_TEST_3EE,
-        ]
-        .as_slice(),
-    );
-    let (crls, unix_time) = common::crls_and_time([TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL].as_slice());
-
-    let root = chain.as_ref()[0]
-        .verify_self_signed(unix_time)
-        .expect("Failed verifying root");
+    let (chain, _) = common::chain_and_leaf_key(&[
+        TRUST_ANCHOR_ROOT_CERTIFICATE,
+        GOOD_CA_CERT,
+        INVALID_EE_SIGNATURE_TEST_3EE,
+    ]);
+    let (crls, unix_time) = common::crls_and_time(&[TRUST_ANCHOR_ROOT_CRL, GOOD_CA_CRL]);
+    let root = common::verified_root(&chain, unix_time);
 
     assert_eq!(
         chain.signing_key(&root, unix_time, crls.as_slice()),
