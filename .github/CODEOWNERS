@@ -1,9 +1,9 @@
 # In order to utilize the [settings app](https://github.com/apps/settings) in a
 # secure manner, we must ensure that both the `CODEOWNERS` and `settings.yml`
-# file have code owners and that `settings.yml` has 
+# file have code owners and that `settings.yml` has
 # `require_code_owner_reviews: true`.
 # We do not mark code owners for other directories as the code owners will be
 # auto-assigned first by github, preventing the use of team auto-assignment.
 # <https://docs.github.com/en/organizations/organizing-members-into-teams/managing-code-review-settings-for-your-team#about-auto-assignment>
-/.github/CODEOWNERS        @nick-mobilecoin @jcape @samdealy
-/.github/settings.yml      @nick-mobilecoin @jcape @samdealy
+/.github/CODEOWNERS        @nick-mobilecoin @cbeck88 @eranrund
+/.github/settings.yml      @nick-mobilecoin @cbeck88 @eranrund
