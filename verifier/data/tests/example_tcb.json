@@ -1,0 +1,151 @@
+{
+  "tcbInfo": {
+    "id": "SGX",
+    "version": 3,
+    "issueDate": "2022-04-13T09:38:17Z",
+    "nextUpdate": "2022-05-13T09:38:17Z",
+    "fmspc": "50806F000000",
+    "pceId": "0000",
+    "tcbType": 0,
+    "tcbEvaluationDataNumber": 12,
+    "tcbLevels": [
+      {
+        "tcb": {
+          "sgxtcbcomponents": [
+            {
+              "svn": 1,
+              "category": "BIOS",
+              "type": "Early Microcode Update"
+            },
+            {
+              "svn": 1,
+              "category": "OS/VMM",
+              "type": "SGX Late Microcode Update"
+            },
+            {
+              "svn": 2,
+              "category": "OS/VMM",
+              "type": "TXT SINIT"
+            },
+            {
+              "svn": 2,
+              "category": "BIOS"
+            },
+            {
+              "svn": 2,
+              "category": "BIOS"
+            },
+            {
+              "svn": 1,
+              "category": "BIOS"
+            },
+            {
+              "svn": 0
+            },
+            {
+              "svn": 2,
+              "category": "OS/VMM",
+              "type": "SEAMLDR ACM"
+            },
+            {
+              "svn": 0
+            },
+            {
+              "svn": 0
+            },
+            {
+              "svn": 0
+            },
+            {
+              "svn": 0
+            },
+            {
+              "svn": 0
+            },
+            {
+              "svn": 0
+            },
+            {
+              "svn": 0
+            },
+            {
+              "svn": 0
+            }
+          ],
+          "pcesvn": 11
+        },
+        "tcbDate": "2021-11-10T00:00:00Z",
+        "tcbStatus": "UpToDate"
+      },
+      {
+        "tcb": {
+          "sgxtcbcomponents": [
+            {
+              "svn": 1,
+              "category": "BIOS",
+              "type": "Early Microcode Update"
+            },
+            {
+              "svn": 1,
+              "category": "OS/VMM",
+              "type": "SGX Late Microcode Update"
+            },
+            {
+              "svn": 2,
+              "category": "OS/VMM",
+              "type": "TXT SINIT"
+            },
+            {
+              "svn": 2,
+              "category": "BIOS"
+            },
+            {
+              "svn": 2,
+              "category": "BIOS"
+            },
+            {
+              "svn": 1,
+              "category": "BIOS"
+            },
+            {
+              "svn": 0
+            },
+            {
+              "svn": 2,
+              "category": "OS/VMM",
+              "type": "SEAMLDR ACM"
+            },
+            {
+              "svn": 0
+            },
+            {
+              "svn": 0
+            },
+            {
+              "svn": 0
+            },
+            {
+              "svn": 0
+            },
+            {
+              "svn": 0
+            },
+            {
+              "svn": 0
+            },
+            {
+              "svn": 0
+            },
+            {
+              "svn": 0
+            }
+          ],
+          "pcesvn": 5
+        },
+        "tcbDate": "2018-01-04T00:00:00Z",
+        "tcbStatus": "OutOfDate"
+      }
+    ]
+  },
+  "signature": "e9de1198f5b8ce22c626ac4182b92a83ba61693f483a398dc5c2afed65d757cb35cefd7e284cb1f4fbdb9a6e74171fe72bf724050dde5e8d6d93d2339eea3cf2"
+}
