@@ -7,6 +7,8 @@
 mod report_body;
 mod struct_name;
 #[cfg(feature = "alloc")]
+mod tcb;
+#[cfg(feature = "alloc")]
 mod x509;
 
 pub use report_body::{
