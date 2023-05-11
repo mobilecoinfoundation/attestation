@@ -2,38 +2,15 @@
 
 //! Verifiers which operate on the [`ReportBody`]
 
-use crate::struct_name::SpacedStructName;
-use crate::{VerificationError, Verifier};
-use core::fmt::{Debug, Display, Formatter};
+use crate::{
+    Accessor, EqualityVerifier, GreaterThanEqualVerifier, IntoVerificationError, VerificationError,
+    Verifier,
+};
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
     MiscellaneousSelect, MrEnclave, MrSigner, ReportBody, ReportData,
 };
 use subtle::{ConstantTimeEq, ConstantTimeLess, CtOption};
-
-/// Trait for getting access to the type `T` that needs to be verified.
-///
-/// The intent is to implement this for a higher level type that contains the
-/// `T`
-///
-/// ```ignore
-/// use mc_attestation_verifier::ConfigIdVerifier;
-/// impl Accessor<Contained> for Container {
-///     fn get(&self) -> Contained {
-///         self.some_method()
-///     }
-/// }
-/// ```
-pub trait Accessor<T>: Debug {
-    fn get(&self) -> T;
-}
-
-/// [`Accessor`] for returning Self, i.e. T -> T
-impl<T: Clone + Debug> Accessor<T> for T {
-    fn get(&self) -> T {
-        self.clone()
-    }
-}
 
 /// Macro to generate boilerplate for implementing [`Accessor`] for a field of
 /// [`ReportBody`].
@@ -64,79 +41,6 @@ report_body_field_accessor! {
     MrEnclave, mr_enclave;
     MrSigner, mr_signer;
     ReportData, report_data;
-}
-
-trait IntoVerificationError {
-    fn into_verification_error(expected: Self, actual: Self) -> VerificationError;
-}
-
-/// Common implementation for [`Verifier`]s that test for equality between
-/// an expected and actual value.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct EqualityVerifier<T> {
-    expected: T,
-}
-
-impl<T> EqualityVerifier<T> {
-    pub fn new(expected: T) -> Self {
-        Self { expected }
-    }
-}
-
-impl<T> Display for EqualityVerifier<T>
-where
-    T: SpacedStructName + Display,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(
-            f,
-            "The {} should be {}",
-            T::spaced_struct_name(),
-            self.expected
-        )
-    }
-}
-
-impl<T, E> Verifier<E> for EqualityVerifier<T>
-where
-    T: Debug + Clone + PartialEq + IntoVerificationError,
-    E: Accessor<T>,
-{
-    type Error = VerificationError;
-    fn verify(&self, evidence: &E) -> CtOption<Self::Error> {
-        let expected = self.expected.clone();
-        let actual = evidence.get();
-        // TODO - This should be a constant time comparison.
-        let is_some = if expected == actual { 0 } else { 1 };
-        CtOption::new(T::into_verification_error(expected, actual), is_some.into())
-    }
-}
-
-/// Common implementation for [`Verifier`]s that test for an actual value being
-/// greater than or equal to an expected value
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct GreaterThanEqualVerifier<T> {
-    expected: T,
-}
-
-impl<T> GreaterThanEqualVerifier<T> {
-    pub fn new(expected: T) -> Self {
-        Self { expected }
-    }
-}
-
-impl<T> Display for GreaterThanEqualVerifier<T>
-where
-    T: SpacedStructName + Display,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        write!(
-            f,
-            "The {} should be {}",
-            T::spaced_struct_name(),
-            self.expected
-        )
-    }
 }
 
 /// Verifier for ensuring [`Attributes`] values are equivalent.
@@ -369,7 +273,7 @@ mod test {
     extern crate alloc;
 
     use super::*;
-    use crate::And;
+    use crate::{struct_name::SpacedStructName, And};
     use alloc::{format, string::ToString};
     use mc_sgx_core_sys_types::{
         sgx_attributes_t, sgx_cpu_svn_t, sgx_measurement_t, sgx_report_body_t, sgx_report_data_t,
@@ -936,7 +840,10 @@ mod test {
         let inner = ConfigSvn::from(REPORT_BODY_SRC.config_svn);
         let verifier = ConfigSvnVerifier::new(inner.clone());
 
-        let expected = format!("The {} should be {inner}", ConfigSvn::spaced_struct_name());
+        let expected = format!(
+            "The {} should be at least {inner}",
+            ConfigSvn::spaced_struct_name()
+        );
 
         assert_eq!(verifier.to_string(), expected)
     }
@@ -946,7 +853,10 @@ mod test {
         let inner = CpuSvn::from(REPORT_BODY_SRC.cpu_svn);
         let verifier = CpuSvnVerifier::new(inner.clone());
 
-        let expected = format!("The {} should be {inner}", CpuSvn::spaced_struct_name());
+        let expected = format!(
+            "The {} should be at least {inner}",
+            CpuSvn::spaced_struct_name()
+        );
 
         assert_eq!(verifier.to_string(), expected)
     }
@@ -992,7 +902,10 @@ mod test {
         let inner = IsvSvn::from(REPORT_BODY_SRC.isv_svn);
         let verifier = IsvSvnVerifier::new(inner.clone());
 
-        let expected = format!("The {} should be {inner}", IsvSvn::spaced_struct_name());
+        let expected = format!(
+            "The {} should be at least {inner}",
+            IsvSvn::spaced_struct_name()
+        );
 
         assert_eq!(verifier.to_string(), expected)
     }
