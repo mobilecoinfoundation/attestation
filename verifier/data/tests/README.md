@@ -14,3 +14,9 @@
 * `processor_crl.pem` - CRL for the processor CA in a certificate chain. This
   was retrieved from
   <https://api.trustedservices.intel.com/sgx/certification/v4/pckcrl?ca=processor>.
+* `fmspc_00906ED50000_2023_05_10.json` - JSON file containing the result of a
+  TCB request from
+  <https://api.trustedservices.intel.com/sgx/certification/v4/tcb?fmspc=00906ED50000>.
+  This was captured on 2023-05-10.
+* `example_tcb.json` - JSON file containing the example TCB response from
+  <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v4>.
