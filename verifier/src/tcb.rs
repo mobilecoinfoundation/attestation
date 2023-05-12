@@ -105,7 +105,8 @@ pub struct TcbLevel {
     advisory_ids: Vec<String>,
 }
 
-/// A TCB
+/// A TCB(Trusted Computing Base) retrieved from
+/// <https://api.trustedservices.intel.com/sgx/certification/v4/tcb?fmspc={}>
 #[derive(Debug, Deserialize)]
 pub struct Tcb {
     #[serde(rename = "sgxtcbcomponents")]

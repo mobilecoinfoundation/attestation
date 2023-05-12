@@ -5,6 +5,7 @@
 mod certs;
 mod crl;
 mod error;
+mod tcb;
 
 pub use error::Error;
 pub type Result<T> = core::result::Result<T, Error>;
