@@ -444,7 +444,10 @@ mod tests {
             .parse::<DateTime>()
             .expect("Failed to parse time");
 
-        assert_eq!(raw_tcb.verify(&key, time).is_err(), true);
+        assert!(matches!(
+            raw_tcb.verify(&key, time),
+            Err(Error::TcbInfoNotYetValid)
+        ));
     }
 
     #[test]
@@ -457,7 +460,10 @@ mod tests {
             .parse::<DateTime>()
             .expect("Failed to parse time");
 
-        assert_eq!(raw_tcb.verify(&key, time).is_err(), true);
+        assert!(matches!(
+            raw_tcb.verify(&key, time),
+            Err(Error::TcbInfoExpired)
+        ));
     }
 
     #[test]
@@ -472,7 +478,10 @@ mod tests {
         // Note enough bytes to decode to the Signature type
         raw_tcb.signature.truncate(63);
 
-        assert_eq!(raw_tcb.verify(&key, time).is_err(), true);
+        assert!(matches!(
+            raw_tcb.verify(&key, time),
+            Err(Error::SignatureDecodeError)
+        ));
     }
 
     #[test]
@@ -486,7 +495,10 @@ mod tests {
 
         raw_tcb.signature[0] += 1;
 
-        assert_eq!(raw_tcb.verify(&key, time).is_err(), true);
+        assert!(matches!(
+            raw_tcb.verify(&key, time),
+            Err(Error::SignatureVerification)
+        ));
     }
 
     #[test]
@@ -501,7 +513,7 @@ mod tests {
         let bad_tcb_info = raw_tcb.tcb_info.get().replace("pceId", "unknown_field");
         raw_tcb.tcb_info = RawValue::from_string(bad_tcb_info).expect("Failed to create RawValue");
 
-        assert_eq!(raw_tcb.verify_time(time).is_err(), true);
+        assert!(matches!(raw_tcb.verify_time(time), Err(Error::Serde(_))));
     }
 
     #[test]
@@ -515,7 +527,7 @@ mod tests {
         let raw_tcb =
             TcbInfoRaw::try_from(bad_time_json.as_ref()).expect("Failed to parse raw TCB");
 
-        assert_eq!(raw_tcb.verify_time(time).is_err(), true);
+        assert!(matches!(raw_tcb.verify_time(time), Err(Error::Der(_))));
     }
 
     #[test]
@@ -529,6 +541,6 @@ mod tests {
         let raw_tcb =
             TcbInfoRaw::try_from(bad_time_json.as_ref()).expect("Failed to parse raw TCB");
 
-        assert_eq!(raw_tcb.verify_time(time).is_err(), true);
+        assert!(matches!(raw_tcb.verify_time(time), Err(Error::Der(_))));
     }
 }
