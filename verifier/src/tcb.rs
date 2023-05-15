@@ -31,7 +31,6 @@
 
 extern crate alloc;
 
-use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 use der::DateTime;
@@ -139,13 +138,14 @@ pub struct TcbComponent {
 /// Due to the way the TCB info is signed the contents should be provided as is.
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct TcbInfoRaw {
-    tcb_info: Box<RawValue>,
+pub struct TcbInfoRaw<'a> {
+    #[serde(borrow)]
+    tcb_info: &'a RawValue,
     #[serde(with = "hex")]
     signature: Vec<u8>,
 }
 
-impl TcbInfoRaw {
+impl<'a> TcbInfoRaw<'a> {
     /// Verify the `tcbInfo` signature and time are valid.
     ///
     /// # Arguments
@@ -185,10 +185,10 @@ impl TcbInfoRaw {
     }
 }
 
-impl TryFrom<&str> for TcbInfoRaw {
+impl<'a> TryFrom<&'a str> for TcbInfoRaw<'a> {
     type Error = Error;
 
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
+    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
         let tcb_info: TcbInfoRaw = serde_json::from_str(value)?;
         Ok(tcb_info)
     }
@@ -511,7 +511,8 @@ mod tests {
 
         // We need valid JSON, but not valid for the TcbInfo
         let bad_tcb_info = raw_tcb.tcb_info.get().replace("pceId", "unknown_field");
-        raw_tcb.tcb_info = RawValue::from_string(bad_tcb_info).expect("Failed to create RawValue");
+        let raw_value = RawValue::from_string(bad_tcb_info).expect("Failed to create RawValue");
+        raw_tcb.tcb_info = &raw_value;
 
         assert!(matches!(raw_tcb.verify_time(time), Err(Error::Serde(_))));
     }
