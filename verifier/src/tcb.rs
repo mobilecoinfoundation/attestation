@@ -39,6 +39,16 @@ use p256::ecdsa::{Signature, VerifyingKey};
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
+// TODO: remove this once https://github.com/mobilecoinfoundation/sgx/pull/329
+//  and https://github.com/mobilecoinfoundation/sgx/pull/330 come in.
+const FMSPC_SIZE: usize = 6;
+const COMPONENT_SVN_COUNT: usize = 16;
+struct PckTcb {
+    svns: [u32; COMPONENT_SVN_COUNT],
+    pce_svn: u32,
+    fmspc: [u8; FMSPC_SIZE],
+}
+
 /// Error parsing TCB(Trusted Computing Base) info
 #[derive(displaydoc::Display, Debug)]
 pub enum Error {
@@ -68,6 +78,49 @@ impl From<serde_json::Error> for Error {
     }
 }
 
+/// The advisories pertaining to a TCB(Trusted Computing Base).
+#[derive(Debug, PartialEq, Clone)]
+pub struct Advisories {
+    ids: Vec<String>,
+    status: TcbStatus,
+}
+
+/// The `tcbStatus` member of the TCB(Trusted Computing Base) data retrieved from
+/// <https://api.trustedservices.intel.com/sgx/certification/v4/tcb?fmspc={}>
+///
+/// The variants are defined in the schema at
+/// <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-model-v3>
+///
+/// The variant order is important here, the higher the index the better the
+/// status. For example: `UpToDate` is a better status than `SWHardeningNeeded`.
+/// ```
+/// use mc_attestation_verifier::TcbStatus;
+/// assert!(TcbStatus::UpToDate > TcbStatus::SWHardeningNeeded);
+/// ```
+#[derive(Debug, PartialEq, PartialOrd, Copy, Clone, Deserialize)]
+pub enum TcbStatus {
+    /// TCB level of SGX platform is revoked. The platform is not trustworthy.
+    Revoked,
+    /// TCB level of SGX platform is outdated and additional configuration of
+    /// SGX platform may be needed.
+    OutOfDateConfigurationNeeded,
+    /// TCB level of SGX platform is outdated.
+    OutOfDate,
+    /// TCB level of the SGX platform is up-to-date but additional configuration
+    /// for the platform and SW Hardening in the attesting SGX enclaves may be
+    /// needed.
+    ConfigurationAndSWHardeningNeeded,
+    /// TCB level of the SGX platform is up-to-date but additional configuration
+    /// of SGX platform may be needed.
+    ConfigurationNeeded,
+    /// TCB level of the SGX platform is up-to-date but due to certain issues
+    /// affecting the platform, additional SW Hardening in the attesting SGX
+    /// enclaves may be needed.
+    SWHardeningNeeded,
+    /// TCB level of the SGX platform is up-to-date.
+    UpToDate,
+}
+
 /// The `tcbInfo` member of the TCB(Trusted Computing Base) data retrieved from
 /// <https://api.trustedservices.intel.com/sgx/certification/v4/tcb?fmspc={}>
 /// The schema is available at <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-model-v3>
@@ -78,11 +131,55 @@ pub struct TcbInfo {
     version: u32,
     issue_date: String,
     next_update: String,
-    fmspc: String,
+    #[serde(with = "hex")]
+    fmspc: [u8; FMSPC_SIZE],
     pce_id: String,
     tcb_type: u32,
     tcb_evaluation_data_number: u32,
     tcb_levels: Vec<TcbLevel>,
+}
+
+impl TcbInfo {
+    /// Get the advisories for the given TCB info
+    ///
+    /// The advisories are the ones corresponding to the TCB levels in `pck_tcb`.
+    ///
+    /// This method maps to steps 3 and 4 from
+    /// <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v4>
+    ///
+    /// > 3. Go over the sorted collection of TCB Levels retrieved from TCB Info
+    /// >    starting from the first item on the list:
+    /// >   a. Compare all of the SGX TCB Comp SVNs retrieved from the SGX PCK
+    /// >      Certificate (from 01 to 16) with the corresponding values of SVNs
+    /// >      in sgxtcbcomponents array of TCB Level. If all SGX TCB Comp SVNs
+    /// >      in the certificate are greater or equal to the corresponding
+    /// >      values in TCB Level, go to 3.b, otherwise move to the next item
+    /// >      on TCB Levels list.
+    /// >   b. Compare PCESVN value retrieved from the SGX PCK certificate with
+    /// >      the corresponding value in the TCB Level. If it is greater or
+    /// >      equal to the value in TCB Level, read status assigned to this
+    /// >      TCB level. Otherwise, move to the next item on TCB Levels list.
+    /// > 4. If no TCB level matches your SGX PCK Certificate, your TCB Level is
+    /// >    not supported.
+    fn advisories(&self, pck_tcb: &PckTcb) -> Option<Advisories> {
+        // `self` should have been retrieved via
+        // <https://api.trustedservices.intel.com/sgx/certification/v4/tcb?fmspc={}>
+        // and the `pck_tcb.fmspc`. Failure here should rarely happen, but we
+        // still check to ensure the client didn't get mixed up.
+        if self.fmspc != pck_tcb.fmspc {
+            return None;
+        }
+
+        for level in &self.tcb_levels {
+            if level.tcb.is_corresponding_level(pck_tcb) {
+                return Some(Advisories {
+                    ids: level.advisory_ids.clone(),
+                    status: level.tcb_status,
+                });
+            }
+        }
+        None
+    }
 }
 
 impl TryFrom<&str> for TcbInfo {
@@ -100,7 +197,7 @@ impl TryFrom<&str> for TcbInfo {
 pub struct TcbLevel {
     tcb: Tcb,
     tcb_date: String,
-    tcb_status: String,
+    tcb_status: TcbStatus,
     #[serde(rename = "advisoryIDs", default)]
     advisory_ids: Vec<String>,
 }
@@ -109,7 +206,7 @@ pub struct TcbLevel {
 #[derive(Debug, Deserialize)]
 pub struct Tcb {
     #[serde(rename = "sgxtcbcomponents")]
-    sgx_tcb_components: Vec<TcbComponent>,
+    sgx_tcb_components: [TcbComponent; COMPONENT_SVN_COUNT],
     #[serde(rename = "pcesvn")]
     pce_svn: u32,
 }
@@ -120,6 +217,36 @@ impl TryFrom<&str> for Tcb {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let tcb: Tcb = serde_json::from_str(value)?;
         Ok(tcb)
+    }
+}
+
+impl Tcb {
+    /// Returns true if this [`Tcb`] instance can represent the provided
+    /// `tcb_info`
+    ///
+    /// Performs the comparisons in 3.a and 3.b from
+    /// <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v4>
+    ///
+    /// > 3. Go over the sorted collection of TCB Levels retrieved from TCB Info
+    /// >    starting from the first item on the list:
+    /// >   a. Compare all of the SGX TCB Comp SVNs retrieved from the SGX PCK
+    /// >      Certificate (from 01 to 16) with the corresponding values of SVNs
+    /// >      in sgxtcbcomponents array of TCB Level. If all SGX TCB Comp SVNs
+    /// >      in the certificate are greater or equal to the corresponding
+    /// >      values in TCB Level, go to 3.b, otherwise move to the next item
+    /// >      on TCB Levels list.
+    /// >   b. Compare PCESVN value retrieved from the SGX PCK certificate with
+    /// >      the corresponding value in the TCB Level. If it is greater or
+    /// >      equal to the value in TCB Level, read status assigned to this
+    /// >      TCB level. Otherwise, move to the next item on TCB Levels list.
+    fn is_corresponding_level(&self, tcb_info: &PckTcb) -> bool {
+        let component_iter = self
+            .sgx_tcb_components
+            .iter()
+            .map(|c| c.svn)
+            .zip(tcb_info.svns);
+        let mut svn_iter = component_iter.chain(core::iter::once((self.pce_svn, tcb_info.pce_svn)));
+        svn_iter.all(|(a, b)| a <= b)
     }
 }
 
@@ -271,7 +398,7 @@ mod tests {
         assert_eq!(tcb_info.version, 3);
         assert_eq!(tcb_info.issue_date, "2022-04-13T09:38:17Z");
         assert_eq!(tcb_info.next_update, "2022-05-13T09:38:17Z");
-        assert_eq!(tcb_info.fmspc, "50806F000000");
+        assert_eq!(tcb_info.fmspc, [80, 128, 111, 0, 0, 0]);
         assert_eq!(tcb_info.pce_id, "0000");
         assert_eq!(tcb_info.tcb_type, 0);
         assert_eq!(tcb_info.tcb_evaluation_data_number, 12);
@@ -279,7 +406,7 @@ mod tests {
 
         let first_level = &tcb_info.tcb_levels[0];
         assert_eq!(first_level.tcb_date, "2021-11-10T00:00:00Z");
-        assert_eq!(first_level.tcb_status, "UpToDate");
+        assert_eq!(first_level.tcb_status, TcbStatus::UpToDate);
         let tcb = &first_level.tcb;
         assert_eq!(tcb.pce_svn, 11);
 
@@ -295,7 +422,7 @@ mod tests {
 
         let second_level = &tcb_info.tcb_levels[1];
         assert_eq!(second_level.tcb_date, "2018-01-04T00:00:00Z");
-        assert_eq!(second_level.tcb_status, "OutOfDate");
+        assert_eq!(second_level.tcb_status, TcbStatus::OutOfDate);
     }
 
     #[test]
@@ -307,7 +434,7 @@ mod tests {
         assert_eq!(tcb_info.version, 3);
         assert_eq!(tcb_info.issue_date, "2023-05-10T13:43:27Z");
         assert_eq!(tcb_info.next_update, "2023-06-09T13:43:27Z");
-        assert_eq!(tcb_info.fmspc, "00906ED50000");
+        assert_eq!(tcb_info.fmspc, [0, 144, 110, 213, 0, 0]);
         assert_eq!(tcb_info.pce_id, "0000");
         assert_eq!(tcb_info.tcb_type, 0);
         assert_eq!(tcb_info.tcb_evaluation_data_number, 15);
@@ -315,7 +442,7 @@ mod tests {
 
         let first_level = &tcb_info.tcb_levels[0];
         assert_eq!(first_level.tcb_date, "2023-02-15T00:00:00Z");
-        assert_eq!(first_level.tcb_status, "SWHardeningNeeded");
+        assert_eq!(first_level.tcb_status, TcbStatus::SWHardeningNeeded);
         assert_eq!(
             first_level.advisory_ids,
             vec!["INTEL-SA-00334", "INTEL-SA-00615"]
@@ -332,7 +459,10 @@ mod tests {
 
         let second_level = &tcb_info.tcb_levels[1];
         assert_eq!(second_level.tcb_date, "2023-02-15T00:00:00Z");
-        assert_eq!(second_level.tcb_status, "ConfigurationAndSWHardeningNeeded");
+        assert_eq!(
+            second_level.tcb_status,
+            TcbStatus::ConfigurationAndSWHardeningNeeded
+        );
         assert_eq!(
             second_level.advisory_ids,
             vec![
@@ -345,7 +475,7 @@ mod tests {
 
         let last_level = &tcb_info.tcb_levels[16];
         assert_eq!(last_level.tcb_date, "2018-08-15T00:00:00Z");
-        assert_eq!(last_level.tcb_status, "OutOfDate");
+        assert_eq!(last_level.tcb_status, TcbStatus::OutOfDate);
         assert_eq!(
             last_level.advisory_ids,
             vec![
@@ -388,35 +518,81 @@ mod tests {
                       "svn": 4,
                       "category": "It's a category with a type",
                       "type": "It's a type to go with the category"
+                    },
+                    {
+                      "svn": 5
+                    },
+                    {
+                      "svn": 6,
+                      "category": "It's a category"
+                    },
+                    {
+                      "svn": 7,
+                      "type": "It's a type"
+                    },
+                    {
+                      "svn": 8,
+                      "category": "It's a category with a type",
+                      "type": "It's a type to go with the category"
+                    },
+                    {
+                      "svn": 9
+                    },
+                    {
+                      "svn": 10,
+                      "category": "It's a category"
+                    },
+                    {
+                      "svn": 11,
+                      "type": "It's a type"
+                    },
+                    {
+                      "svn": 12,
+                      "category": "It's a category with a type",
+                      "type": "It's a type to go with the category"
+                    },
+                    {
+                      "svn": 13
+                    },
+                    {
+                      "svn": 14,
+                      "category": "It's a category"
+                    },
+                    {
+                      "svn": 15,
+                      "type": "It's a type"
+                    },
+                    {
+                      "svn": 16,
+                      "category": "It's a category with a type",
+                      "type": "It's a type to go with the category"
                     }
                 ],
                 "pcesvn": 5
             }"#;
         let tcb = Tcb::try_from(tcb_json).expect("Failed to parse TCB");
         assert_eq!(tcb.pce_svn, 5);
-        let components = vec![
-            TcbComponent {
-                svn: 1,
-                category: None,
-                r#type: None,
-            },
-            TcbComponent {
-                svn: 2,
-                category: Some("It's a category".into()),
-                r#type: None,
-            },
-            TcbComponent {
-                svn: 3,
-                category: None,
-                r#type: Some("It's a type".into()),
-            },
-            TcbComponent {
-                svn: 4,
-                category: Some("It's a category with a type".into()),
-                r#type: Some("It's a type to go with the category".into()),
-            },
-        ];
-        assert_eq!(tcb.sgx_tcb_components, components);
+        assert_eq!(tcb.sgx_tcb_components[0].svn, 1);
+        assert_eq!(tcb.sgx_tcb_components[0].category, None);
+        assert_eq!(tcb.sgx_tcb_components[0].r#type, None);
+        assert_eq!(tcb.sgx_tcb_components[1].svn, 2);
+        assert_eq!(
+            tcb.sgx_tcb_components[1].category,
+            Some("It's a category".into())
+        );
+        assert_eq!(tcb.sgx_tcb_components[1].r#type, None);
+        assert_eq!(tcb.sgx_tcb_components[2].svn, 3);
+        assert_eq!(tcb.sgx_tcb_components[2].category, None);
+        assert_eq!(tcb.sgx_tcb_components[2].r#type, Some("It's a type".into()));
+        assert_eq!(tcb.sgx_tcb_components[3].svn, 4);
+        assert_eq!(
+            tcb.sgx_tcb_components[3].category,
+            Some("It's a category with a type".into())
+        );
+        assert_eq!(
+            tcb.sgx_tcb_components[3].r#type,
+            Some("It's a type to go with the category".into())
+        );
     }
 
     #[parameterized(
@@ -532,7 +708,7 @@ mod tests {
     }
 
     #[test]
-    fn tcb_next_upate_time_fails_to_parse_when_verifying() {
+    fn tcb_next_update_time_fails_to_parse_when_verifying() {
         let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
         let time = "2023-05-10T13:43:27Z"
             .parse::<DateTime>()
@@ -543,5 +719,132 @@ mod tests {
             TcbInfoRaw::try_from(bad_time_json.as_ref()).expect("Failed to parse raw TCB");
 
         assert!(matches!(raw_tcb.verify_time(time), Err(Error::Der(_))));
+    }
+
+    #[parameterized(
+        best = { &[20, 20, 2, 4, 1, 128, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13, &["INTEL-SA-00334", "INTEL-SA-00615"], TcbStatus::SWHardeningNeeded },
+        second_best = { &[20, 20, 2, 4, 1, 128, 13, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13, &["INTEL-SA-00219", "INTEL-SA-00289", "INTEL-SA-00334", "INTEL-SA-00615"], TcbStatus::ConfigurationAndSWHardeningNeeded },
+        pce_svn_12 = { &[20, 20, 2, 4, 1, 128, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0], 12, &["INTEL-SA-00614", "INTEL-SA-00617", "INTEL-SA-00161", "INTEL-SA-00219", "INTEL-SA-00289", "INTEL-SA-00334", "INTEL-SA-00615"], TcbStatus::OutOfDate },
+    )]
+    fn advisories_from_tcb(svns: &[u32], pce_svn: u32, ids: &[&str], status: TcbStatus) {
+        let json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
+        let tcb_raw = TcbInfoRaw::try_from(json).expect("Failed to parse raw TCB");
+        let tcb_info = TcbInfo::try_from(tcb_raw.tcb_info.get()).expect("Failed to parse TCB info");
+
+        let tcb = PckTcb {
+            svns: svns.try_into().expect("Not enough svns"),
+            pce_svn,
+            fmspc: tcb_info.fmspc.clone(),
+        };
+        let expected_advisories = Advisories {
+            ids: ids
+                .into_iter()
+                .map(|s| String::from(*s))
+                .collect::<Vec<_>>(),
+            status,
+        };
+
+        assert_eq!(tcb_info.advisories(&tcb), Some(expected_advisories));
+    }
+
+    #[parameterized(
+        pce_svn_too_small = { &[20, 20, 2, 4, 1, 128, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0], 5},
+        first_component_too_small = { &[0, 20, 2, 4, 1, 128, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13},
+    )]
+    fn no_advisories_from_tcb(svns: &[u32], pce_svn: u32) {
+        let json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
+        let tcb_raw = TcbInfoRaw::try_from(json).expect("Failed to parse raw TCB");
+        let tcb_info = TcbInfo::try_from(tcb_raw.tcb_info.get()).expect("Failed to parse TCB info");
+
+        let tcb = PckTcb {
+            svns: svns.try_into().expect("Not enough svns"),
+            pce_svn,
+            fmspc: tcb_info.fmspc.clone(),
+        };
+
+        assert_eq!(tcb_info.advisories(&tcb), None);
+    }
+
+    #[test]
+    fn fmspc_mismatch_no_advisories() {
+        let json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
+        let tcb_raw = TcbInfoRaw::try_from(json).expect("Failed to parse raw TCB");
+        let tcb_info = TcbInfo::try_from(tcb_raw.tcb_info.get()).expect("Failed to parse TCB info");
+        let first_level = &tcb_info.tcb_levels[0].tcb;
+        let svns = first_level
+            .sgx_tcb_components
+            .iter()
+            .map(|c| c.svn)
+            .collect::<Vec<_>>();
+
+        let mut fmspc = tcb_info.fmspc.clone();
+        fmspc[0] += 1;
+
+        let tcb = PckTcb {
+            svns: svns.try_into().expect("Not enough svns"),
+            pce_svn: first_level.pce_svn,
+            fmspc,
+        };
+
+        assert_eq!(tcb_info.advisories(&tcb), None);
+    }
+
+    #[parameterized(
+        best = { &[1, 1, 2, 2, 2, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0], 11, TcbStatus::UpToDate },
+        pce_svn_5 = { &[1, 1, 2, 2, 2, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0], 5, TcbStatus::OutOfDate },
+    )]
+    fn advisories_from_example_tcb(svns: &[u32], pce_svn: u32, status: TcbStatus) {
+        let json = include_str!("../data/tests/example_tcb.json");
+        let tcb_raw = TcbInfoRaw::try_from(json).expect("Failed to parse raw TCB");
+        let tcb_info = TcbInfo::try_from(tcb_raw.tcb_info.get()).expect("Failed to parse TCB info");
+
+        let tcb = PckTcb {
+            svns: svns.try_into().expect("Not enough svns"),
+            pce_svn,
+            fmspc: tcb_info.fmspc.clone(),
+        };
+        let expected_advisories = Advisories {
+            ids: vec![],
+            status,
+        };
+
+        assert_eq!(tcb_info.advisories(&tcb), Some(expected_advisories));
+    }
+
+    #[parameterized(
+        equal = { &[5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5], 5, true },
+        first_greater = { &[6, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5], 5, true },
+        second_greater = { &[5, 6, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5], 5, true },
+        last_greater = { &[5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6], 5, true },
+        pce_greater = { &[5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5], 6, true },
+        multiple_greater = { &[5, 5, 5, 5, 6, 5, 5, 5, 5, 5, 8, 5, 5, 5, 5, 5], 6, true },
+        first_less = { &[4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5], 5, false },
+        second_less = { &[5, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5], 5, false },
+        last_less = { &[5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 4], 5, false },
+        pce_less = { &[5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5], 4, false },
+        multiple_less = { &[5, 5, 5, 4, 5, 5, 5, 5, 2, 5, 5, 5, 5, 5, 5, 5], 5, false },
+        first_greater_second_less = { &[6, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5], 5, false },
+        first_less_second_greater = { &[4, 6, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5], 5, false },
+        component_greater_pce_less = { &[5, 5, 5, 5, 5, 5, 6, 5, 5, 5, 5, 5, 5, 5, 5, 5], 1, false },
+        component_less_pce_greater = { &[5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 2, 5, 5, 5, 5], 9, false },
+    )]
+    fn tcb_is_corresponding_level(svns: &[u32], pce_svn: u32, expected: bool) {
+        let base = [5; COMPONENT_SVN_COUNT];
+        let components = base.map(|svn| TcbComponent {
+            svn,
+            category: None,
+            r#type: None,
+        });
+        let tcb = Tcb {
+            sgx_tcb_components: components.try_into().expect("Not enough components"),
+            pce_svn: 5,
+        };
+
+        let pck_tcb = PckTcb {
+            svns: svns.try_into().expect("Not enough svns"),
+            pce_svn,
+            fmspc: [0, 1, 2, 3, 4, 5],
+        };
+        assert_eq!(tcb.is_corresponding_level(&pck_tcb), expected);
     }
 }
