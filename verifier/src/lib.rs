@@ -4,6 +4,8 @@
 #![deny(missing_docs, missing_debug_implementations, unsafe_code)]
 #![no_std]
 
+#[cfg(feature = "advisories")]
+mod advisories;
 mod report_body;
 mod struct_name;
 #[cfg(feature = "tcb")]
@@ -17,8 +19,8 @@ pub use report_body::{
     MiscellaneousSelectVerifier, MrEnclaveVerifier, MrSignerVerifier, ReportDataVerifier,
 };
 
-#[cfg(feature = "tcb")]
-pub use tcb::TcbStatus;
+#[cfg(feature = "advisories")]
+pub use advisories::{Advisories, AdvisoriesVerifier, AdvisoryStatus};
 
 use crate::struct_name::SpacedStructName;
 use core::fmt::{Debug, Display, Formatter};
