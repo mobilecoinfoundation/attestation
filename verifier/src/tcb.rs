@@ -64,6 +64,10 @@ pub enum Error {
     TcbInfoNotYetValid,
     /// TCB info expired
     TcbInfoExpired,
+    /// Asking for TCB levels for a different FMSPC
+    FmspcMismatch,
+    /// The TCB level reported does not match an entry in the TCB info data.
+    UnsupportedTcbLevel,
 }
 
 impl From<der::Error> for Error {
@@ -161,24 +165,30 @@ impl TcbInfo {
     /// >      TCB level. Otherwise, move to the next item on TCB Levels list.
     /// > 4. If no TCB level matches your SGX PCK Certificate, your TCB Level is
     /// >    not supported.
-    fn advisories(&self, pck_tcb: &PckTcb) -> Option<Advisories> {
+    ///
+    /// # Errors
+    /// - `Error::FmspcMismatch` if the `fmspc` in `self` does not match the one
+    ///   in `pck_tcb`.
+    /// - `Error::UnsupportedTcbLevel` if the TCB level reported is not found in
+    ///   self.
+    fn advisories(&self, pck_tcb: &PckTcb) -> Result<Advisories, Error> {
         // `self` should have been retrieved via
         // <https://api.trustedservices.intel.com/sgx/certification/v4/tcb?fmspc={}>
         // and the `pck_tcb.fmspc`. Failure here should rarely happen, but we
         // still check to ensure the client didn't get mixed up.
         if self.fmspc != pck_tcb.fmspc {
-            return None;
+            return Err(Error::FmspcMismatch);
         }
 
         for level in &self.tcb_levels {
             if level.tcb.is_corresponding_level(pck_tcb) {
-                return Some(Advisories {
+                return Ok(Advisories {
                     ids: level.advisory_ids.clone(),
                     status: level.tcb_status,
                 });
             }
         }
-        None
+        Err(Error::UnsupportedTcbLevel)
     }
 }
 
@@ -744,7 +754,8 @@ mod tests {
             status,
         };
 
-        assert_eq!(tcb_info.advisories(&tcb), Some(expected_advisories));
+        let actual_advisories = tcb_info.advisories(&tcb).expect("Failed to get advisories");
+        assert_eq!(actual_advisories, expected_advisories);
     }
 
     #[parameterized(
@@ -762,7 +773,10 @@ mod tests {
             fmspc: tcb_info.fmspc.clone(),
         };
 
-        assert_eq!(tcb_info.advisories(&tcb), None);
+        assert!(matches!(
+            tcb_info.advisories(&tcb),
+            Err(Error::UnsupportedTcbLevel)
+        ));
     }
 
     #[test]
@@ -786,7 +800,10 @@ mod tests {
             fmspc,
         };
 
-        assert_eq!(tcb_info.advisories(&tcb), None);
+        assert!(matches!(
+            tcb_info.advisories(&tcb),
+            Err(Error::FmspcMismatch)
+        ));
     }
 
     #[parameterized(
@@ -808,7 +825,8 @@ mod tests {
             status,
         };
 
-        assert_eq!(tcb_info.advisories(&tcb), Some(expected_advisories));
+        let actual_advisories = tcb_info.advisories(&tcb).expect("failed to get advisories");
+        assert_eq!(actual_advisories, expected_advisories);
     }
 
     #[parameterized(
