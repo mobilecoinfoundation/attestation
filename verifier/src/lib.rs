@@ -6,7 +6,7 @@
 
 mod report_body;
 mod struct_name;
-#[cfg(feature = "alloc")]
+#[cfg(feature = "tcb")]
 mod tcb;
 #[cfg(feature = "alloc")]
 mod x509;

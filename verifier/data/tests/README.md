@@ -20,3 +20,6 @@
   This was captured on 2023-05-10.
 * `example_tcb.json` - JSON file containing the example TCB response from
   <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v4>.
+* `tcb_signer.pem` - The signer certificate for TCB data from
+  <https://api.trustedservices.intel.com/sgx/certification/v4/tcb?fmspc={}>.
+  This was retrieved by looking at the header using `curl --include ...`.
