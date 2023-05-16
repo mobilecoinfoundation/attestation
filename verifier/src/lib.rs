@@ -17,6 +17,7 @@ pub use report_body::{
     MiscellaneousSelectVerifier, MrEnclaveVerifier, MrSignerVerifier, ReportDataVerifier,
 };
 
+use crate::struct_name::SpacedStructName;
 use core::fmt::{Debug, Display, Formatter};
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
@@ -133,6 +134,10 @@ pub enum VerificationError {
     },
 }
 
+trait IntoVerificationError {
+    fn into_verification_error(expected: Self, actual: Self) -> VerificationError;
+}
+
 impl DisplayableError for VerificationError {}
 
 /// Trait to convert a [`CtOption<T>`] into a [`CtOptionDisplay<'a, T>`].
@@ -219,6 +224,110 @@ pub trait Verifier<T>: Debug {
         Self: Sized,
     {
         And::new(self, other)
+    }
+}
+
+/// Common implementation for [`Verifier`]s that test for equality between
+/// an expected and actual value.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct EqualityVerifier<T> {
+    expected: T,
+}
+
+impl<T> EqualityVerifier<T> {
+    /// Create a new instance.
+    pub fn new(expected: T) -> Self {
+        Self { expected }
+    }
+}
+
+impl<T> Display for EqualityVerifier<T>
+where
+    T: SpacedStructName + Display,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "The {} should be {}",
+            T::spaced_struct_name(),
+            self.expected
+        )
+    }
+}
+
+impl<T, E> Verifier<E> for EqualityVerifier<T>
+where
+    T: Debug + Clone + PartialEq + IntoVerificationError,
+    E: Accessor<T>,
+{
+    type Error = VerificationError;
+    fn verify(&self, evidence: &E) -> CtOption<Self::Error> {
+        let expected = self.expected.clone();
+        let actual = evidence.get();
+        // TODO - This should be a constant time comparison.
+        let is_some = if expected == actual { 0 } else { 1 };
+        CtOption::new(T::into_verification_error(expected, actual), is_some.into())
+    }
+}
+
+/// Common implementation for [`Verifier`]s that test for an actual value being
+/// greater than or equal to an expected value
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct GreaterThanEqualVerifier<T> {
+    expected: T,
+}
+
+impl<T> GreaterThanEqualVerifier<T> {
+    /// Create a new instance.
+    pub fn new(expected: T) -> Self {
+        Self { expected }
+    }
+}
+
+impl<T> Display for GreaterThanEqualVerifier<T>
+where
+    T: SpacedStructName + Display,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "The {} should be at least {}",
+            T::spaced_struct_name(),
+            self.expected
+        )
+    }
+}
+
+/// Trait for getting access to the type `T` that needs to be verified.
+///
+/// The intent is to implement this for a higher level type that contains the
+/// `T`
+///
+/// ```
+/// use mc_attestation_verifier::Accessor;
+/// pub struct Container {
+///    field: u8,
+/// }
+/// impl Container {
+///    fn field(&self) -> u8 {
+///       self.field
+///    }
+/// }
+/// impl Accessor<u8> for Container {
+///     fn get(&self) -> u8 {
+///         self.field()
+///     }
+/// }
+/// ```
+pub trait Accessor<T> {
+    /// Get access to the value that needs to be verified.
+    fn get(&self) -> T;
+}
+
+/// [`Accessor`] for returning Self, i.e. T -> T
+impl<T: Clone> Accessor<T> for T {
+    fn get(&self) -> T {
+        self.clone()
     }
 }
 
