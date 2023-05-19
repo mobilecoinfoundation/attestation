@@ -1,6 +1,8 @@
 /// Error type for decoding and verifying certificates.
 #[derive(Debug, displaydoc::Display, PartialEq, Eq)]
 pub enum Error {
+    /// An error occurred working with MbedTls
+    MbedTls(mbedtls::Error),
     /// An error occurred decoding the signature from a certificate
     SignatureDecoding,
     /// The certification signature does not match with the verifying key
@@ -24,5 +26,11 @@ pub enum Error {
 impl From<x509_cert::der::Error> for Error {
     fn from(src: x509_cert::der::Error) -> Self {
         Error::DerDecoding(src)
+    }
+}
+
+impl From<mbedtls::Error> for Error {
+    fn from(src: mbedtls::Error) -> Self {
+        Error::MbedTls(src)
     }
 }
