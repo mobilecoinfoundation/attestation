@@ -10,7 +10,7 @@ mod report_body;
 mod struct_name;
 #[cfg(feature = "tcb")]
 mod tcb;
-#[cfg(feature = "alloc")]
+#[cfg(feature = "x509")]
 mod x509;
 
 pub use report_body::{
@@ -21,6 +21,9 @@ pub use report_body::{
 
 #[cfg(feature = "advisories")]
 pub use advisories::{Advisories, AdvisoriesVerifier, AdvisoryStatus};
+
+#[cfg(feature = "x509")]
+pub use x509::{TrustAnchor, UnverifiedCertChain, VerifiedCertChain};
 
 use crate::struct_name::SpacedStructName;
 use core::fmt::{Debug, Display, Formatter};

@@ -1,16 +1,9 @@
 // Copyright (c) 2023 The MobileCoin Foundation
 
-// TODO: Remove dead_code exception once this is connected up to the rest of the codebase
-#![allow(dead_code)]
-mod certs;
-mod crl;
-mod error;
-
 extern crate alloc;
 use alloc::string::String;
 use alloc::vec;
-pub use error::Error;
-pub type Result<T> = core::result::Result<T, Error>;
+use core::fmt::{Debug, Formatter};
 
 use mbedtls::{
     alloc::List as MbedtlsList,
@@ -19,8 +12,30 @@ use mbedtls::{
     x509::{Certificate, Profile},
 };
 
+pub type Result<T> = core::result::Result<T, Error>;
+
+/// Error type for decoding and verifying certificates.
+#[derive(Debug, displaydoc::Display, PartialEq, Eq)]
+pub enum Error {
+    /// An error occurred working with MbedTls
+    MbedTls(mbedtls::Error),
+}
+
+impl From<mbedtls::Error> for Error {
+    fn from(src: mbedtls::Error) -> Self {
+        Error::MbedTls(src)
+    }
+}
+
+/// Trust anchor for a certificate chain.
 #[derive(Clone)]
 pub struct TrustAnchor(MbedtlsList<Certificate>);
+
+impl Debug for TrustAnchor {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "TrustAnchor{{...}}")
+    }
+}
 
 /// Try to get a trust anchor from a PEM-encoded string.
 ///
@@ -55,6 +70,12 @@ impl TryFrom<String> for TrustAnchor {
 /// [`VerifiedCertChain`].
 #[derive(Clone)]
 pub struct UnverifiedCertChain(MbedtlsList<Certificate>);
+
+impl Debug for UnverifiedCertChain {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "UnverifiedCertChain{{...}}")
+    }
+}
 
 impl UnverifiedCertChain {
     /// Verify the certificate chain is valid for the given `trust_anchor`.
@@ -115,6 +136,12 @@ impl TryFrom<String> for UnverifiedCertChain {
 ///
 /// See [`UnverifiedCertChain::verify`] for creating one.
 pub struct VerifiedCertChain(MbedtlsList<Certificate>);
+
+impl Debug for VerifiedCertChain {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "VerifiedCertChain{{...}}")
+    }
+}
 
 #[cfg(test)]
 mod test {
