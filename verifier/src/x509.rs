@@ -17,7 +17,7 @@ pub type Result<T> = core::result::Result<T, Error>;
 /// Error type for decoding and verifying certificates.
 #[derive(Debug, displaydoc::Display, PartialEq, Eq)]
 pub enum Error {
-    /// An error occurred working with MbedTls
+    /// An error occurred working with MbedTls: {0}
     MbedTls(mbedtls::Error),
 }
 
