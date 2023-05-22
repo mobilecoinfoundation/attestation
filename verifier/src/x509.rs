@@ -131,7 +131,7 @@ mod test {
             UnverifiedCertChain::try_from(LEAF_CERT).expect("failed to parse cert chain");
         // Counting manually, because `MbedtlsList` is a linked list without
         // `len()` method.
-        let count = cert_chain.0.iter().fold(0, |sum, _| sum + 1);
+        let count = cert_chain.0.iter().count();
         assert_eq!(count, 1);
     }
 
@@ -140,7 +140,7 @@ mod test {
         let raw_pems = format!("{LEAF_CERT}\n{PROCESSOR_CA}");
         let cert_chain =
             UnverifiedCertChain::try_from(raw_pems.as_str()).expect("failed to parse cert chain");
-        let count = cert_chain.0.iter().fold(0, |sum, _| sum + 1);
+        let count = cert_chain.0.iter().count();
         assert_eq!(count, 2);
     }
 
@@ -158,7 +158,7 @@ mod test {
         let cert_chain =
             UnverifiedCertChain::try_from(raw_pems.as_str()).expect("failed to parse cert chain");
         let trust_anchor = TrustAnchor::try_from(ROOT_CA).expect("failed to parse root cert");
-        assert_eq!(cert_chain.verify(&trust_anchor).is_ok(), true);
+        assert!(cert_chain.verify(&trust_anchor).is_ok());
     }
 
     #[test]
@@ -179,6 +179,6 @@ mod test {
         let cert_chain =
             UnverifiedCertChain::try_from(raw_pems.as_str()).expect("failed to parse cert chain");
         let trust_anchor = TrustAnchor::try_from(ROOT_CA).expect("failed to parse root cert");
-        assert_eq!(cert_chain.verify(&trust_anchor).is_ok(), true);
+        assert!(cert_chain.verify(&trust_anchor).is_ok());
     }
 }
