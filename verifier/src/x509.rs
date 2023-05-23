@@ -1,9 +1,8 @@
 // Copyright (c) 2023 The MobileCoin Foundation
 
 extern crate alloc;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec;
-use alloc::vec::Vec;
 use core::fmt::{Debug, Formatter};
 
 use mbedtls::{
@@ -38,43 +37,29 @@ impl Debug for TrustAnchor {
     }
 }
 
-/// Try to get a trust anchor from a PEM-encoded string.
-///
-/// # Errors
-/// `Error::MbedTls` if the string is not valid PEM certificate.
-impl TryFrom<&str> for TrustAnchor {
-    type Error = Error;
+impl TrustAnchor {
+    /// Try to get a trust anchor from a PEM encoded string.
+    ///
+    /// # Errors
+    /// `Error::MbedTls` if the string is not valid PEM certificate.
+    pub fn try_from_pem(pem: impl Into<String>) -> Result<Self> {
+        let mut certs = MbedtlsList::<Certificate>::new();
+        let mut pem = pem.into();
 
-    fn try_from(pem: &str) -> Result<Self> {
-        Self::try_from(String::from(pem))
-    }
-}
-
-/// Try to get a trust anchor from a PEM-encoded string.
-///
-/// # Errors
-/// `Error::MbedTls` if the string is not valid PEM certificate.
-impl TryFrom<String> for TrustAnchor {
-    type Error = Error;
-
-    fn try_from(mut pem: String) -> Result<Self> {
         // Null terminate for Mbedtls
         pem.push('\0');
-        let certs = Certificate::from_pem_multiple(pem.as_bytes())?;
+        let cert = Certificate::from_pem(pem.as_bytes())?;
+        certs.push(cert);
         Ok(Self(certs))
     }
-}
 
-/// Try to get a trust anchor from a DER-encoded byte slice.
-///
-/// # Errors
-/// `Error::MbedTls` if the bytes are not a valid DER certificate.
-impl TryFrom<&[u8]> for TrustAnchor {
-    type Error = Error;
-
-    fn try_from(der: &[u8]) -> Result<Self> {
+    /// Try to get a trust anchor from DER encoded bytes.
+    ///
+    /// # Errors
+    /// `Error::MbedTls` if the bytes are not a valid DER certificate.
+    pub fn try_from_der(der: impl AsRef<[u8]>) -> Result<Self> {
         let mut certs = MbedtlsList::<Certificate>::new();
-        let cert = Certificate::from_der(der)?;
+        let cert = Certificate::from_der(der.as_ref())?;
         certs.push(cert);
         Ok(Self(certs))
     }
@@ -129,52 +114,40 @@ impl UnverifiedCertChain {
         )?;
         Ok(VerifiedCertChain(self.0))
     }
-}
 
-/// Try to get a certificate chain from a PEM-encoded [`str`].
-///
-/// The [`str`] can be a single certificate or a newline concatenated chain of
-/// certificates.
-///
-/// # Errors
-/// `Error::MbedTls` if the string is not valid PEM certificate(s).
-impl TryFrom<&str> for UnverifiedCertChain {
-    type Error = Error;
-
-    fn try_from(pem: &str) -> Result<Self> {
-        Self::try_from(String::from(pem))
-    }
-}
-
-/// Try to get a certificate chain from a PEM-encoded String.
-///
-/// The string can be a single certificate or a newline concatenated chain of
-/// certificates.
-///
-/// # Errors
-/// `Error::MbedTls` if the string is not valid PEM certificate(s).
-impl TryFrom<String> for UnverifiedCertChain {
-    type Error = Error;
-
-    fn try_from(mut pem: String) -> Result<Self> {
-        // Null terminate for Mbedtls
-        pem.push('\0');
-        let certs = Certificate::from_pem_multiple(pem.as_bytes())?;
+    /// Try to get a certificate chain from an iterator of PEM encoded strings
+    ///
+    /// # Errors
+    /// `Error::MbedTls` if one of the strings is not valid PEM certificate(s).
+    pub fn try_from_pem<'a, E, I>(pems: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = &'a E>,
+        E: ToString + 'a + ?Sized,
+    {
+        let mut certs = MbedtlsList::<Certificate>::new();
+        for pem in pems.into_iter() {
+            let mut pem = pem.to_string();
+            // Null terminate for Mbedtls
+            pem.push('\0');
+            let cert = Certificate::from_pem(pem.as_bytes())?;
+            certs.push(cert);
+        }
         Ok(Self(certs))
     }
-}
 
-/// Try to get a certificate chain from a slice of DER-encoded slices.
-///
-/// # Errors
-/// `Error::MbedTls` if one of the bytes was not valid a DER certificate.
-impl TryFrom<&[&[u8]]> for UnverifiedCertChain {
-    type Error = Error;
-
-    fn try_from(ders: &[&[u8]]) -> Result<Self> {
+    /// Try to get a certificate chain from an iterator of DER encoded byte
+    /// slices.
+    ///
+    /// # Errors
+    /// `Error::MbedTls` if one of the bytes was not valid a DER certificate.
+    pub fn try_from_der<E, I>(ders: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = E>,
+        E: AsRef<[u8]>,
+    {
         let mut certs = MbedtlsList::<Certificate>::new();
         for der in ders {
-            let cert = Certificate::from_der(der)?;
+            let cert = Certificate::from_der(der.as_ref())?;
             certs.push(cert);
         }
         Ok(Self(certs))
@@ -185,51 +158,40 @@ impl TryFrom<&[&[u8]]> for UnverifiedCertChain {
 #[derive(Debug)]
 pub struct CertificateRevocationList(Crl);
 
-/// Try to get a set of certificate revocation lists from a slice of PEM-encoded
-/// [`str`]s.
-///
-/// # Errors
-/// `Error::MbedTls` if one of the [`str`]s is not valid PEM CRL.
-impl TryFrom<&[&str]> for CertificateRevocationList {
-    type Error = Error;
-
-    fn try_from(pems: &[&str]) -> Result<Self> {
-        let string_vec = pems.iter().map(|s| String::from(*s)).collect::<Vec<_>>();
-        Self::try_from(string_vec)
-    }
-}
-
-/// Try to get a set of certificate revocation lists from a slice of PEM-encoded
-/// [`String`]s.
-///
-/// # Errors
-/// `Error::MbedTls` if one of the [`String`]s is not valid PEM CRL.
-impl TryFrom<Vec<String>> for CertificateRevocationList {
-    type Error = Error;
-
-    fn try_from(mut pems: Vec<String>) -> Result<Self> {
+impl CertificateRevocationList {
+    /// Try to get a set of certificate revocation lists from an iterator of
+    /// PEM encoded strings.
+    ///
+    /// # Errors
+    /// `Error::MbedTls` if one of the strings is not a valid PEM CRL.
+    pub fn try_from_pem<'a, E, I>(pems: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = &'a E>,
+        E: ToString + 'a + ?Sized,
+    {
         let mut crl = Crl::new();
-        for pem in pems.iter_mut() {
+        for pem in pems.into_iter() {
+            let mut pem = pem.to_string();
             // Null terminate for Mbedtls
             pem.push('\0');
             crl.push_from_pem(pem.as_bytes())?;
         }
         Ok(Self(crl))
     }
-}
 
-/// Try to get a set certificate revocation list from a slice of DER-encoded
-/// slices.
-///
-/// # Errors
-/// `Error::MbedTls` if one of the slices is not a valid DER CRL.
-impl TryFrom<&[&[u8]]> for CertificateRevocationList {
-    type Error = Error;
-
-    fn try_from(ders: &[&[u8]]) -> Result<Self> {
+    /// Try to get a set of certificate revocation lists from an iterator of
+    /// DER encoded byte slices.
+    ///
+    /// # Errors
+    /// `Error::MbedTls` if one of the slices is not a valid DER CRL.
+    pub fn try_from_der<E, I>(ders: I) -> Result<Self>
+    where
+        I: IntoIterator<Item = E>,
+        E: AsRef<[u8]>,
+    {
         let mut crl = Crl::new();
         for der in ders {
-            crl.push_from_der(der)?;
+            crl.push_from_der(der.as_ref())?;
         }
         Ok(Self(crl))
     }
@@ -249,7 +211,6 @@ impl Debug for VerifiedCertChain {
 #[cfg(test)]
 mod test {
     use super::*;
-    use alloc::format;
 
     const LEAF_CERT: &str = include_str!("../data/tests/leaf_cert.pem");
     const PROCESSOR_CA: &str = include_str!("../data/tests/processor_ca.pem");
@@ -267,26 +228,26 @@ mod test {
 
     #[test]
     fn trust_anchor_from_pem() {
-        assert!(TrustAnchor::try_from(ROOT_CA).is_ok());
+        assert!(TrustAnchor::try_from_pem(ROOT_CA).is_ok());
     }
 
     #[test]
     fn trust_anchor_from_bad_pem_fails() {
         assert!(matches!(
-            TrustAnchor::try_from(&ROOT_CA[1..]),
+            TrustAnchor::try_from_pem(&ROOT_CA[1..]),
             Err(Error::MbedTls(_))
         ));
     }
 
     #[test]
     fn trust_anchor_from_der() {
-        assert!(TrustAnchor::try_from(TRUST_ANCHOR_ROOT_CERTIFICATE).is_ok());
+        assert!(TrustAnchor::try_from_der(&TRUST_ANCHOR_ROOT_CERTIFICATE).is_ok());
     }
 
     #[test]
     fn trust_anchor_from_bad_der_fails() {
         assert!(matches!(
-            TrustAnchor::try_from(&TRUST_ANCHOR_ROOT_CERTIFICATE[1..]),
+            TrustAnchor::try_from_der(&TRUST_ANCHOR_ROOT_CERTIFICATE[1..]),
             Err(Error::MbedTls(_))
         ));
     }
@@ -294,7 +255,7 @@ mod test {
     #[test]
     fn cert_chain_from_one_pem_cert() {
         let cert_chain =
-            UnverifiedCertChain::try_from(LEAF_CERT).expect("failed to parse cert chain");
+            UnverifiedCertChain::try_from_pem([LEAF_CERT]).expect("failed to parse cert chain");
         // Counting manually, because `MbedtlsList` is a linked list without
         // `len()` method.
         let count = cert_chain.0.iter().count();
@@ -303,9 +264,8 @@ mod test {
 
     #[test]
     fn cert_chain_from_two_pem_certs() {
-        let raw_pems = format!("{LEAF_CERT}\n{PROCESSOR_CA}");
-        let cert_chain =
-            UnverifiedCertChain::try_from(raw_pems.as_str()).expect("failed to parse cert chain");
+        let cert_chain = UnverifiedCertChain::try_from_pem([LEAF_CERT, PROCESSOR_CA])
+            .expect("failed to parse cert chain");
         let count = cert_chain.0.iter().count();
         assert_eq!(count, 2);
     }
@@ -313,14 +273,14 @@ mod test {
     #[test]
     fn cert_chain_from_invalid_pem_cert() {
         assert!(matches!(
-            UnverifiedCertChain::try_from(&LEAF_CERT[1..]),
+            UnverifiedCertChain::try_from_pem([&LEAF_CERT[1..]]),
             Err(Error::MbedTls(_))
         ));
     }
 
     #[test]
     fn cert_chain_from_one_der_cert() {
-        let cert_chain = UnverifiedCertChain::try_from([TRUST_ANCHOR_ROOT_CERTIFICATE].as_slice())
+        let cert_chain = UnverifiedCertChain::try_from_der([TRUST_ANCHOR_ROOT_CERTIFICATE])
             .expect("failed to parse cert chain");
         let count = cert_chain.0.iter().count();
         assert_eq!(count, 1);
@@ -329,7 +289,7 @@ mod test {
     #[test]
     fn cert_chain_from_multiple_der_certs() {
         let cert_chain =
-            UnverifiedCertChain::try_from([GOOD_CA_CERT, TRUST_ANCHOR_ROOT_CERTIFICATE].as_slice())
+            UnverifiedCertChain::try_from_der([GOOD_CA_CERT, TRUST_ANCHOR_ROOT_CERTIFICATE])
                 .expect("failed to parse cert chain");
         let count = cert_chain.0.iter().count();
         assert_eq!(count, 2);
@@ -338,29 +298,27 @@ mod test {
     #[test]
     fn cert_chain_from_invalid_der_cert() {
         assert!(matches!(
-            UnverifiedCertChain::try_from([&TRUST_ANCHOR_ROOT_CERTIFICATE[1..]].as_slice()),
+            UnverifiedCertChain::try_from_der([&TRUST_ANCHOR_ROOT_CERTIFICATE[1..]]),
             Err(Error::MbedTls(_))
         ));
     }
 
     #[test]
     fn verify_valid_cert_chain() {
-        let raw_pems = format!("{LEAF_CERT}\n{PROCESSOR_CA}\n{ROOT_CA}");
-        let cert_chain =
-            UnverifiedCertChain::try_from(raw_pems.as_str()).expect("failed to parse cert chain");
-        let trust_anchor = TrustAnchor::try_from(ROOT_CA).expect("failed to parse root cert");
-        let crl = CertificateRevocationList::try_from([ROOT_CRL, PROCESSOR_CRL].as_slice())
+        let cert_chain = UnverifiedCertChain::try_from_pem([LEAF_CERT, PROCESSOR_CA, ROOT_CA])
+            .expect("failed to parse cert chain");
+        let trust_anchor = TrustAnchor::try_from_pem(ROOT_CA).expect("failed to parse root cert");
+        let crl = CertificateRevocationList::try_from_pem([ROOT_CRL, PROCESSOR_CRL])
             .expect("failed to parse CRL");
         assert!(cert_chain.verify(&trust_anchor, crl).is_ok());
     }
 
     #[test]
     fn invalid_cert_chain() {
-        let raw_pems = format!("{LEAF_CERT}\n{ROOT_CA}");
-        let cert_chain =
-            UnverifiedCertChain::try_from(raw_pems.as_str()).expect("failed to parse cert chain");
-        let trust_anchor = TrustAnchor::try_from(ROOT_CA).expect("failed to parse root cert");
-        let crl = CertificateRevocationList::try_from([ROOT_CRL, PROCESSOR_CRL].as_slice())
+        let cert_chain = UnverifiedCertChain::try_from_pem([LEAF_CERT, ROOT_CA])
+            .expect("failed to parse cert chain");
+        let trust_anchor = TrustAnchor::try_from_pem(ROOT_CA).expect("failed to parse root cert");
+        let crl = CertificateRevocationList::try_from_pem([ROOT_CRL, PROCESSOR_CRL])
             .expect("failed to parse CRL");
         assert!(matches!(
             cert_chain.verify(&trust_anchor, crl),
@@ -370,11 +328,10 @@ mod test {
 
     #[test]
     fn unordered_cert_chain_succeeds() {
-        let raw_pems = format!("{PROCESSOR_CA}\n{ROOT_CA}\n{LEAF_CERT}");
-        let cert_chain =
-            UnverifiedCertChain::try_from(raw_pems.as_str()).expect("failed to parse cert chain");
-        let trust_anchor = TrustAnchor::try_from(ROOT_CA).expect("failed to parse root cert");
-        let crl = CertificateRevocationList::try_from([ROOT_CRL, PROCESSOR_CRL].as_slice())
+        let cert_chain = UnverifiedCertChain::try_from_pem([PROCESSOR_CA, ROOT_CA, LEAF_CERT])
+            .expect("failed to parse cert chain");
+        let trust_anchor = TrustAnchor::try_from_pem(ROOT_CA).expect("failed to parse root cert");
+        let crl = CertificateRevocationList::try_from_pem([ROOT_CRL, PROCESSOR_CRL])
             .expect("failed to parse CRL");
         assert!(cert_chain.verify(&trust_anchor, crl).is_ok());
     }
@@ -398,10 +355,10 @@ mod test {
             TRUST_ANCHOR_ROOT_CERTIFICATE,
         ];
         let cert_chain =
-            UnverifiedCertChain::try_from(ders.as_slice()).expect("failed to parse cert chain");
-        let trust_anchor = TrustAnchor::try_from(TRUST_ANCHOR_ROOT_CERTIFICATE)
+            UnverifiedCertChain::try_from_der(&ders).expect("failed to parse cert chain");
+        let trust_anchor = TrustAnchor::try_from_der(TRUST_ANCHOR_ROOT_CERTIFICATE)
             .expect("failed to parse root cert");
-        let crl = CertificateRevocationList::try_from([TRUST_ANCHOR_ROOT_CRL].as_slice())
+        let crl = CertificateRevocationList::try_from_der([TRUST_ANCHOR_ROOT_CRL])
             .expect("failed to parse CRL");
 
         // As the name suggests, this test should fail, however Mbedtls doesn't
@@ -436,12 +393,14 @@ mod test {
             TRUST_ANCHOR_ROOT_CERTIFICATE,
         ];
         let cert_chain =
-            UnverifiedCertChain::try_from(ders.as_slice()).expect("failed to parse cert chain");
-        let trust_anchor = TrustAnchor::try_from(TRUST_ANCHOR_ROOT_CERTIFICATE)
+            UnverifiedCertChain::try_from_der(&ders).expect("failed to parse cert chain");
+        let trust_anchor = TrustAnchor::try_from_der(TRUST_ANCHOR_ROOT_CERTIFICATE)
             .expect("failed to parse root cert");
-        let crl = CertificateRevocationList::try_from(
-            [REVOKED_SUB_CA_CRL, GOOD_CA_CRL, TRUST_ANCHOR_ROOT_CRL].as_slice(),
-        )
+        let crl = CertificateRevocationList::try_from_der([
+            REVOKED_SUB_CA_CRL,
+            GOOD_CA_CRL,
+            TRUST_ANCHOR_ROOT_CRL,
+        ])
         .expect("failed to parse CRL");
 
         assert!(matches!(
@@ -460,12 +419,11 @@ mod test {
             TRUST_ANCHOR_ROOT_CERTIFICATE,
         ];
         let cert_chain =
-            UnverifiedCertChain::try_from(ders.as_slice()).expect("failed to parse cert chain");
-        let trust_anchor = TrustAnchor::try_from(TRUST_ANCHOR_ROOT_CERTIFICATE)
+            UnverifiedCertChain::try_from_der(&ders).expect("failed to parse cert chain");
+        let trust_anchor = TrustAnchor::try_from_der(TRUST_ANCHOR_ROOT_CERTIFICATE)
             .expect("failed to parse root cert");
-        let crl =
-            CertificateRevocationList::try_from([GOOD_CA_CRL, TRUST_ANCHOR_ROOT_CRL].as_slice())
-                .expect("failed to parse CRL");
+        let crl = CertificateRevocationList::try_from_der([GOOD_CA_CRL, TRUST_ANCHOR_ROOT_CRL])
+            .expect("failed to parse CRL");
 
         assert!(matches!(
             cert_chain.verify(&trust_anchor, crl),
@@ -479,9 +437,10 @@ mod test {
             include_bytes!("../data/tests/pkits/crls/BadCRLSignatureCACRL.crl");
         // The CRL signature is invalid so parsing the CRL will fail
         assert!(matches!(
-            CertificateRevocationList::try_from(
-                [BAD_CRL_SIGNATURE_CA_CRL, TRUST_ANCHOR_ROOT_CRL].as_slice()
-            ),
+            CertificateRevocationList::try_from_der([
+                BAD_CRL_SIGNATURE_CA_CRL,
+                TRUST_ANCHOR_ROOT_CRL
+            ]),
             Err(Error::MbedTls(_))
         ));
     }
