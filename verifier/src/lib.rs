@@ -23,10 +23,66 @@ use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
     MiscellaneousSelect, MrEnclave, MrSigner, ReportData,
 };
-use subtle::{Choice, CtOption};
+use subtle::Choice;
 
 /// Number of spaces to indent nested error messages.
 const ERROR_INDENT: usize = 2;
+
+/// The output of a verification operation, [`Verifier::verify()`].
+#[derive(Debug, Clone)]
+pub struct VerificationOutput<T> {
+    // Whether or not this verification was successful.
+    succeeded: Choice,
+    // The value that was used in the verification.
+    value: T,
+}
+
+impl<T> VerificationOutput<T> {
+    /// Create a new instance.
+    ///
+    /// # Arguments
+    /// * `value` - The value that was used in the verification.
+    /// * `succeeded` - Whether or not the verification succeeded.
+    pub fn new(value: T, succeeded: Choice) -> VerificationOutput<T> {
+        Self { value, succeeded }
+    }
+
+    /// Was the verification successful?
+    pub fn is_success(&self) -> Choice {
+        self.succeeded
+    }
+
+    /// Was the verification a failure?
+    pub fn is_failure(&self) -> Choice {
+        !self.succeeded
+    }
+}
+
+impl<T> VerificationOutput<T>
+where
+    T: DisplayableError,
+{
+    /// Format the instance with preceding padding
+    ///
+    /// The `pad` is the number of spaces to precede each line of the displayed
+    /// representation with.
+    pub fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
+        match self.succeeded.unwrap_u8() {
+            1 => write!(f, "{:pad$}Passed", "")?,
+            _ => self.value.fmt_padded(f, pad)?,
+        }
+        Ok(())
+    }
+}
+
+impl<T> Display for VerificationOutput<T>
+where
+    T: DisplayableError,
+{
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+        self.fmt_padded(f, 0)
+    }
+}
 
 /// An error that implements the [`Display`] trait.
 pub trait DisplayableError: Display + Clone {
@@ -140,75 +196,17 @@ trait IntoVerificationError {
 
 impl DisplayableError for VerificationError {}
 
-/// Trait to convert a [`CtOption<T>`] into a [`CtOptionDisplay<'a, T>`].
-///
-/// # Examples
-/// ```
-/// use subtle::CtOption;
-/// use mc_attestation_verifier::{VerificationError, DisplayableCtOption};
-///
-/// let ct_option = CtOption::new(VerificationError::General, 0.into());
-///
-/// assert_eq!(format!("{}", ct_option.display()), "Passed");
-/// ```
-pub trait DisplayableCtOption<'a, T> {
-    /// Returns an object that implements [`Display`] for a wrapped
-    /// [`CtOption<T>`].
-    #[must_use = "this does not display the [`CtOption<T>`], \
-                  it returns an object that can be displayed"]
-    fn display(&'a self) -> CtOptionDisplay<'a, T>
-    where
-        Self: Sized;
-}
-
-impl<'a, T> DisplayableCtOption<'a, T> for CtOption<T> {
-    fn display(&'a self) -> CtOptionDisplay<'a, T> {
-        self.into()
-    }
-}
-
-#[derive(Debug, Clone)]
-/// Helper struct for displaying [`CtOption`] with
-/// [`format`](https://doc.rust-lang.org/std/macro.format.html) and `{}`.
-pub struct CtOptionDisplay<'a, T>(&'a CtOption<T>);
-impl<'a, T: DisplayableError> CtOptionDisplay<'a, T> {
-    /// Format the instance with preceding padding
-    ///
-    /// The `pad` is the number of spaces to precede each line of the displayed
-    /// representation with.
-    pub fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
-        let option: Option<T> = Option::<T>::from(self.0.clone());
-        match option {
-            Some(value) => value.fmt_padded(f, pad)?,
-            None => write!(f, "{:pad$}Passed", "")?,
-        }
-        Ok(())
-    }
-}
-
-impl<'a, T> From<&'a CtOption<T>> for CtOptionDisplay<'a, T> {
-    fn from(ct_option: &'a CtOption<T>) -> Self {
-        Self(ct_option)
-    }
-}
-
-impl<'a, T: DisplayableError> Display for CtOptionDisplay<'a, T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        self.fmt_padded(f, 0)
-    }
-}
-
-/// A verifier. These can chained together using the [`Or`] and [`And`]
+/// A verifier. These can composed using the [`Or`] and [`And`]
 /// types.
-pub trait Verifier<T>: Debug {
-    /// The error that this verification will return in failure cases.
-    type Error: DisplayableError;
+pub trait Verifier<E>: Debug {
+    /// The value that was attempted to be verified.
+    type Value;
 
     /// Performs a verification operation on `evidence`.
     ///
     /// In order to accommodate constant time operations this returns a
-    /// [`CtOption`] instead of a [`Result`].
-    fn verify(&self, evidence: &T) -> CtOption<Self::Error>;
+    /// [`VerificationOutput`] instead of a [`Result`].
+    fn verify(&self, evidence: &E) -> VerificationOutput<Self::Value>;
 
     /// Or this verifier with another.
     fn or<U, V: Verifier<U>>(self, other: V) -> Or<Self, V>
@@ -257,16 +255,16 @@ where
 
 impl<T, E> Verifier<E> for EqualityVerifier<T>
 where
-    T: Debug + Clone + PartialEq + IntoVerificationError,
+    T: Debug + Clone + PartialEq,
     E: Accessor<T>,
 {
-    type Error = VerificationError;
-    fn verify(&self, evidence: &E) -> CtOption<Self::Error> {
+    type Value = T;
+    fn verify(&self, evidence: &E) -> VerificationOutput<Self::Value> {
         let expected = self.expected.clone();
         let actual = evidence.get();
         // TODO - This should be a constant time comparison.
-        let is_some = if expected == actual { 0 } else { 1 };
-        CtOption::new(T::into_verification_error(expected, actual), is_some.into())
+        let is_success = if expected == actual { 1 } else { 0 };
+        VerificationOutput::new(actual, is_success.into())
     }
 }
 
@@ -331,16 +329,16 @@ impl<T: Clone> Accessor<T> for T {
     }
 }
 
-/// An error that occurs during an `and` operation.
+/// The output of an `and` operation.
 #[derive(Debug, Clone)]
-pub struct AndError<L, R> {
-    left: CtOption<L>,
-    right: CtOption<R>,
+pub struct AndOutput<L, R> {
+    left: VerificationOutput<L>,
+    right: VerificationOutput<R>,
 }
 
-impl<L, R> AndError<L, R> {
+impl<L, R> AndOutput<L, R> {
     /// Create a new instance
-    pub fn new(left: CtOption<L>, right: CtOption<R>) -> Self {
+    pub fn new(left: VerificationOutput<L>, right: VerificationOutput<R>) -> Self {
         Self { left, right }
     }
 }
@@ -360,7 +358,7 @@ fn choice_to_checkbox(choice: Choice) -> &'static str {
     }
 }
 
-/// Common logic to display an [`AndError`] or an [`OrError`]
+/// Common logic to display an [`AndOutput`] or an [`OrOutput`]
 ///
 /// Results in output in the formatter similar to:
 /// ```raw
@@ -377,34 +375,34 @@ fn and_or_error_fmt_padded<L: DisplayableError, R: DisplayableError>(
     f: &mut Formatter,
     pad: usize,
     type_name: &str,
-    left: &CtOption<L>,
-    right: &CtOption<R>,
+    left: &VerificationOutput<L>,
+    right: &VerificationOutput<R>,
 ) -> core::fmt::Result {
     Display::fmt(&format_args!("{:pad$}{type_name}:", ""), f)?;
     writeln!(f)?;
 
     let status_pad = pad + ERROR_INDENT;
-    let left_status = choice_to_checkbox(left.is_none());
+    let left_status = choice_to_checkbox(left.is_success());
     writeln!(f, "{:status_pad$}{left_status}", "")?;
 
     let nested_pad = status_pad + 2;
-    left.display().fmt_padded(f, nested_pad)?;
+    left.fmt_padded(f, nested_pad)?;
     writeln!(f)?;
 
-    let right_status = choice_to_checkbox(right.is_none());
+    let right_status = choice_to_checkbox(right.is_success());
     writeln!(f, "{:status_pad$}{right_status}", "")?;
-    right.display().fmt_padded(f, nested_pad)
-    // No trailing newline to prevent nested `AndError`s and `OrError`s from
+    right.fmt_padded(f, nested_pad)
+    // No trailing newline to prevent nested `AndOutput`s and `OrOutput`s from
     // resulting in multiple consecutive newlines
 }
 
-impl<L: DisplayableError, R: DisplayableError> DisplayableError for AndError<L, R> {
+impl<L: DisplayableError, R: DisplayableError> DisplayableError for AndOutput<L, R> {
     fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
-        and_or_error_fmt_padded(f, pad, "AndError", &self.left, &self.right)
+        and_or_error_fmt_padded(f, pad, "AndOutput", &self.left, &self.right)
     }
 }
 
-impl<L: DisplayableError, R: DisplayableError> Display for AndError<L, R> {
+impl<L: DisplayableError, R: DisplayableError> Display for AndOutput<L, R> {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         self.fmt_padded(f, 0)
     }
@@ -443,37 +441,37 @@ impl<L, R> And<L, R> {
     }
 }
 
-impl<T, L: Verifier<T>, R: Verifier<T>> Verifier<T> for And<L, R> {
-    type Error = AndError<L::Error, R::Error>;
-    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
+impl<E, L: Verifier<E>, R: Verifier<E>> Verifier<E> for And<L, R> {
+    type Value = AndOutput<L::Value, R::Value>;
+    fn verify(&self, evidence: &E) -> VerificationOutput<Self::Value> {
         let left_err = self.left.verify(evidence);
         let right_err = self.right.verify(evidence);
-        let is_some = left_err.is_some() | right_err.is_some();
-        CtOption::new(AndError::new(left_err, right_err), is_some)
+        let is_success = left_err.is_success() & right_err.is_success();
+        VerificationOutput::new(AndOutput::new(left_err, right_err), is_success)
     }
 }
 
-/// An error that occurs during an `or` operation.
+/// The output of an `or` operation.
 #[derive(Debug, Clone)]
-pub struct OrError<L, R> {
-    left: CtOption<L>,
-    right: CtOption<R>,
+pub struct OrOutput<L, R> {
+    left: VerificationOutput<L>,
+    right: VerificationOutput<R>,
 }
 
-impl<L, R> OrError<L, R> {
+impl<L, R> OrOutput<L, R> {
     /// Create a new instance
-    pub fn new(left: CtOption<L>, right: CtOption<R>) -> Self {
+    pub fn new(left: VerificationOutput<L>, right: VerificationOutput<R>) -> Self {
         Self { left, right }
     }
 }
 
-impl<L: DisplayableError, R: DisplayableError> DisplayableError for OrError<L, R> {
+impl<L: DisplayableError, R: DisplayableError> DisplayableError for OrOutput<L, R> {
     fn fmt_padded(&self, f: &mut Formatter, pad: usize) -> core::fmt::Result {
-        and_or_error_fmt_padded(f, pad, "OrError", &self.left, &self.right)
+        and_or_error_fmt_padded(f, pad, "OrOutput", &self.left, &self.right)
     }
 }
 
-impl<L: DisplayableError, R: DisplayableError> Display for OrError<L, R> {
+impl<L: DisplayableError, R: DisplayableError> Display for OrOutput<L, R> {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         self.fmt_padded(f, 0)
     }
@@ -512,36 +510,36 @@ impl<L, R> Or<L, R> {
     }
 }
 
-impl<T, L: Verifier<T>, R: Verifier<T>> Verifier<T> for Or<L, R> {
-    type Error = OrError<L::Error, R::Error>;
-    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
+impl<E, L: Verifier<E>, R: Verifier<E>> Verifier<E> for Or<L, R> {
+    type Value = OrOutput<L::Value, R::Value>;
+    fn verify(&self, evidence: &E) -> VerificationOutput<Self::Value> {
         let left_err = self.left.verify(evidence);
         let right_err = self.right.verify(evidence);
-        let is_some = left_err.is_some() & right_err.is_some();
-        CtOption::new(OrError::new(left_err, right_err), is_some)
+        let is_success = left_err.is_success() | right_err.is_success();
+        VerificationOutput::new(OrOutput::new(left_err, right_err), is_success)
     }
 }
 
-/// An error that occurs due to a [`Not`] operation.
+/// The output of a [`Not`] operation.
 #[derive(Debug, Clone)]
-pub struct NotError<E> {
-    // The [`CtOption`] that was negated by the [`Not`] operation.
-    inner: CtOption<E>,
+pub struct NotOutput<O> {
+    // The [`VerificationOutput`] that was negated by the [`Not`] operation.
+    inner: VerificationOutput<O>,
 }
 
-impl<E> NotError<E> {
+impl<O> NotOutput<O> {
     /// Create a new instance
-    pub fn new(inner: CtOption<E>) -> Self {
+    pub fn new(inner: VerificationOutput<O>) -> Self {
         Self { inner }
     }
 }
 
-impl<E: DisplayableError> DisplayableError for NotError<E> {}
+impl<E: DisplayableError> DisplayableError for NotOutput<E> {}
 
-impl<E: DisplayableError> Display for NotError<E> {
+impl<E: DisplayableError> Display for NotOutput<E> {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        f.debug_struct("NotError")
-            .field("inner", &format_args!("{:#}", self.inner.display()))
+        f.debug_struct("NotOutput")
+            .field("inner", &format_args!("{:#}", self.inner))
             .finish()
     }
 }
@@ -559,12 +557,12 @@ impl<V> Not<V> {
     }
 }
 
-impl<T, V: Verifier<T>> Verifier<T> for Not<V> {
-    type Error = NotError<V::Error>;
-    fn verify(&self, evidence: &T) -> CtOption<Self::Error> {
+impl<E, V: Verifier<E>> Verifier<E> for Not<V> {
+    type Value = NotOutput<V::Value>;
+    fn verify(&self, evidence: &E) -> VerificationOutput<Self::Value> {
         let original = self.verifier.verify(evidence);
-        let is_some = original.is_some();
-        CtOption::new(NotError::new(original), !is_some)
+        let is_success = original.is_success();
+        VerificationOutput::new(NotOutput::new(original), !is_success)
     }
 }
 
@@ -572,10 +570,10 @@ impl<T, V: Verifier<T>> Verifier<T> for Not<V> {
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Default)]
 pub struct AlwaysTrue;
 
-impl<T> Verifier<T> for AlwaysTrue {
-    type Error = VerificationError;
-    fn verify(&self, _evidence: &T) -> CtOption<Self::Error> {
-        CtOption::new(VerificationError::General, 0.into())
+impl<E> Verifier<E> for AlwaysTrue {
+    type Value = VerificationError;
+    fn verify(&self, _evidence: &E) -> VerificationOutput<Self::Value> {
+        VerificationOutput::new(VerificationError::General, 1.into())
     }
 }
 
@@ -583,10 +581,10 @@ impl<T> Verifier<T> for AlwaysTrue {
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Default)]
 pub struct AlwaysFalse;
 
-impl<T> Verifier<T> for AlwaysFalse {
-    type Error = VerificationError;
-    fn verify(&self, _evidence: &T) -> CtOption<Self::Error> {
-        CtOption::new(VerificationError::AlwaysFalse, 1.into())
+impl<E> Verifier<E> for AlwaysFalse {
+    type Value = VerificationError;
+    fn verify(&self, _evidence: &E) -> VerificationOutput<Self::Value> {
+        VerificationOutput::new(VerificationError::AlwaysFalse, 0.into())
     }
 }
 
@@ -617,11 +615,11 @@ mod tests {
     }
 
     impl<T> Verifier<T> for Node {
-        type Error = VerificationError;
-        fn verify(&self, _evidence: &T) -> CtOption<Self::Error> {
+        type Value = ();
+        fn verify(&self, _evidence: &T) -> VerificationOutput<Self::Value> {
             self.verified_called.replace(true);
-            let succeed = if self.succeed { 0 } else { 1 };
-            CtOption::new(VerificationError::General, succeed.into())
+            let succeed = if self.succeed { 1 } else { 0 };
+            VerificationOutput::new((), succeed.into())
         }
     }
 
@@ -629,14 +627,14 @@ mod tests {
     fn and_succeeds() {
         let and = And::new(AlwaysTrue, AlwaysTrue);
         let verification = and.verify(NO_EVIDENCE);
-        assert_eq!(verification.is_none().unwrap_u8(), 1);
+        assert_eq!(verification.is_success().unwrap_u8(), 1);
     }
 
     #[test]
     fn and_fails_at_left() {
         let and = And::new(Node::new(false), Node::new(true));
         let verification = and.verify(NO_EVIDENCE);
-        assert_eq!(verification.is_some().unwrap_u8(), 1);
+        assert_eq!(verification.is_failure().unwrap_u8(), 1);
         assert!(and.left().verified_called.get());
         assert!(and.right().verified_called.get());
     }
@@ -645,7 +643,7 @@ mod tests {
     fn and_fails_at_right() {
         let and = And::new(Node::new(true), Node::new(false));
         let verification = and.verify(NO_EVIDENCE);
-        assert_eq!(verification.is_some().unwrap_u8(), 1);
+        assert_eq!(verification.is_failure().unwrap_u8(), 1);
         assert!(and.left().verified_called.get());
         assert!(and.right().verified_called.get());
     }
@@ -654,14 +652,14 @@ mod tests {
     fn or_fails_for_both_failing() {
         let or = Or::new(AlwaysFalse, AlwaysFalse);
         let verification = or.verify(NO_EVIDENCE);
-        assert_eq!(verification.is_some().unwrap_u8(), 1);
+        assert_eq!(verification.is_failure().unwrap_u8(), 1);
     }
 
     #[test]
     fn or_succeeds_when_left_is_false() {
         let or = Or::new(Node::new(false), Node::new(true));
         let verification = or.verify(NO_EVIDENCE);
-        assert_eq!(verification.is_none().unwrap_u8(), 1);
+        assert_eq!(verification.is_success().unwrap_u8(), 1);
         assert!(or.left().verified_called.get());
         assert!(or.right().verified_called.get());
     }
@@ -670,7 +668,7 @@ mod tests {
     fn or_succeeds_when_right_is_false() {
         let or = Or::new(Node::new(true), Node::new(false));
         let verification = or.verify(NO_EVIDENCE);
-        assert_eq!(verification.is_none().unwrap_u8(), 1);
+        assert_eq!(verification.is_success().unwrap_u8(), 1);
         assert!(or.left().verified_called.get());
         assert!(or.right().verified_called.get());
     }
@@ -679,53 +677,69 @@ mod tests {
     fn composing_or_and_and() {
         let or = Or::new(And::new(Node::new(true), Node::new(false)), Node::new(true));
         let verification = or.verify(NO_EVIDENCE);
-        assert_eq!(verification.is_none().unwrap_u8(), 1);
+        assert_eq!(verification.is_success().unwrap_u8(), 1);
     }
 
     #[test]
     fn composing_and_and_or() {
         let and = And::new(Or::new(Node::new(true), Node::new(false)), Node::new(true));
         let verification = and.verify(NO_EVIDENCE);
-        assert_eq!(verification.is_none().unwrap_u8(), 1);
+        assert_eq!(verification.is_success().unwrap_u8(), 1);
     }
 
     #[test]
     fn display_of_successful_option() {
-        let success = CtOption::new(
+        let success = VerificationOutput::new(
             VerificationError::IsvSvnTooSmall {
                 expected: 3.into(),
                 actual: 3.into(),
             },
-            0.into(),
+            1.into(),
         );
-        let displayable = success.display();
-        assert_eq!(format!("{displayable}"), "Passed");
+        assert_eq!(format!("{success}"), "Passed");
     }
 
     #[test]
     fn display_of_fail_option() {
-        let failure = CtOption::new(
+        let failure = VerificationOutput::new(
             VerificationError::IsvSvnTooSmall {
                 expected: 3.into(),
                 actual: 2.into(),
             },
-            1.into(),
+            0.into(),
         );
-        let displayable = failure.display();
         assert_eq!(
-            format!("{displayable}"),
+            format!("{failure}"),
             "The ISV SVN value of IsvSvn(2) is less than the expected value of IsvSvn(3)"
         );
     }
 
     #[test]
     fn display_of_success_for_and_error() {
-        let success = CtOption::new(
-            AndError::new(
-                CtOption::new(VerificationError::General, 0.into()),
-                CtOption::new(
+        let success = VerificationOutput::new(
+            AndOutput::new(
+                VerificationOutput::new(VerificationError::General, 1.into()),
+                VerificationOutput::new(
                     VerificationError::MiscellaneousSelectMismatch {
                         expected: 3.into(),
+                        actual: 3.into(),
+                    },
+                    1.into(),
+                ),
+            ),
+            1.into(),
+        );
+        assert_eq!(format!("{success}"), "Passed");
+    }
+
+    #[test]
+    fn display_of_failure_for_and_error() {
+        let failure = VerificationOutput::new(
+            AndOutput::new(
+                VerificationOutput::new(VerificationError::General, 1.into()),
+                VerificationOutput::new(
+                    VerificationError::MiscellaneousSelectMismatch {
+                        expected: 2.into(),
                         actual: 3.into(),
                     },
                     0.into(),
@@ -733,97 +747,72 @@ mod tests {
             ),
             0.into(),
         );
-        let displayable = success.display();
-        assert_eq!(format!("{displayable}"), "Passed");
-    }
-
-    #[test]
-    fn display_of_failure_for_and_error() {
-        let failure = CtOption::new(
-            AndError::new(
-                CtOption::new(VerificationError::General, 0.into()),
-                CtOption::new(
-                    VerificationError::MiscellaneousSelectMismatch {
-                        expected: 2.into(),
-                        actual: 3.into(),
-                    },
-                    1.into(),
-                ),
-            ),
-            1.into(),
-        );
-        let displayable = failure.display();
         let expected = r#"
-            AndError:
+            AndOutput:
               - [x]
                 Passed
               - [ ]
                 The MiscellaneousSelect did not match expected:MiscellaneousSelect(2) actual:MiscellaneousSelect(3)"#;
-        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
+        assert_eq!(format!("\n{failure}"), textwrap::dedent(expected));
     }
 
     #[test]
     fn display_of_failure_for_or_with_and_error() {
-        let failure = CtOption::new(
-            OrError::new(
-                CtOption::new(
-                    AndError::new(
-                        CtOption::new(VerificationError::General, 0.into()),
-                        CtOption::new(
+        let failure = VerificationOutput::new(
+            OrOutput::new(
+                VerificationOutput::new(
+                    AndOutput::new(
+                        VerificationOutput::new(VerificationError::General, 1.into()),
+                        VerificationOutput::new(
                             VerificationError::IsvSvnTooSmall {
                                 expected: 3.into(),
                                 actual: 1.into(),
                             },
-                            1.into(),
+                            0.into(),
                         ),
                     ),
-                    1.into(),
+                    0.into(),
                 ),
-                CtOption::new(
+                VerificationOutput::new(
                     VerificationError::MiscellaneousSelectMismatch {
                         expected: 2.into(),
                         actual: 3.into(),
                     },
-                    1.into(),
+                    0.into(),
                 ),
             ),
-            1.into(),
+            0.into(),
         );
-        let displayable = failure.display();
         let expected = r#"
-            OrError:
+            OrOutput:
               - [ ]
-                AndError:
+                AndOutput:
                   - [x]
                     Passed
                   - [ ]
                     The ISV SVN value of IsvSvn(1) is less than the expected value of IsvSvn(3)
               - [ ]
                 The MiscellaneousSelect did not match expected:MiscellaneousSelect(2) actual:MiscellaneousSelect(3)"#;
-        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
+        assert_eq!(format!("\n{failure}"), textwrap::dedent(expected));
     }
 
     #[test]
     fn display_of_always_false_option() {
         let failure = AlwaysFalse.verify(NO_EVIDENCE);
-        let displayable = failure.display();
-        assert_eq!(
-            format!("{displayable:}"),
-            "Forced failure via `AlwaysFalse`"
-        );
+        assert_eq!(format!("{failure}"), "Forced failure via `AlwaysFalse`");
     }
 
     #[test]
     fn not_negates_success() {
         let not = Not::new(AlwaysTrue);
         let verification = not.verify(NO_EVIDENCE);
-        assert_eq!(verification.is_some().unwrap_u8(), 1);
+        assert_eq!(verification.is_failure().unwrap_u8(), 1);
     }
 
     #[test]
     fn not_negates_failure() {
         let not = Not::new(AlwaysFalse);
         let verification = not.verify(NO_EVIDENCE);
-        assert_eq!(verification.is_none().unwrap_u8(), 1);
+        assert_eq!(verification.is_success().unwrap_u8(), 1);
     }
 }
