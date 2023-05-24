@@ -9,8 +9,10 @@ use mbedtls::{
     alloc::List as MbedtlsList,
     hash::Type as HashType,
     pk::{EcGroupId, Type as PkType},
-    x509::{Certificate, Crl, Profile},
+    x509::{Certificate, Crl, KeyUsage, Profile},
 };
+
+use x509_cert::{der::Decode, Certificate as X509Certificate};
 
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -202,6 +204,30 @@ impl CertificateRevocationList {
 /// See [`UnverifiedCertChain::verify`] for creating one.
 pub struct VerifiedCertChain(MbedtlsList<Certificate>);
 
+impl VerifiedCertChain {
+    /// Get the leaf certificate.
+    ///
+    /// Returns `None` if the chain is empty or only contains CA certificates.
+    ///
+    /// # Panics
+    /// If the leaf certificate is not valid DER. The leaf certificate was
+    /// loaded via [`UnverifiedCertChain::try_from`] so it should be valid DER.
+    pub fn leaf(&self) -> Option<X509Certificate> {
+        for cert in self.0.iter() {
+            // Per [rfc5280](https://datatracker.ietf.org/doc/html/rfc5280)
+            // The `keyCertSign` bit is asserted for CA certificates, or non
+            // leaf certificates.
+            if cert.check_key_usage(KeyUsage::KEY_CERT_SIGN) {
+                continue;
+            }
+            return Some(X509Certificate::from_der(cert.as_der()).expect(
+                "Failed to parse leaf certificate that was able to load into a certificate chain",
+            ));
+        }
+        None
+    }
+}
+
 impl Debug for VerifiedCertChain {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "VerifiedCertChain{{...}}")
@@ -211,6 +237,8 @@ impl Debug for VerifiedCertChain {
 #[cfg(test)]
 mod test {
     use super::*;
+    use x509_cert::der::DecodePem;
+    use yare::parameterized;
 
     const LEAF_CERT: &str = include_str!("../data/tests/leaf_cert.pem");
     const PROCESSOR_CA: &str = include_str!("../data/tests/processor_ca.pem");
@@ -443,5 +471,39 @@ mod test {
             ]),
             Err(Error::MbedTls(_))
         ));
+    }
+
+    #[test]
+    fn no_leaf_certificate_available() {
+        let cert_chain = UnverifiedCertChain::try_from_pem([PROCESSOR_CA, ROOT_CA])
+            .expect("failed to parse cert chain");
+        let trust_anchor = TrustAnchor::try_from_pem(ROOT_CA).expect("failed to parse root cert");
+        let crl = CertificateRevocationList::try_from_pem([ROOT_CRL]).expect("failed to parse CRL");
+
+        let verified_cert_chain = cert_chain
+            .verify(&trust_anchor, crl)
+            .expect("failed to verify cert chain");
+
+        assert_eq!(verified_cert_chain.leaf(), None);
+    }
+
+    #[parameterized(
+        first = { &[LEAF_CERT, PROCESSOR_CA, ROOT_CA] },
+        middle = { &[PROCESSOR_CA, LEAF_CERT, ROOT_CA] },
+        last = { &[ROOT_CA, PROCESSOR_CA, LEAF_CERT] },
+    )]
+    fn leaf_certificate(pems: &[&str]) {
+        let cert_chain =
+            UnverifiedCertChain::try_from_pem(pems).expect("failed to parse cert chain");
+        let trust_anchor = TrustAnchor::try_from_pem(ROOT_CA).expect("failed to parse root cert");
+        let crl = CertificateRevocationList::try_from_pem([ROOT_CRL]).expect("failed to parse CRL");
+
+        let verified_cert_chain = cert_chain
+            .verify(&trust_anchor, crl)
+            .expect("failed to verify cert chain");
+
+        let expected_certificate =
+            X509Certificate::from_pem(LEAF_CERT).expect("failed to parse PEM");
+        assert_eq!(verified_cert_chain.leaf(), Some(expected_certificate));
     }
 }
