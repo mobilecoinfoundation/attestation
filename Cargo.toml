@@ -17,6 +17,11 @@ rust-version = "1.68"
 [profile.release]
 lto = "thin"
 
+[patch.crates-io]
+# mbedtls patched to allow certificate verification with a profile
+mbedtls = { git = "https://github.com/mobilecoinfoundation/rust-mbedtls.git", rev = "6d8fe323a3292f87a6bce4b35963d47139a583f9" }
+mbedtls-sys-auto = { git = "https://github.com/mobilecoinfoundation/rust-mbedtls.git", rev = "6d8fe323a3292f87a6bce4b35963d47139a583f9" }
+
 [workspace.metadata.release]
 shared-version = true
 dev-version-ext = "beta.0"

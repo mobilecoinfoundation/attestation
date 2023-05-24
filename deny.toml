@@ -8,7 +8,12 @@ unmaintained = "deny"
 unsound = "deny"
 yanked = "deny"
 notice = "warn"
-ignore = []
+ignore = [
+    # This comes via mbedtls, but only when
+    # `[target.x86_64-fortanix-unknown-sgx.dependencies]`
+    # which we don't use
+    "RUSTSEC-2020-0071",
+]
 
 [licenses]
 unlicensed = "deny"
@@ -27,6 +32,16 @@ default = "deny"
 confidence-threshold = 0.8
 exceptions = []
 
+[[licenses.clarify]]
+# This comes via mbedtls, but only when
+# `[target.x86_64-fortanix-unknown-sgx.dependencies]`
+# which we don't use. It's license is a BSD with a no nuclear clause
+name = "rs-libc"
+expression = "BSD-3-Clause"
+license-files = [
+ { path = "LICENSE", hash = 0x7933df3c },
+]
+
 [bans]
 multiple-versions = "warn"
 # Lint level for when a crate version requirement is `*`
@@ -38,17 +53,23 @@ deny = [
     { name = "ring" },
 ]
 skip = [
+
     # Workaround for path only dependencies,
     # https://github.com/EmbarkStudios/cargo-deny/issues/241
     # { name = "some/dev/only/path" },
 ]
-skip-tree = [ ]
+skip-tree = [ 
+    # mbedtls is held back a bit so it has duplicate versions 
+    { name = "mbedtls", version = "=0.8.1" },
+]
 
 [sources]
 unknown-registry = "warn"
 unknown-git = "warn"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = []
+allow-git = [
+    "https://github.com/mobilecoinfoundation/rust-mbedtls.git",
+]
 
 [sources.allow-org]
 github = []
