@@ -14,7 +14,7 @@ repository = { workspace = true }
 rust-version = { workspace = true }
 
 [features]
-tcb = ["dep:p256", "dep:serde_json", "dep:serde", "dep:der", "dep:hex", "advisories", "mc-sgx-dcap-types/tcb"]
+tcb = ["dep:serde_json", "dep:serde", "dep:der", "dep:hex", "advisories", "mc-sgx-dcap-types/tcb"]
 advisories = ["dep:serde_json"]
 x509 = ["dep:mbedtls", "dep:x509-cert"]
 
@@ -25,7 +25,7 @@ hex = { version = "0.4.3", default-features = false, features = ["serde", "alloc
 mbedtls = { version = "0.8.1", default-features = false, features = ["no_std_deps"], optional = true }
 mc-sgx-core-types = "0.6.1"
 mc-sgx-dcap-types = "0.6.1"
-p256 = { version = "0.13.0", default-features = false, features = ["ecdsa"], optional = true }
+p256 = { version = "0.13.0", default-features = false, features = ["ecdsa"] }
 serde = { version = "1.0.162", default-features = false, features = ["derive"], optional = true }
 serde_json = { version = "1.0.66", default-features = false, features = ["alloc", "raw_value"], optional = true }
 subtle = { version = "2.4.0", default-features = false }
