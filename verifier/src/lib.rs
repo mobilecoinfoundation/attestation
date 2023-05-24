@@ -77,6 +77,11 @@ impl<T> VerificationOutput<T> {
     pub fn is_failure(&self) -> Choice {
         !self.succeeded
     }
+
+    /// The value used in the verification.
+    pub fn value(&self) -> &T {
+        &self.value
+    }
 }
 
 /// A helper struct for displaying the verification results.
@@ -107,7 +112,7 @@ impl<'a, V, O> VerificationTreeDisplay<'a, V, O> {
     }
 }
 
-impl<'a, V: VerificationMessage<O>, O: Clone> Display for VerificationTreeDisplay<'a, V, O> {
+impl<'a, V: VerificationMessage<O>, O> Display for VerificationTreeDisplay<'a, V, O> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         self.verifier.fmt_padded(f, 0, &self.result)
     }
