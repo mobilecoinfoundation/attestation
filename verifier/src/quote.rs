@@ -106,7 +106,9 @@ mod test {
     fn failure_to_verify_quote3() {
         let mut quote_bytes = QUOTE_BYTES.to_vec();
 
-        // Modifying the first 4 bytes will fail to parse the quote
+        // Skipping the first 4 bytes, because modifying them would prevent the
+        // quote from parsing. The 5th byte (index 4) will only affect the
+        // signature.
         quote_bytes[4] += 1;
 
         let quote = Quote3::try_from(quote_bytes.as_slice()).expect("Failed to parse quote");
