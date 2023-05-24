@@ -311,29 +311,27 @@ impl TcbInfoRawVerifier {
 }
 
 impl<'a, E: Accessor<TcbInfoRaw<'a>>> Verifier<E> for TcbInfoRawVerifier {
-    type Value = Error;
+    type Value = Option<Error>;
     fn verify(&self, evidence: &E) -> VerificationOutput<Self::Value> {
         let tcb_raw = evidence.get();
         let result = tcb_raw.verify(&self.key, self.time);
         let is_success = result.is_ok() as u8;
 
-        // The error will only ever be looked at in failure so the initial
-        // value shouldn't matter.
-        let mut error = Error::SignatureDecodeError;
+        let mut error = None;
         if let Err(e) = result {
-            error = e;
+            error = Some(e);
         }
 
         VerificationOutput::new(error, is_success.into())
     }
 }
 
-impl VerificationMessage<Error> for TcbInfoRawVerifier {
+impl VerificationMessage<Option<Error>> for TcbInfoRawVerifier {
     fn fmt_padded(
         &self,
         f: &mut Formatter<'_>,
         pad: usize,
-        result: &VerificationOutput<Error>,
+        result: &VerificationOutput<Option<Error>>,
     ) -> core::fmt::Result {
         let is_success = result.is_success();
         let status = crate::choice_to_status_message(is_success);
@@ -342,7 +340,10 @@ impl VerificationMessage<Error> for TcbInfoRawVerifier {
         if is_success.into() {
             write!(f, "The raw TCB info was verified for the provided key")
         } else {
-            let error = result.value();
+            let error = result
+                .value()
+                .as_ref()
+                .expect("Should have an error if not successful");
             write!(f, "The raw TCB info could not be verified: {error}")
         }
     }
