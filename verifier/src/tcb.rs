@@ -35,20 +35,11 @@ use crate::advisories::{Advisories, AdvisoryStatus};
 use alloc::string::String;
 use alloc::vec::Vec;
 use der::DateTime;
+use mc_sgx_dcap_types::{TcbInfo as PckTcb, COMPONENT_SVN_COUNT, FMSPC_SIZE};
 use p256::ecdsa::signature::Verifier;
 use p256::ecdsa::{Signature, VerifyingKey};
 use serde::Deserialize;
 use serde_json::value::RawValue;
-
-// TODO: remove this once https://github.com/mobilecoinfoundation/sgx/pull/329
-//  and https://github.com/mobilecoinfoundation/sgx/pull/330 come in.
-const FMSPC_SIZE: usize = 6;
-const COMPONENT_SVN_COUNT: usize = 16;
-struct PckTcb {
-    svns: [u32; COMPONENT_SVN_COUNT],
-    pce_svn: u32,
-    fmspc: [u8; FMSPC_SIZE],
-}
 
 /// Error parsing TCB(Trusted Computing Base) info
 #[derive(displaydoc::Display, Debug)]
@@ -132,9 +123,9 @@ impl TcbInfo {
     fn advisories(&self, pck_tcb: &PckTcb) -> Result<Advisories, Error> {
         // `self` should have been retrieved via
         // <https://api.trustedservices.intel.com/sgx/certification/v4/tcb?fmspc={}>
-        // and the `pck_tcb.fmspc`. Failure here should rarely happen, but we
+        // and the `pck_tcb.fmspc()`. Failure here should rarely happen, but we
         // still check to ensure the client didn't get mixed up.
-        if self.fmspc != pck_tcb.fmspc {
+        if self.fmspc != *pck_tcb.fmspc() {
             return Err(Error::FmspcMismatch);
         }
 
@@ -209,9 +200,10 @@ impl Tcb {
             .sgx_tcb_components
             .iter()
             .map(|c| c.svn)
-            .zip(tcb_info.svns);
-        let mut svn_iter = component_iter.chain(core::iter::once((self.pce_svn, tcb_info.pce_svn)));
-        svn_iter.all(|(a, b)| a <= b)
+            .zip(tcb_info.svns());
+        let mut svn_iter =
+            component_iter.chain(core::iter::once((self.pce_svn, tcb_info.pce_svn())));
+        svn_iter.all(|(a, &b)| a <= b)
     }
 }
 
@@ -696,11 +688,11 @@ mod tests {
         let tcb_raw = TcbInfoRaw::try_from(json).expect("Failed to parse raw TCB");
         let tcb_info = TcbInfo::try_from(tcb_raw.tcb_info.get()).expect("Failed to parse TCB info");
 
-        let tcb = PckTcb {
-            svns: svns.try_into().expect("Not enough svns"),
+        let tcb = PckTcb::new(
+            svns.try_into().expect("Not enough svns"),
             pce_svn,
-            fmspc: tcb_info.fmspc.clone(),
-        };
+            tcb_info.fmspc.clone(),
+        );
         let expected_advisories = Advisories::new(ids, status);
 
         let actual_advisories = tcb_info.advisories(&tcb).expect("Failed to get advisories");
@@ -716,11 +708,11 @@ mod tests {
         let tcb_raw = TcbInfoRaw::try_from(json).expect("Failed to parse raw TCB");
         let tcb_info = TcbInfo::try_from(tcb_raw.tcb_info.get()).expect("Failed to parse TCB info");
 
-        let tcb = PckTcb {
-            svns: svns.try_into().expect("Not enough svns"),
+        let tcb = PckTcb::new(
+            svns.try_into().expect("Not enough svns"),
             pce_svn,
-            fmspc: tcb_info.fmspc.clone(),
-        };
+            tcb_info.fmspc.clone(),
+        );
 
         assert!(matches!(
             tcb_info.advisories(&tcb),
@@ -743,11 +735,11 @@ mod tests {
         let mut fmspc = tcb_info.fmspc.clone();
         fmspc[0] += 1;
 
-        let tcb = PckTcb {
-            svns: svns.try_into().expect("Not enough svns"),
-            pce_svn: first_level.pce_svn,
+        let tcb = PckTcb::new(
+            svns.try_into().expect("Not enough svns"),
+            first_level.pce_svn,
             fmspc,
-        };
+        );
 
         assert!(matches!(
             tcb_info.advisories(&tcb),
@@ -764,11 +756,11 @@ mod tests {
         let tcb_raw = TcbInfoRaw::try_from(json).expect("Failed to parse raw TCB");
         let tcb_info = TcbInfo::try_from(tcb_raw.tcb_info.get()).expect("Failed to parse TCB info");
 
-        let tcb = PckTcb {
-            svns: svns.try_into().expect("Not enough svns"),
+        let tcb = PckTcb::new(
+            svns.try_into().expect("Not enough svns"),
             pce_svn,
-            fmspc: tcb_info.fmspc.clone(),
-        };
+            tcb_info.fmspc.clone(),
+        );
         let expected_advisories = Advisories::new::<[&str; 0], str>([], status);
 
         let actual_advisories = tcb_info.advisories(&tcb).expect("failed to get advisories");
@@ -804,11 +796,11 @@ mod tests {
             pce_svn: 5,
         };
 
-        let pck_tcb = PckTcb {
-            svns: svns.try_into().expect("Not enough svns"),
+        let pck_tcb = PckTcb::new(
+            svns.try_into().expect("Not enough svns"),
             pce_svn,
-            fmspc: [0, 1, 2, 3, 4, 5],
-        };
+            [0, 1, 2, 3, 4, 5],
+        );
         assert_eq!(tcb.is_corresponding_level(&pck_tcb), expected);
     }
 }
