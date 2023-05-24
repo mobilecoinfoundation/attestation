@@ -31,6 +31,7 @@
 
 extern crate alloc;
 
+use crate::advisories::{Advisories, AdvisoryStatus};
 use alloc::string::String;
 use alloc::vec::Vec;
 use der::DateTime;
@@ -80,49 +81,6 @@ impl From<serde_json::Error> for Error {
     fn from(e: serde_json::Error) -> Self {
         Error::Serde(e)
     }
-}
-
-/// The advisories pertaining to a TCB(Trusted Computing Base).
-#[derive(Debug, PartialEq, Clone)]
-pub struct Advisories {
-    ids: Vec<String>,
-    status: TcbStatus,
-}
-
-/// The `tcbStatus` member of the TCB(Trusted Computing Base) data retrieved from
-/// <https://api.trustedservices.intel.com/sgx/certification/v4/tcb?fmspc={}>
-///
-/// The variants are defined in the schema at
-/// <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-model-v3>
-///
-/// The variant order is important here, the higher the index the better the
-/// status. For example: `UpToDate` is a better status than `SWHardeningNeeded`.
-/// ```
-/// use mc_attestation_verifier::TcbStatus;
-/// assert!(TcbStatus::UpToDate > TcbStatus::SWHardeningNeeded);
-/// ```
-#[derive(Debug, PartialEq, PartialOrd, Copy, Clone, Deserialize)]
-pub enum TcbStatus {
-    /// TCB level of SGX platform is revoked. The platform is not trustworthy.
-    Revoked,
-    /// TCB level of SGX platform is outdated and additional configuration of
-    /// SGX platform may be needed.
-    OutOfDateConfigurationNeeded,
-    /// TCB level of SGX platform is outdated.
-    OutOfDate,
-    /// TCB level of the SGX platform is up-to-date but additional configuration
-    /// for the platform and SW Hardening in the attesting SGX enclaves may be
-    /// needed.
-    ConfigurationAndSWHardeningNeeded,
-    /// TCB level of the SGX platform is up-to-date but additional configuration
-    /// of SGX platform may be needed.
-    ConfigurationNeeded,
-    /// TCB level of the SGX platform is up-to-date but due to certain issues
-    /// affecting the platform, additional SW Hardening in the attesting SGX
-    /// enclaves may be needed.
-    SWHardeningNeeded,
-    /// TCB level of the SGX platform is up-to-date.
-    UpToDate,
 }
 
 /// The `tcbInfo` member of the TCB(Trusted Computing Base) data retrieved from
@@ -182,10 +140,7 @@ impl TcbInfo {
 
         for level in &self.tcb_levels {
             if level.tcb.is_corresponding_level(pck_tcb) {
-                return Ok(Advisories {
-                    ids: level.advisory_ids.clone(),
-                    status: level.tcb_status,
-                });
+                return Ok(Advisories::new(&level.advisory_ids, level.tcb_status));
             }
         }
         Err(Error::UnsupportedTcbLevel)
@@ -207,7 +162,7 @@ impl TryFrom<&str> for TcbInfo {
 pub struct TcbLevel {
     tcb: Tcb,
     tcb_date: String,
-    tcb_status: TcbStatus,
+    tcb_status: AdvisoryStatus,
     #[serde(rename = "advisoryIDs", default)]
     advisory_ids: Vec<String>,
 }
@@ -416,7 +371,7 @@ mod tests {
 
         let first_level = &tcb_info.tcb_levels[0];
         assert_eq!(first_level.tcb_date, "2021-11-10T00:00:00Z");
-        assert_eq!(first_level.tcb_status, TcbStatus::UpToDate);
+        assert_eq!(first_level.tcb_status, AdvisoryStatus::UpToDate);
         let tcb = &first_level.tcb;
         assert_eq!(tcb.pce_svn, 11);
 
@@ -432,7 +387,7 @@ mod tests {
 
         let second_level = &tcb_info.tcb_levels[1];
         assert_eq!(second_level.tcb_date, "2018-01-04T00:00:00Z");
-        assert_eq!(second_level.tcb_status, TcbStatus::OutOfDate);
+        assert_eq!(second_level.tcb_status, AdvisoryStatus::OutOfDate);
     }
 
     #[test]
@@ -452,7 +407,7 @@ mod tests {
 
         let first_level = &tcb_info.tcb_levels[0];
         assert_eq!(first_level.tcb_date, "2023-02-15T00:00:00Z");
-        assert_eq!(first_level.tcb_status, TcbStatus::SWHardeningNeeded);
+        assert_eq!(first_level.tcb_status, AdvisoryStatus::SWHardeningNeeded);
         assert_eq!(
             first_level.advisory_ids,
             vec!["INTEL-SA-00334", "INTEL-SA-00615"]
@@ -471,7 +426,7 @@ mod tests {
         assert_eq!(second_level.tcb_date, "2023-02-15T00:00:00Z");
         assert_eq!(
             second_level.tcb_status,
-            TcbStatus::ConfigurationAndSWHardeningNeeded
+            AdvisoryStatus::ConfigurationAndSWHardeningNeeded
         );
         assert_eq!(
             second_level.advisory_ids,
@@ -485,7 +440,7 @@ mod tests {
 
         let last_level = &tcb_info.tcb_levels[16];
         assert_eq!(last_level.tcb_date, "2018-08-15T00:00:00Z");
-        assert_eq!(last_level.tcb_status, TcbStatus::OutOfDate);
+        assert_eq!(last_level.tcb_status, AdvisoryStatus::OutOfDate);
         assert_eq!(
             last_level.advisory_ids,
             vec![
@@ -732,11 +687,11 @@ mod tests {
     }
 
     #[parameterized(
-        best = { &[20, 20, 2, 4, 1, 128, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13, &["INTEL-SA-00334", "INTEL-SA-00615"], TcbStatus::SWHardeningNeeded },
-        second_best = { &[20, 20, 2, 4, 1, 128, 13, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13, &["INTEL-SA-00219", "INTEL-SA-00289", "INTEL-SA-00334", "INTEL-SA-00615"], TcbStatus::ConfigurationAndSWHardeningNeeded },
-        pce_svn_12 = { &[20, 20, 2, 4, 1, 128, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0], 12, &["INTEL-SA-00614", "INTEL-SA-00617", "INTEL-SA-00161", "INTEL-SA-00219", "INTEL-SA-00289", "INTEL-SA-00334", "INTEL-SA-00615"], TcbStatus::OutOfDate },
+        best = { &[20, 20, 2, 4, 1, 128, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13, &["INTEL-SA-00334", "INTEL-SA-00615"], AdvisoryStatus::SWHardeningNeeded },
+        second_best = { &[20, 20, 2, 4, 1, 128, 13, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13, &["INTEL-SA-00219", "INTEL-SA-00289", "INTEL-SA-00334", "INTEL-SA-00615"], AdvisoryStatus::ConfigurationAndSWHardeningNeeded },
+        pce_svn_12 = { &[20, 20, 2, 4, 1, 128, 14, 0, 0, 0, 0, 0, 0, 0, 0, 0], 12, &["INTEL-SA-00614", "INTEL-SA-00617", "INTEL-SA-00161", "INTEL-SA-00219", "INTEL-SA-00289", "INTEL-SA-00334", "INTEL-SA-00615"], AdvisoryStatus::OutOfDate },
     )]
-    fn advisories_from_tcb(svns: &[u32], pce_svn: u32, ids: &[&str], status: TcbStatus) {
+    fn advisories_from_tcb(svns: &[u32], pce_svn: u32, ids: &[&str], status: AdvisoryStatus) {
         let json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
         let tcb_raw = TcbInfoRaw::try_from(json).expect("Failed to parse raw TCB");
         let tcb_info = TcbInfo::try_from(tcb_raw.tcb_info.get()).expect("Failed to parse TCB info");
@@ -746,13 +701,7 @@ mod tests {
             pce_svn,
             fmspc: tcb_info.fmspc.clone(),
         };
-        let expected_advisories = Advisories {
-            ids: ids
-                .into_iter()
-                .map(|s| String::from(*s))
-                .collect::<Vec<_>>(),
-            status,
-        };
+        let expected_advisories = Advisories::new(ids, status);
 
         let actual_advisories = tcb_info.advisories(&tcb).expect("Failed to get advisories");
         assert_eq!(actual_advisories, expected_advisories);
@@ -807,10 +756,10 @@ mod tests {
     }
 
     #[parameterized(
-        best = { &[1, 1, 2, 2, 2, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0], 11, TcbStatus::UpToDate },
-        pce_svn_5 = { &[1, 1, 2, 2, 2, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0], 5, TcbStatus::OutOfDate },
+        best = { &[1, 1, 2, 2, 2, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0], 11, AdvisoryStatus::UpToDate },
+        pce_svn_5 = { &[1, 1, 2, 2, 2, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0], 5, AdvisoryStatus::OutOfDate },
     )]
-    fn advisories_from_example_tcb(svns: &[u32], pce_svn: u32, status: TcbStatus) {
+    fn advisories_from_example_tcb(svns: &[u32], pce_svn: u32, status: AdvisoryStatus) {
         let json = include_str!("../data/tests/example_tcb.json");
         let tcb_raw = TcbInfoRaw::try_from(json).expect("Failed to parse raw TCB");
         let tcb_info = TcbInfo::try_from(tcb_raw.tcb_info.get()).expect("Failed to parse TCB info");
@@ -820,10 +769,7 @@ mod tests {
             pce_svn,
             fmspc: tcb_info.fmspc.clone(),
         };
-        let expected_advisories = Advisories {
-            ids: vec![],
-            status,
-        };
+        let expected_advisories = Advisories::new::<[&str; 0], str>([], status);
 
         let actual_advisories = tcb_info.advisories(&tcb).expect("failed to get advisories");
         assert_eq!(actual_advisories, expected_advisories);
