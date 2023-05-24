@@ -17,6 +17,9 @@ pub use report_body::{
     MiscellaneousSelectVerifier, MrEnclaveVerifier, MrSignerVerifier, ReportDataVerifier,
 };
 
+#[cfg(feature = "tcb")]
+pub use tcb::TcbStatus;
+
 use crate::struct_name::SpacedStructName;
 use core::fmt::{Debug, Display, Formatter};
 use subtle::Choice;
