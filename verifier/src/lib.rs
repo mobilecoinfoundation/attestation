@@ -6,6 +6,7 @@
 
 #[cfg(feature = "advisories")]
 mod advisories;
+mod quote;
 mod report_body;
 mod struct_name;
 #[cfg(feature = "tcb")]
@@ -18,6 +19,8 @@ pub use report_body::{
     ExtendedProductIdVerifier, FamilyIdVerifier, IsvProductIdVerifier, IsvSvnVerifier,
     MiscellaneousSelectVerifier, MrEnclaveVerifier, MrSignerVerifier, ReportDataVerifier,
 };
+
+pub use quote::Quote3Verifier;
 
 #[cfg(feature = "advisories")]
 pub use advisories::{Advisories, AdvisoriesVerifier, AdvisoryStatus};
@@ -38,7 +41,7 @@ const SUCCESS_MESSAGE_INDICATOR: &str = "- [x]";
 /// Failure checkbox indicator
 const FAILURE_MESSAGE_INDICATOR: &str = "- [ ]";
 
-fn choice_to_status_message(choice: Choice) -> &'static str {
+pub(crate) fn choice_to_status_message(choice: Choice) -> &'static str {
     if choice.into() {
         SUCCESS_MESSAGE_INDICATOR
     } else {
@@ -146,7 +149,7 @@ impl<V: Display, O: SpacedStructName + Display> VerificationMessage<O> for V {
 
 /// A verifier. These can composed using the [`Or`] and [`And`]
 /// types.
-pub trait Verifier<E>: Debug {
+pub trait Verifier<E> {
     /// The value that was attempted to be verified.
     type Value;
 
