@@ -14,9 +14,8 @@ repository = { workspace = true }
 rust-version = { workspace = true }
 
 [features]
-tcb = ["dep:serde_json", "dep:serde", "dep:der", "dep:hex", "advisories", "mc-sgx-dcap-types/tcb"]
-advisories = ["dep:serde_json"]
-x509 = ["dep:mbedtls", "dep:x509-cert"]
+tcb = ["dep:serde_json", "dep:serde", "dep:der", "dep:hex", "mc-sgx-dcap-types/tcb", "x509-cert/pem"]
+x509 = ["dep:mbedtls", "x509-cert"]
 
 [dependencies]
 der = { version = "0.7.5", default-features = false, optional = true }
@@ -33,6 +32,7 @@ x509-cert = { version = "0.2.0", default-features = false, optional = true }
 
 [dev-dependencies]
 mc-sgx-core-sys-types = "0.6.1"
+mc-sgx-dcap-sys-types = "0.6.1"
 textwrap = "0.16.0"
 x509-cert = { version = "0.2.0", default-features = false, features = ["pem"] }
 yare = "1.0.2"
