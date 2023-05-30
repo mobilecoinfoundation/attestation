@@ -1,0 +1,7 @@
+[advisories]
+ignore = [
+    # This comes via mbedtls, but only when
+    # `[target.x86_64-fortanix-unknown-sgx.dependencies]`
+    # which we don't use
+    "RUSTSEC-2020-0071",
+]
