@@ -107,7 +107,6 @@ quote_application_report_body_field_accessor! {
 
 #[cfg(test)]
 mod test {
-    extern crate alloc;
     use super::*;
     use crate::{
         AdvisoriesVerifier, AdvisoryStatus, And, AttributesVerifier, MrSignerVerifier,

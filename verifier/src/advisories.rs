@@ -1,7 +1,5 @@
 // Copyright (c) 2023 The MobileCoin Foundation
 
-extern crate alloc;
-
 use crate::{Accessor, SpacedStructName, VerificationOutput, Verifier};
 use alloc::collections::BTreeSet;
 use alloc::string::{String, ToString};

@@ -29,8 +29,6 @@
 
 #![allow(dead_code)]
 
-extern crate alloc;
-
 use crate::advisories::{Advisories, AdvisoryStatus};
 use crate::{Accessor, Error, VerificationMessage, VerificationOutput, Verifier};
 use alloc::string::String;
