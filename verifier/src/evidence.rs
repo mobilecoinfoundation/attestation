@@ -173,13 +173,13 @@ mod test {
         let quote_key = quote_signing_key(quote);
         let tcb_key = tcb_signing_key();
         let mr_signer = [
-            0xD4, 0x12, 0xA4, 0xF0, 0x7E, 0xF8, 0x38, 0x92, 0xA5, 0x91, 0x5F, 0xB2, 0xAB, 0x58,
-            0x4B, 0xE3, 0x1E, 0x18, 0x6E, 0x5A, 0x4F, 0x95, 0xAB, 0x5F, 0x69, 0x50, 0xFD, 0x4E,
-            0xB8, 0x69, 0x4D, 0x7B,
+            0x9F, 0x06, 0xDF, 0x5C, 0xA7, 0x9A, 0x23, 0xFF, 0xDF, 0xB6, 0xCA, 0x0E, 0xC8, 0x55,
+            0x14, 0xE2, 0x1D, 0xD1, 0xCB, 0xD1, 0xED, 0x11, 0xAB, 0xC4, 0x5D, 0xBE, 0x8D, 0xC8,
+            0x94, 0xEF, 0xDD, 0xDF,
         ];
         let isv_svn = 0;
         let attributes = Attributes::default()
-            .set_flags(AttributeFlags::INITTED | AttributeFlags::DEBUG | AttributeFlags::MODE_64BIT)
+            .set_flags(AttributeFlags::INITTED | AttributeFlags::MODE_64BIT)
             .set_extended_features_mask(
                 ExtendedFeatureRequestMask::LEGACY | ExtendedFeatureRequestMask::AVX,
             );
@@ -241,11 +241,11 @@ mod test {
               - [x] The quote was signed with the provided key
               - [x] Both of the following must be true:
                 - [x] MRSIGNER all of the following must be true:
-                  - [x] The MRSIGNER key hash should be d412a4f07ef83892a5915fb2ab584be31e186e5a4f95ab5f6950fd4eb8694d7b
+                  - [x] The MRSIGNER key hash should be 9f06df5ca79a23ffdfb6ca0ec85514e21dd1cbd1ed11abc45dbe8dc894efdddf
                   - [x] The ISV product ID should be 0
                   - [x] The ISV SVN should be at least 0
                 - [x] Both of the following must be true:
-                  - [x] The expected attributes is Flags: INITTED | DEBUG | MODE_64BIT Xfrm: LEGACY | AVX with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | RESERVED
+                  - [x] The expected attributes is Flags: INITTED | MODE_64BIT Xfrm: LEGACY | AVX with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | RESERVED
                   - [x] Both of the following must be true:
                     - [x] The raw TCB info was verified for the provided key
                     - [x] The allowed advisories are IDs: {"INTEL-SA-00161", "INTEL-SA-00219", "INTEL-SA-00289", "INTEL-SA-00334", "INTEL-SA-00614", "INTEL-SA-00615", "INTEL-SA-00617"} Status: OutOfDate"#;
@@ -272,11 +272,11 @@ mod test {
               - [x] The quote was signed with the provided key
               - [ ] Both of the following must be true:
                 - [ ] MRSIGNER all of the following must be true:
-                  - [x] The MRSIGNER key hash should be d412a4f07ef83892a5915fb2ab584be31e186e5a4f95ab5f6950fd4eb8694d7b
+                  - [x] The MRSIGNER key hash should be 9f06df5ca79a23ffdfb6ca0ec85514e21dd1cbd1ed11abc45dbe8dc894efdddf
                   - [ ] The ISV product ID should be 1, but the actual ISV product ID was 0
                   - [x] The ISV SVN should be at least 0
                 - [x] Both of the following must be true:
-                  - [x] The expected attributes is Flags: INITTED | DEBUG | MODE_64BIT Xfrm: LEGACY | AVX with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | RESERVED
+                  - [x] The expected attributes is Flags: INITTED | MODE_64BIT Xfrm: LEGACY | AVX with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | RESERVED
                   - [x] Both of the following must be true:
                     - [x] The raw TCB info was verified for the provided key
                     - [x] The allowed advisories are IDs: {"INTEL-SA-00161", "INTEL-SA-00219", "INTEL-SA-00289", "INTEL-SA-00334", "INTEL-SA-00614", "INTEL-SA-00615", "INTEL-SA-00617"} Status: OutOfDate"#;
