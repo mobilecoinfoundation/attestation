@@ -198,12 +198,7 @@ impl<'a, E: Accessor<SignedQeIdentity<'a>>> Verifier<E> for SignedQeIdentityVeri
         let result = signed_qe_identity.verify(&self.key, self.time);
         let is_success = result.is_ok() as u8;
 
-        let mut error = None;
-        if let Err(e) = result {
-            error = Some(e);
-        }
-
-        VerificationOutput::new(error, is_success.into())
+        VerificationOutput::new(result.err(), is_success.into())
     }
 }
 
