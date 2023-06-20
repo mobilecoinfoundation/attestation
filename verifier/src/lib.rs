@@ -40,6 +40,7 @@ pub use x509::{
 
 use crate::struct_name::SpacedStructName;
 use core::fmt::{Debug, Display, Formatter};
+use core::ops::BitAnd;
 use subtle::Choice;
 
 /// Number of spaces to indent nested messages.
@@ -215,6 +216,50 @@ where
         // TODO - This should be a constant time comparison.
         let is_success = if expected == actual { 1 } else { 0 };
         VerificationOutput::new(actual, is_success.into())
+    }
+}
+
+/// Common implementation for [`Verifier`]s that test for masked expected and
+/// actual value.
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct MaskedVerifier<T> {
+    expected: T,
+    mask: T,
+}
+
+impl<T> MaskedVerifier<T> {
+    /// Create a new [`MaskedVerifier`] where only bits set in the mask will
+    /// be compared
+    pub fn new(expected: T, mask: T) -> Self {
+        Self { expected, mask }
+    }
+}
+
+impl<T, E> Verifier<E> for MaskedVerifier<T>
+where
+    T: Debug + Clone + PartialEq + BitAnd<Output = T>,
+    E: Accessor<T>,
+{
+    type Value = T;
+    fn verify(&self, evidence: &E) -> VerificationOutput<Self::Value> {
+        let mask = self.mask.clone();
+        let expected = self.expected.clone() & mask.clone();
+        let actual = evidence.get() & mask;
+        // TODO - This should be a constant time comparison.
+        let is_success = if expected == actual { 1 } else { 0 };
+        VerificationOutput::new(actual, is_success.into())
+    }
+}
+
+impl<T> Display for MaskedVerifier<T>
+where
+    T: SpacedStructName + Display,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        let name = T::spaced_struct_name();
+        let expected = &self.expected;
+        let mask = &self.mask;
+        write!(f, "The expected {name} is {expected} with mask {mask}")
     }
 }
 

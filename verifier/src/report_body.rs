@@ -2,12 +2,11 @@
 
 //! Verifiers which operate on the [`ReportBody`]
 
-use crate::struct_name::SpacedStructName;
 use crate::{
-    choice_to_status_message, Accessor, EqualityVerifier, GreaterThanEqualVerifier,
+    choice_to_status_message, Accessor, EqualityVerifier, GreaterThanEqualVerifier, MaskedVerifier,
     VerificationMessage, VerificationOutput, Verifier, MESSAGE_INDENT,
 };
-use core::fmt::{Debug, Display, Formatter};
+use core::fmt::{Debug, Formatter};
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
     MiscellaneousSelect, MrEnclave, MrSigner, ReportBody, ReportData,
@@ -125,7 +124,7 @@ impl<E: Accessor<IsvSvn>> Verifier<E> for GreaterThanEqualVerifier<IsvSvn> {
 }
 
 /// Verifier for ensuring [`MiscellaneousSelect`] values are equivalent.
-pub type MiscellaneousSelectVerifier = EqualityVerifier<MiscellaneousSelect>;
+pub type MiscellaneousSelectVerifier = MaskedVerifier<MiscellaneousSelect>;
 
 /// Verifier for ensuring [`MrEnclave`] values are equivalent.
 ///
@@ -212,49 +211,12 @@ impl VerificationMessage<MrSignerValue> for MrSignerVerifier {
 pub type MrSignerKeyVerifier = EqualityVerifier<MrSigner>;
 
 /// Verifier for ensuring [`ReportData`] values are equivalent.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct ReportDataVerifier {
-    expected: ReportData,
-    mask: ReportData,
-}
-impl ReportDataVerifier {
-    /// Create a new [`ReportDataVerifier`] where all bits will be compared
-    pub fn new(expected: ReportData) -> Self {
-        let mask = ReportData::from([0xff; ReportData::SIZE]);
-        Self::new_with_mask(expected, mask)
-    }
-
-    /// Create a new [`ReportDataVerifier`] where only bits set in the mask will
-    /// compared
-    pub fn new_with_mask(expected: ReportData, mask: ReportData) -> Self {
-        Self { expected, mask }
-    }
-}
-
-impl<E: Accessor<ReportData>> Verifier<E> for ReportDataVerifier {
-    type Value = ReportData;
-    fn verify(&self, evidence: &E) -> VerificationOutput<Self::Value> {
-        let mask = self.mask.clone();
-        let expected = &self.expected & &mask;
-        let actual = &evidence.get() & &mask;
-        // TODO - This should be a constant time comparison.
-        let is_success = if expected == actual { 1 } else { 0 };
-        VerificationOutput::new(actual, is_success.into())
-    }
-}
-
-impl Display for ReportDataVerifier {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        let name = ReportData::spaced_struct_name();
-        let expected = &self.expected;
-        let mask = &self.mask;
-        write!(f, "The expected {name} is {expected} with mask {mask}")
-    }
-}
+pub type ReportDataVerifier = MaskedVerifier<ReportData>;
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::struct_name::SpacedStructName;
     use crate::{And, VerificationTreeDisplay};
     use alloc::{format, string::ToString};
     use mc_sgx_core_sys_types::{
@@ -516,10 +478,16 @@ mod test {
         assert_eq!(verifier.verify(&isv_svn).is_failure().unwrap_u8(), 1);
     }
 
-    #[test]
-    fn miscellaneous_select_success() {
-        let miscellaneous_select = MiscellaneousSelect::from(REPORT_BODY_SRC.misc_select);
-        let verifier = MiscellaneousSelectVerifier::new(miscellaneous_select.clone());
+    #[parameterized(
+        empty_mask = { 0x5555_5555, 0x5555_5555, 0 },
+        last_bit_masked = { 0xFFFF_FFFF, 0x0000_0001, 0x0000_0001 },
+        upper_bit_masked = { 0x8000_0000, 0xFFFF_FFFF, 0x8000_0000 },
+        last_nybble_masked = { 0x5555_5555, 0xAAAA_5555, 0x0000_FFFF },
+        upper_nybble_masked = { 0xAAAA_AAAA, 0xAAAA_5555, 0xFFFF_0000 },
+    )]
+    fn miscellaneous_select_success(actual: u32, expected: u32, mask: u32) {
+        let miscellaneous_select = MiscellaneousSelect::from(expected);
+        let verifier = MiscellaneousSelectVerifier::new(actual.into(), mask.into());
 
         assert_eq!(
             verifier
@@ -532,9 +500,10 @@ mod test {
 
     #[test]
     fn miscellaneous_select_fails() {
-        let mut miscellaneous_select = MiscellaneousSelect::from(REPORT_BODY_SRC.misc_select);
-        let verifier = MiscellaneousSelectVerifier::new(miscellaneous_select.clone());
-        *miscellaneous_select.as_mut() = 0;
+        let mut miscellaneous_select = MiscellaneousSelect::from(0xFFFF_FFFF);
+        let verifier =
+            MiscellaneousSelectVerifier::new(miscellaneous_select.clone(), 0xFFFF_FFFF.into());
+        *miscellaneous_select.as_mut() = 0xFFFF_FFFE;
 
         assert_eq!(
             verifier
@@ -584,7 +553,8 @@ mod test {
     #[test]
     fn report_data_success() {
         let report_data = ReportData::from(REPORT_BODY_SRC.report_data);
-        let report_data_verifier = ReportDataVerifier::new(report_data.clone());
+        let report_data_verifier =
+            ReportDataVerifier::new(report_data.clone(), [0b1111_1111; ReportData::SIZE].into());
         let verification = report_data_verifier.verify(&report_data);
 
         assert_eq!(verification.is_success().unwrap_u8(), 1);
@@ -596,7 +566,8 @@ mod test {
     #[test]
     fn report_data_fails() {
         let mut report_data = ReportData::from(REPORT_BODY_SRC.report_data);
-        let report_data_verifier = ReportDataVerifier::new(report_data.clone());
+        let report_data_verifier =
+            ReportDataVerifier::new(report_data.clone(), [0b1111_1111; ReportData::SIZE].into());
 
         let bytes: &mut [u8] = report_data.as_mut();
         bytes[0] = 1;
@@ -614,7 +585,7 @@ mod test {
         let mut mask = ReportData::from([0b1111_1111; ReportData::SIZE]);
         let mask_bytes: &mut [u8] = mask.as_mut();
         mask_bytes[0] = 0b0000_0000;
-        let verifier = ReportDataVerifier::new_with_mask(report_data.clone(), mask);
+        let verifier = ReportDataVerifier::new(report_data.clone(), mask);
 
         let bytes: &mut [u8] = report_data.as_mut();
         bytes[0] = 0b1111_0000;
@@ -628,7 +599,7 @@ mod test {
         let mut mask = ReportData::from([0b1111_1111; ReportData::SIZE]);
         let mask_bytes: &mut [u8] = mask.as_mut();
         mask_bytes[0] = 0b0000_0000;
-        let verifier = ReportDataVerifier::new_with_mask(report_data.clone(), mask);
+        let verifier = ReportDataVerifier::new(report_data.clone(), mask);
 
         let bytes: &mut [u8] = report_data.as_mut();
         bytes[0] = 0b1111_0000;
@@ -643,7 +614,7 @@ mod test {
         let mut mask = ReportData::from([0b1111_1111; ReportData::SIZE]);
         let mask_bytes: &mut [u8] = mask.as_mut();
         mask_bytes[mask_bytes.len() - 1] = 0b1111_1110;
-        let verifier = ReportDataVerifier::new_with_mask(report_data.clone(), mask);
+        let verifier = ReportDataVerifier::new(report_data.clone(), mask);
 
         let bytes: &mut [u8] = report_data.as_mut();
         bytes[bytes.len() - 1] = 0b1010_1011; // Note: the last bit is different
@@ -655,7 +626,7 @@ mod test {
     fn report_data_fails_when_non_masked_bit_differs() {
         let mut report_data = ReportData::from([0b1010_1010; ReportData::SIZE]);
         let mask = ReportData::from([0b1111_1111; ReportData::SIZE]);
-        let verifier = ReportDataVerifier::new_with_mask(report_data.clone(), mask);
+        let verifier = ReportDataVerifier::new(report_data.clone(), mask);
 
         let bytes: &mut [u8] = report_data.as_mut();
         bytes[bytes.len() - 1] = 0b1010_1011; // Note: the last bit is different
@@ -978,14 +949,12 @@ mod test {
     #[test]
     fn miscellaneous_select_verifier_display() {
         let inner = MiscellaneousSelect::from(REPORT_BODY_SRC.misc_select);
-        let verifier = MiscellaneousSelectVerifier::new(inner.clone());
+        let verifier = MiscellaneousSelectVerifier::new(inner.clone(), 0xFFFFFFFF.into());
 
-        let expected = format!(
-            "The {} should be {inner}",
-            MiscellaneousSelect::spaced_struct_name()
-        );
-
-        assert_eq!(verifier.to_string(), expected)
+        assert_eq!(
+            verifier.to_string(),
+            "The expected miscellaneous select is 0x0000_0011 with mask 0xFFFF_FFFF"
+        )
     }
 
     #[test]
