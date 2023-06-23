@@ -4,8 +4,12 @@
 #![deny(missing_docs, missing_debug_implementations, unsafe_code)]
 #![no_std]
 
-#[cfg(feature = "advisories")]
+#[cfg(feature = "tcb")]
 mod advisories;
+#[cfg(feature = "tcb")]
+mod error;
+#[cfg(feature = "tcb")]
+mod evidence;
 mod quote;
 mod report_body;
 mod struct_name;
@@ -14,19 +18,33 @@ mod tcb;
 #[cfg(feature = "x509")]
 mod x509;
 
+#[cfg(feature = "tcb")]
+pub use advisories::{Advisories, AdvisoriesVerifier, AdvisoryStatus};
+
+#[cfg(feature = "tcb")]
+pub use error::Error;
+#[cfg(feature = "tcb")]
+pub(crate) use error::Result;
+
+#[cfg(feature = "tcb")]
+pub use evidence::Evidence;
+
+pub use quote::Quote3Verifier;
+
 pub use report_body::{
     AttributesVerifier, ConfigIdVerifier, ConfigSvnVerifier, CpuSvnVerifier,
     ExtendedProductIdVerifier, FamilyIdVerifier, IsvProductIdVerifier, IsvSvnVerifier,
     MiscellaneousSelectVerifier, MrEnclaveVerifier, MrSignerVerifier, ReportDataVerifier,
 };
 
-pub use quote::Quote3Verifier;
-
-#[cfg(feature = "advisories")]
-pub use advisories::{Advisories, AdvisoriesVerifier, AdvisoryStatus};
+#[cfg(feature = "tcb")]
+pub use tcb::{TcbInfo, TcbInfoRaw, TcbInfoRawVerifier};
 
 #[cfg(feature = "x509")]
-pub use x509::{TrustAnchor, UnverifiedCertChain, VerifiedCertChain};
+pub use x509::{
+    CertificateRevocationList, Error as X509Error, TrustAnchor, UnverifiedCertChain,
+    VerifiedCertChain,
+};
 
 use crate::struct_name::SpacedStructName;
 use core::fmt::{Debug, Display, Formatter};
@@ -163,22 +181,6 @@ pub trait Verifier<E> {
     /// In order to accommodate constant time operations this returns a
     /// [`VerificationOutput`] instead of a [`Result`].
     fn verify(&self, evidence: &E) -> VerificationOutput<Self::Value>;
-
-    /// Or this verifier with another.
-    fn or<U, V: Verifier<U>>(self, other: V) -> Or<Self, V>
-    where
-        Self: Sized,
-    {
-        Or::new(self, other)
-    }
-
-    /// And this verifier with another.
-    fn and<U, V: Verifier<U>>(self, other: V) -> And<Self, V>
-    where
-        Self: Sized,
-    {
-        And::new(self, other)
-    }
 }
 
 /// Common implementation for [`Verifier`]s that test for equality between

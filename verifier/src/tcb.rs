@@ -32,7 +32,7 @@
 extern crate alloc;
 
 use crate::advisories::{Advisories, AdvisoryStatus};
-use crate::{Accessor, VerificationMessage, VerificationOutput, Verifier};
+use crate::{Accessor, Error, VerificationMessage, VerificationOutput, Verifier};
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt::Formatter;
@@ -42,39 +42,6 @@ use p256::ecdsa::signature::Verifier as SignatureVerifier;
 use p256::ecdsa::{Signature, VerifyingKey};
 use serde::Deserialize;
 use serde_json::value::RawValue;
-
-/// Error parsing TCB(Trusted Computing Base) info
-#[derive(displaydoc::Display, Debug)]
-pub enum Error {
-    /// Error converting from DER
-    Der(der::Error),
-    /// Error parsing TCB(Trusted Computing Base) json info: {0}
-    Serde(serde_json::Error),
-    /// Error decoding the signature in the TCB data
-    SignatureDecodeError,
-    /// Error verifying the signature
-    SignatureVerification,
-    /// TCB info not yet valid
-    TcbInfoNotYetValid,
-    /// TCB info expired
-    TcbInfoExpired,
-    /// Asking for TCB levels for a different FMSPC
-    FmspcMismatch,
-    /// The TCB level reported does not match an entry in the TCB info data.
-    UnsupportedTcbLevel,
-}
-
-impl From<der::Error> for Error {
-    fn from(e: der::Error) -> Self {
-        Error::Der(e)
-    }
-}
-
-impl From<serde_json::Error> for Error {
-    fn from(e: serde_json::Error) -> Self {
-        Error::Serde(e)
-    }
-}
 
 /// The `tcbInfo` member of the TCB(Trusted Computing Base) data retrieved from
 /// <https://api.trustedservices.intel.com/sgx/certification/v4/tcb?fmspc={}>
@@ -122,7 +89,7 @@ impl TcbInfo {
     ///   in `pck_tcb`.
     /// - `Error::UnsupportedTcbLevel` if the TCB level reported is not found in
     ///   self.
-    fn advisories(&self, pck_tcb: &PckTcb) -> Result<Advisories, Error> {
+    pub fn advisories(&self, pck_tcb: &PckTcb) -> Result<Advisories, Error> {
         // `self` should have been retrieved via
         // <https://api.trustedservices.intel.com/sgx/certification/v4/tcb?fmspc={}>
         // and the `pck_tcb.fmspc()`. Failure here should rarely happen, but we
@@ -146,6 +113,14 @@ impl TryFrom<&str> for TcbInfo {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let tcb_info: TcbInfo = serde_json::from_str(value)?;
         Ok(tcb_info)
+    }
+}
+
+impl TryFrom<&TcbInfoRaw<'_>> for TcbInfo {
+    type Error = Error;
+
+    fn try_from(tcb_info_raw: &TcbInfoRaw<'_>) -> Result<Self, Self::Error> {
+        TcbInfo::try_from(tcb_info_raw.tcb_info.get())
     }
 }
 
@@ -258,7 +233,7 @@ impl<'a> TcbInfoRaw<'a> {
     }
 
     fn verify_time(&self, time: DateTime) -> Result<(), Error> {
-        let tcb_info = TcbInfo::try_from(self.tcb_info.get())?;
+        let tcb_info = TcbInfo::try_from(self)?;
         let issue_date = tcb_info.issue_date.parse::<DateTime>()?;
         let next_update = tcb_info.next_update.parse::<DateTime>()?;
         if time < issue_date {

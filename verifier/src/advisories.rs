@@ -181,10 +181,7 @@ mod test {
 
     #[test]
     fn advisories_have_one_less_when_verifying() {
-        let mut advisories = Advisories::new(
-            ["123".into(), "345".into()],
-            AdvisoryStatus::ConfigurationNeeded,
-        );
+        let mut advisories = Advisories::new(["123", "345"], AdvisoryStatus::ConfigurationNeeded);
         let verifier = AdvisoriesVerifier::new(advisories.clone());
 
         advisories.ids.remove("123");
@@ -200,8 +197,7 @@ mod test {
 
     #[test]
     fn advisories_have_lower_status_when_verifying() {
-        let mut advisories =
-            Advisories::new(["123".into(), "345".into()], AdvisoryStatus::UpToDate);
+        let mut advisories = Advisories::new(["123", "345"], AdvisoryStatus::UpToDate);
         let verifier = AdvisoriesVerifier::new(advisories.clone());
 
         advisories.status = AdvisoryStatus::SWHardeningNeeded;
