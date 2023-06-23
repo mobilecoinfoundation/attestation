@@ -29,6 +29,10 @@ pub enum Error {
     Quote3TcbInfo(TcbError),
     /// Unsupported quote certification data, should be `PckCertificateChain`
     UnsupportedQuoteCertificationData,
+    /// QE identity expired
+    QeIdentityExpired,
+    /// QE identity not yet valid
+    QeIdentityNotYetValid,
 }
 
 impl From<der::Error> for Error {
