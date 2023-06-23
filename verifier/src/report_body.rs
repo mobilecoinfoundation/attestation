@@ -254,8 +254,6 @@ impl Display for ReportDataVerifier {
 
 #[cfg(test)]
 mod test {
-    extern crate alloc;
-
     use super::*;
     use crate::{And, VerificationTreeDisplay};
     use alloc::{format, string::ToString};

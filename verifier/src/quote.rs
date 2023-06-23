@@ -55,7 +55,6 @@ impl<T> VerificationMessage<()> for Quote3Verifier<T> {
 
 #[cfg(test)]
 mod test {
-    extern crate alloc;
     use super::*;
     use crate::VerificationTreeDisplay;
     use alloc::format;

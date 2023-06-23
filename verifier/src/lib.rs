@@ -4,29 +4,22 @@
 #![deny(missing_docs, missing_debug_implementations, unsafe_code)]
 #![no_std]
 
-#[cfg(feature = "tcb")]
+extern crate alloc;
+
 mod advisories;
-#[cfg(feature = "tcb")]
 mod error;
-#[cfg(feature = "tcb")]
 mod evidence;
 mod quote;
+mod quote_enclave_identity;
 mod report_body;
 mod struct_name;
-#[cfg(feature = "tcb")]
 mod tcb;
 #[cfg(feature = "x509")]
 mod x509;
 
-#[cfg(feature = "tcb")]
 pub use advisories::{Advisories, AdvisoriesVerifier, AdvisoryStatus};
-
-#[cfg(feature = "tcb")]
 pub use error::Error;
-#[cfg(feature = "tcb")]
 pub(crate) use error::Result;
-
-#[cfg(feature = "tcb")]
 pub use evidence::Evidence;
 
 pub use quote::Quote3Verifier;
@@ -37,7 +30,6 @@ pub use report_body::{
     MiscellaneousSelectVerifier, MrEnclaveVerifier, MrSignerVerifier, ReportDataVerifier,
 };
 
-#[cfg(feature = "tcb")]
 pub use tcb::{TcbInfo, TcbInfoRaw, TcbInfoRawVerifier};
 
 #[cfg(feature = "x509")]
@@ -554,7 +546,6 @@ impl VerificationMessage<AlwaysFalseValue> for AlwaysFalse {
 
 #[cfg(test)]
 mod tests {
-    extern crate alloc;
     use super::*;
     use alloc::format;
     use core::cell::Cell;

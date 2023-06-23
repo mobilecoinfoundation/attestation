@@ -111,11 +111,6 @@ branches:
           - sort
           - "clippy (stable)"
           - "build (stable)"
-          - "build-no-alloc (thumbv6m-none-eabi)"
-          - "build-no-alloc (thumbv7m-none-eabi)"
-          - "build-no-alloc (thumbv8m.main-none-eabi)"
-          - "build-no-alloc (aarch64-linux-android)"
-          - "build-no-alloc (aarch64-apple-ios)"
           - "test (stable)"
           - coverage
       enforce_admins: true
