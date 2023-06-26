@@ -115,6 +115,7 @@ mod test {
     use alloc::format;
     use core::mem;
     use der::DateTime;
+    use mc_sgx_core_types::{AttributeFlags, ExtendedFeatureRequestMask};
     use mc_sgx_dcap_sys_types::{sgx_ql_ecdsa_sig_data_t, sgx_quote3_t};
     use p256::ecdsa::VerifyingKey;
 
@@ -177,8 +178,10 @@ mod test {
         ];
         let isv_svn = 0;
         let attributes = Attributes::default()
-            .set_flags(7)
-            .set_extended_features_mask(7);
+            .set_flags(AttributeFlags::INITTED | AttributeFlags::DEBUG | AttributeFlags::MODE_64BIT)
+            .set_extended_features_mask(
+                ExtendedFeatureRequestMask::LEGACY | ExtendedFeatureRequestMask::AVX,
+            );
         let time = "2023-06-08T13:43:27Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
@@ -230,11 +233,11 @@ mod test {
               - [x] The quote was signed with the provided key
               - [x] Both of the following must be true:
                 - [x] MRSIGNER all of the following must be true:
-                  - [x] The MRSIGNER key hash should be 0xD412_A4F0_7EF8_3892_A591_5FB2_AB58_4BE3_1E18_6E5A_4F95_AB5F_6950_FD4E_B869_4D7B
+                  - [x] The MRSIGNER key hash should be d412a4f07ef83892a5915fb2ab584be31e186e5a4f95ab5f6950fd4eb8694d7b
                   - [x] The ISV product ID should be 0
                   - [x] The ISV SVN should be at least 0
                 - [x] Both of the following must be true:
-                  - [x] The attributes should be Flags: INITTED | DEBUG | MODE64BIT Xfrm: LEGACY | AVX
+                  - [x] The attributes should be Flags: INITTED | DEBUG | MODE_64BIT Xfrm: LEGACY | AVX
                   - [x] Both of the following must be true:
                     - [x] The raw TCB info was verified for the provided key
                     - [x] The allowed advisories are IDs: {"INTEL-SA-00161", "INTEL-SA-00219", "INTEL-SA-00289", "INTEL-SA-00334", "INTEL-SA-00614", "INTEL-SA-00615", "INTEL-SA-00617"} Status: OutOfDate"#;
@@ -261,11 +264,11 @@ mod test {
               - [x] The quote was signed with the provided key
               - [ ] Both of the following must be true:
                 - [ ] MRSIGNER all of the following must be true:
-                  - [x] The MRSIGNER key hash should be 0xD412_A4F0_7EF8_3892_A591_5FB2_AB58_4BE3_1E18_6E5A_4F95_AB5F_6950_FD4E_B869_4D7B
+                  - [x] The MRSIGNER key hash should be d412a4f07ef83892a5915fb2ab584be31e186e5a4f95ab5f6950fd4eb8694d7b
                   - [ ] The ISV product ID should be 1, but the actual ISV product ID was 0
                   - [x] The ISV SVN should be at least 0
                 - [x] Both of the following must be true:
-                  - [x] The attributes should be Flags: INITTED | DEBUG | MODE64BIT Xfrm: LEGACY | AVX
+                  - [x] The attributes should be Flags: INITTED | DEBUG | MODE_64BIT Xfrm: LEGACY | AVX
                   - [x] Both of the following must be true:
                     - [x] The raw TCB info was verified for the provided key
                     - [x] The allowed advisories are IDs: {"INTEL-SA-00161", "INTEL-SA-00219", "INTEL-SA-00289", "INTEL-SA-00334", "INTEL-SA-00614", "INTEL-SA-00615", "INTEL-SA-00617"} Status: OutOfDate"#;

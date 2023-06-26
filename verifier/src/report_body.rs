@@ -260,6 +260,7 @@ mod test {
     use mc_sgx_core_sys_types::{
         sgx_attributes_t, sgx_cpu_svn_t, sgx_measurement_t, sgx_report_body_t, sgx_report_data_t,
     };
+    use mc_sgx_core_types::{AttributeFlags, ExtendedFeatureRequestMask};
     use yare::parameterized;
 
     const REPORT_BODY_SRC: sgx_report_body_t = sgx_report_body_t {
@@ -323,7 +324,7 @@ mod test {
     #[test]
     fn report_body_fails_due_to_attributes() {
         let report_body = ReportBody::from(&REPORT_BODY_SRC);
-        let attributes = report_body.attributes().set_flags(0);
+        let attributes = report_body.attributes().set_flags(AttributeFlags::DEBUG);
         let verifier = And::new(
             AttributesVerifier::new(attributes),
             ConfigIdVerifier::new(report_body.config_id()),
@@ -403,11 +404,9 @@ mod test {
 
     #[test]
     fn attributes_success() {
-        // Note that numbers are used due to
-        // https://github.com/mobilecoinfoundation/sgx/issues/328
         let attributes = Attributes::default()
-            .set_flags(3)
-            .set_extended_features_mask(230);
+            .set_flags(AttributeFlags::DEBUG | AttributeFlags::INITTED)
+            .set_extended_features_mask(ExtendedFeatureRequestMask::AVX_512);
 
         let attributes_verifier = AttributesVerifier::new(attributes);
         let verification = attributes_verifier.verify(&attributes);
@@ -416,18 +415,19 @@ mod test {
 
         let displayable = VerificationTreeDisplay::new(&attributes_verifier, verification);
         let expected = r#"
-            - [x] The attributes should be Flags: INITTED | DEBUG Xfrm: AVX | AVX512"#;
+            - [x] The attributes should be Flags: INITTED | DEBUG Xfrm: AVX | AVX_512"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
     #[test]
     fn attributes_fail_for_flags() {
         let mut attributes = Attributes::default()
-            .set_flags(3)
-            .set_extended_features_mask(230);
+            .set_flags(AttributeFlags::DEBUG | AttributeFlags::INITTED)
+            .set_extended_features_mask(ExtendedFeatureRequestMask::AVX_512);
         let attributes_verifier = AttributesVerifier::new(attributes);
 
-        attributes = attributes.set_flags(0);
+        attributes = attributes
+            .set_flags(AttributeFlags::from_bits(0).expect("Failed to convert from bits"));
 
         let verification = attributes_verifier.verify(&attributes);
 
@@ -435,17 +435,19 @@ mod test {
 
         let displayable = VerificationTreeDisplay::new(&attributes_verifier, verification);
         let expected = r#"
-            - [ ] The attributes should be Flags: INITTED | DEBUG Xfrm: AVX | AVX512, but the actual attributes was Flags: (none) Xfrm: AVX | AVX512"#;
+            - [ ] The attributes should be Flags: INITTED | DEBUG Xfrm: AVX | AVX_512, but the actual attributes was Flags: (none) Xfrm: AVX | AVX_512"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
     #[test]
     fn attributes_fail_for_feature_mask() {
         let mut attributes = Attributes::default()
-            .set_flags(3)
-            .set_extended_features_mask(230);
+            .set_flags(AttributeFlags::DEBUG | AttributeFlags::INITTED)
+            .set_extended_features_mask(ExtendedFeatureRequestMask::AVX_512);
         let attributes_verifier = AttributesVerifier::new(attributes);
-        attributes = attributes.set_extended_features_mask(0);
+        attributes = attributes.set_extended_features_mask(
+            ExtendedFeatureRequestMask::from_bits(0).expect("Failed to convert from bits"),
+        );
 
         let verification = attributes_verifier.verify(&attributes);
 
@@ -453,7 +455,7 @@ mod test {
 
         let displayable = VerificationTreeDisplay::new(&attributes_verifier, verification);
         let expected = r#"
-            - [ ] The attributes should be Flags: INITTED | DEBUG Xfrm: AVX | AVX512, but the actual attributes was Flags: INITTED | DEBUG Xfrm: (none)"#;
+            - [ ] The attributes should be Flags: INITTED | DEBUG Xfrm: AVX | AVX_512, but the actual attributes was Flags: INITTED | DEBUG Xfrm: (none)"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
@@ -802,7 +804,7 @@ mod test {
         let displayable = VerificationTreeDisplay::new(&mr_signer_verifier, verification);
         let expected = r#"
             - [x] MRSIGNER all of the following must be true:
-              - [x] The MRSIGNER key hash should be 0x3031_3233_3435_3637_3839_3A3B_3C3D_3E3F_4041_4243_4445_4647_4849_4A4B_4C4D_4E4F
+              - [x] The MRSIGNER key hash should be 303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f
               - [x] The ISV product ID should be 144
               - [x] The ISV SVN should be at least 145"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
@@ -826,7 +828,7 @@ mod test {
         let displayable = VerificationTreeDisplay::new(&mr_signer_verifier, verification);
         let expected = r#"
             - [ ] MRSIGNER all of the following must be true:
-              - [ ] The MRSIGNER key hash should be 0x3131_3233_3435_3637_3839_3A3B_3C3D_3E3F_4041_4243_4445_4647_4849_4A4B_4C4D_4E4F, but the actual MRSIGNER key hash was 0x3031_3233_3435_3637_3839_3A3B_3C3D_3E3F_4041_4243_4445_4647_4849_4A4B_4C4D_4E4F
+              - [ ] The MRSIGNER key hash should be 313132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f, but the actual MRSIGNER key hash was 303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f
               - [x] The ISV product ID should be 144
               - [x] The ISV SVN should be at least 145"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
@@ -849,7 +851,7 @@ mod test {
         let displayable = VerificationTreeDisplay::new(&mr_signer_verifier, verification);
         let expected = r#"
             - [ ] MRSIGNER all of the following must be true:
-              - [x] The MRSIGNER key hash should be 0x3031_3233_3435_3637_3839_3A3B_3C3D_3E3F_4041_4243_4445_4647_4849_4A4B_4C4D_4E4F
+              - [x] The MRSIGNER key hash should be 303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f
               - [ ] The ISV product ID should be 145, but the actual ISV product ID was 144
               - [x] The ISV SVN should be at least 145"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
@@ -872,7 +874,7 @@ mod test {
         let displayable = VerificationTreeDisplay::new(&mr_signer_verifier, verification);
         let expected = r#"
             - [ ] MRSIGNER all of the following must be true:
-              - [x] The MRSIGNER key hash should be 0x3031_3233_3435_3637_3839_3A3B_3C3D_3E3F_4041_4243_4445_4647_4849_4A4B_4C4D_4E4F
+              - [x] The MRSIGNER key hash should be 303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f
               - [x] The ISV product ID should be 144
               - [ ] The ISV SVN should be at least 146, but the actual ISV SVN was 145"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
