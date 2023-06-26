@@ -115,6 +115,7 @@ mod test {
     use alloc::format;
     use core::mem;
     use der::DateTime;
+    use mc_sgx_core_sys_types::sgx_attributes_t;
     use mc_sgx_core_types::{AttributeFlags, ExtendedFeatureRequestMask};
     use mc_sgx_dcap_sys_types::{sgx_ql_ecdsa_sig_data_t, sgx_quote3_t};
     use p256::ecdsa::VerifyingKey;
@@ -202,7 +203,14 @@ mod test {
             And::new(
                 MrSignerVerifier::new(mr_signer.into(), product_id, isv_svn.into()),
                 And::new(
-                    AttributesVerifier::new(attributes),
+                    AttributesVerifier::new(
+                        attributes,
+                        sgx_attributes_t {
+                            flags: 0xFFFF_FFFF_FFFF_FFFF,
+                            xfrm: 0xFFFF_FFFF_FFFF_FFFF,
+                        }
+                        .into(),
+                    ),
                     And::new(
                         TcbInfoRawVerifier::new(tcb_key, time),
                         AdvisoriesVerifier::new(allowed_advisories),
@@ -237,7 +245,7 @@ mod test {
                   - [x] The ISV product ID should be 0
                   - [x] The ISV SVN should be at least 0
                 - [x] Both of the following must be true:
-                  - [x] The attributes should be Flags: INITTED | DEBUG | MODE_64BIT Xfrm: LEGACY | AVX
+                  - [x] The expected attributes is Flags: INITTED | DEBUG | MODE_64BIT Xfrm: LEGACY | AVX with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | AMX | RESERVED
                   - [x] Both of the following must be true:
                     - [x] The raw TCB info was verified for the provided key
                     - [x] The allowed advisories are IDs: {"INTEL-SA-00161", "INTEL-SA-00219", "INTEL-SA-00289", "INTEL-SA-00334", "INTEL-SA-00614", "INTEL-SA-00615", "INTEL-SA-00617"} Status: OutOfDate"#;
@@ -268,7 +276,7 @@ mod test {
                   - [ ] The ISV product ID should be 1, but the actual ISV product ID was 0
                   - [x] The ISV SVN should be at least 0
                 - [x] Both of the following must be true:
-                  - [x] The attributes should be Flags: INITTED | DEBUG | MODE_64BIT Xfrm: LEGACY | AVX
+                  - [x] The expected attributes is Flags: INITTED | DEBUG | MODE_64BIT Xfrm: LEGACY | AVX with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | AMX | RESERVED
                   - [x] Both of the following must be true:
                     - [x] The raw TCB info was verified for the provided key
                     - [x] The allowed advisories are IDs: {"INTEL-SA-00161", "INTEL-SA-00219", "INTEL-SA-00289", "INTEL-SA-00334", "INTEL-SA-00614", "INTEL-SA-00615", "INTEL-SA-00617"} Status: OutOfDate"#;

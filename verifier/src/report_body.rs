@@ -45,7 +45,7 @@ report_body_field_accessor! {
 }
 
 /// Verifier for ensuring [`Attributes`] values are equivalent.
-pub type AttributesVerifier = EqualityVerifier<Attributes>;
+pub type AttributesVerifier = MaskedVerifier<Attributes>;
 
 /// Verifier for ensuring [`ConfigId`] values are equivalent.
 pub type ConfigIdVerifier = EqualityVerifier<ConfigId>;
@@ -224,6 +224,10 @@ mod test {
     };
     use mc_sgx_core_types::{AttributeFlags, ExtendedFeatureRequestMask};
     use yare::parameterized;
+    const ALL_ATTRIBUTE_BITS: sgx_attributes_t = sgx_attributes_t {
+        flags: 0xFFFF_FFFF_FFFF_FFFF,
+        xfrm: 0xFFFF_FFFF_FFFF_FFFF,
+    };
 
     const REPORT_BODY_SRC: sgx_report_body_t = sgx_report_body_t {
         cpu_svn: sgx_cpu_svn_t {
@@ -277,7 +281,7 @@ mod test {
     fn report_body_succeeds() {
         let report_body = ReportBody::from(&REPORT_BODY_SRC);
         let verifier = And::new(
-            AttributesVerifier::new(report_body.attributes()),
+            AttributesVerifier::new(report_body.attributes(), ALL_ATTRIBUTE_BITS.into()),
             ConfigIdVerifier::new(report_body.config_id()),
         );
         assert_eq!(verifier.verify(&report_body).is_success().unwrap_u8(), 1);
@@ -288,7 +292,7 @@ mod test {
         let report_body = ReportBody::from(&REPORT_BODY_SRC);
         let attributes = report_body.attributes().set_flags(AttributeFlags::DEBUG);
         let verifier = And::new(
-            AttributesVerifier::new(attributes),
+            AttributesVerifier::new(attributes, ALL_ATTRIBUTE_BITS.into()),
             ConfigIdVerifier::new(report_body.config_id()),
         );
         assert_eq!(verifier.verify(&report_body).is_failure().unwrap_u8(), 1);
@@ -300,7 +304,7 @@ mod test {
         let mut config_id = report_body.config_id();
         config_id.as_mut()[0] = 0;
         let verifier = And::new(
-            AttributesVerifier::new(report_body.attributes()),
+            AttributesVerifier::new(report_body.attributes(), ALL_ATTRIBUTE_BITS.into()),
             ConfigIdVerifier::new(config_id),
         );
         assert_eq!(verifier.verify(&report_body).is_failure().unwrap_u8(), 1);
@@ -311,7 +315,7 @@ mod test {
         let report_body = ReportBody::from(&REPORT_BODY_SRC);
         let expected_config_svn = *report_body.config_svn().as_mut() + 1;
         let verifier = And::new(
-            AttributesVerifier::new(report_body.attributes()),
+            AttributesVerifier::new(report_body.attributes(), ALL_ATTRIBUTE_BITS.into()),
             And::new(
                 ConfigIdVerifier::new(report_body.config_id()),
                 ConfigSvnVerifier::new(expected_config_svn.into()),
@@ -327,7 +331,7 @@ mod test {
         let bytes: &mut [u8] = mr_enclave.as_mut();
         bytes[0] += 1;
         let verifier = And::new(
-            AttributesVerifier::new(report_body.attributes()),
+            AttributesVerifier::new(report_body.attributes(), ALL_ATTRIBUTE_BITS.into()),
             And::new(
                 ConfigIdVerifier::new(report_body.config_id()),
                 MrEnclaveVerifier::new(mr_enclave),
@@ -343,7 +347,7 @@ mod test {
         let bytes: &mut [u8] = mr_signer.as_mut();
         bytes[0] += 1;
         let verifier = And::new(
-            AttributesVerifier::new(report_body.attributes()),
+            AttributesVerifier::new(report_body.attributes(), ALL_ATTRIBUTE_BITS.into()),
             And::new(
                 ConfigIdVerifier::new(report_body.config_id()),
                 MrSignerVerifier::new(
@@ -370,14 +374,14 @@ mod test {
             .set_flags(AttributeFlags::DEBUG | AttributeFlags::INITTED)
             .set_extended_features_mask(ExtendedFeatureRequestMask::AVX_512);
 
-        let attributes_verifier = AttributesVerifier::new(attributes);
+        let attributes_verifier = AttributesVerifier::new(attributes, ALL_ATTRIBUTE_BITS.into());
         let verification = attributes_verifier.verify(&attributes);
 
         assert_eq!(verification.is_success().unwrap_u8(), 1);
 
         let displayable = VerificationTreeDisplay::new(&attributes_verifier, verification);
         let expected = r#"
-            - [x] The attributes should be Flags: INITTED | DEBUG Xfrm: AVX | AVX_512"#;
+            - [x] The expected attributes is Flags: INITTED | DEBUG Xfrm: AVX | AVX_512 with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | AMX | RESERVED"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
@@ -386,7 +390,7 @@ mod test {
         let mut attributes = Attributes::default()
             .set_flags(AttributeFlags::DEBUG | AttributeFlags::INITTED)
             .set_extended_features_mask(ExtendedFeatureRequestMask::AVX_512);
-        let attributes_verifier = AttributesVerifier::new(attributes);
+        let attributes_verifier = AttributesVerifier::new(attributes, ALL_ATTRIBUTE_BITS.into());
 
         attributes = attributes
             .set_flags(AttributeFlags::from_bits(0).expect("Failed to convert from bits"));
@@ -397,7 +401,7 @@ mod test {
 
         let displayable = VerificationTreeDisplay::new(&attributes_verifier, verification);
         let expected = r#"
-            - [ ] The attributes should be Flags: INITTED | DEBUG Xfrm: AVX | AVX_512, but the actual attributes was Flags: (none) Xfrm: AVX | AVX_512"#;
+            - [ ] The expected attributes is Flags: INITTED | DEBUG Xfrm: AVX | AVX_512 with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | AMX | RESERVED, but the actual attributes was Flags: (none) Xfrm: AVX | AVX_512"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
@@ -406,7 +410,7 @@ mod test {
         let mut attributes = Attributes::default()
             .set_flags(AttributeFlags::DEBUG | AttributeFlags::INITTED)
             .set_extended_features_mask(ExtendedFeatureRequestMask::AVX_512);
-        let attributes_verifier = AttributesVerifier::new(attributes);
+        let attributes_verifier = AttributesVerifier::new(attributes, ALL_ATTRIBUTE_BITS.into());
         attributes = attributes.set_extended_features_mask(
             ExtendedFeatureRequestMask::from_bits(0).expect("Failed to convert from bits"),
         );
@@ -417,7 +421,46 @@ mod test {
 
         let displayable = VerificationTreeDisplay::new(&attributes_verifier, verification);
         let expected = r#"
-            - [ ] The attributes should be Flags: INITTED | DEBUG Xfrm: AVX | AVX_512, but the actual attributes was Flags: INITTED | DEBUG Xfrm: (none)"#;
+            - [ ] The expected attributes is Flags: INITTED | DEBUG Xfrm: AVX | AVX_512 with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | AMX | RESERVED, but the actual attributes was Flags: INITTED | DEBUG Xfrm: (none)"#;
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
+    }
+
+    #[test]
+    fn attributes_fail_for_debug_bit_in_mask() {
+        // This is a common case where the enclave is built with debug.
+        // a production environment verifier should not verify a debug enclave
+        // as it will leak secrets.
+        let release_attributes = Attributes::default();
+        let debug_attributes = Attributes::default().set_flags(AttributeFlags::DEBUG);
+        let attributes_verifier = AttributesVerifier::new(release_attributes, debug_attributes);
+
+        let verification = attributes_verifier.verify(&debug_attributes);
+
+        assert_eq!(verification.is_failure().unwrap_u8(), 1);
+
+        let displayable = VerificationTreeDisplay::new(&attributes_verifier, verification);
+        let expected = r#"
+            - [ ] The expected attributes is Flags: (none) Xfrm: (none) with mask Flags: DEBUG Xfrm: (none), but the actual attributes was Flags: DEBUG Xfrm: (none)"#;
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
+    }
+
+    #[test]
+    fn attributes_succeed_when_debug_bit_not_set_in_mask() {
+        let release_attributes = Attributes::default();
+        let debug_attributes = Attributes::default().set_flags(AttributeFlags::DEBUG);
+        let mask_all_but_debug = Attributes::from(sgx_attributes_t {
+            flags: !AttributeFlags::DEBUG.bits(),
+            xfrm: 0xFFFF_FFFF_FFFF_FFFF,
+        });
+        let attributes_verifier = AttributesVerifier::new(release_attributes, mask_all_but_debug);
+
+        let verification = attributes_verifier.verify(&debug_attributes);
+
+        assert_eq!(verification.is_success().unwrap_u8(), 1);
+
+        let displayable = VerificationTreeDisplay::new(&attributes_verifier, verification);
+        let expected = r#"
+            - [x] The expected attributes is Flags: (none) Xfrm: (none) with mask Flags: 0xFFFF_FFFF_FFFF_FFFD Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | AMX | RESERVED"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
@@ -854,11 +897,9 @@ mod test {
     #[test]
     fn attributes_verifier_display() {
         let inner = Attributes::from(REPORT_BODY_SRC.attributes);
-        let verifier = AttributesVerifier::new(inner);
+        let verifier = AttributesVerifier::new(inner, ALL_ATTRIBUTE_BITS.into());
 
-        let expected = format!("The {} should be {inner}", Attributes::spaced_struct_name());
-
-        assert_eq!(verifier.to_string(), expected)
+        assert_eq!(verifier.to_string(), "The expected attributes is Flags: 0x0102_0304_0506_0708 Xfrm: 0x0807_0605_0403_0201 with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | AMX | RESERVED");
     }
 
     #[test]
