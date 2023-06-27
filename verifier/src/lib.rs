@@ -9,8 +9,9 @@ extern crate alloc;
 mod advisories;
 mod error;
 mod evidence;
+mod qe_identity;
+mod qe_report_body;
 mod quote;
-mod quote_enclave_identity;
 mod report_body;
 mod struct_name;
 mod tcb;
@@ -22,6 +23,8 @@ pub use error::Error;
 pub(crate) use error::Result;
 pub use evidence::Evidence;
 
+pub use qe_identity::QeIdentity;
+pub use qe_report_body::{QeReportBody, QeReportBodyVerifier};
 pub use quote::Quote3Verifier;
 
 pub use report_body::{

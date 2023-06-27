@@ -2,7 +2,7 @@
 
 //! Handles the QE(Quoting Enclave) identity verification.
 //!
-//! Pre the steps documented at
+//! Step one from the steps documented at
 //! <https://api.portal.trustedservices.intel.com/documentation#pcs-enclave-identity-v4>
 //!
 //! > 1. Retrieve Enclave Identity(SGX QE, TDX QE or QVE) from PCS and verify
@@ -38,17 +38,28 @@
 #![allow(dead_code)]
 
 use crate::advisories::AdvisoryStatus;
-use crate::{Accessor, Error, VerificationMessage, VerificationOutput, Verifier};
-use alloc::string::String;
+use crate::{Accessor, Advisories, Error, VerificationMessage, VerificationOutput, Verifier};
+use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::fmt::Formatter;
 use der::DateTime;
+use mc_sgx_core_sys_types::sgx_attributes_t;
+use mc_sgx_core_types::{Attributes, IsvProductId, IsvSvn, MiscellaneousSelect, MrSigner};
 use p256::ecdsa::signature::Verifier as SignatureVerifier;
 use p256::ecdsa::{Signature, VerifyingKey};
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
-#[derive(Debug, Deserialize)]
+const UNIX_TIME_STR: &str = "1970-01-01T00:00:00Z";
+
+/// QE(quoting enclave) identity information.
+///
+/// This is derived from JSON data formatted according to,
+/// <https://api.portal.trustedservices.intel.com/documentation#pcs-enclave-identity-v4>.
+///
+/// The identity can be retrieved from,
+/// <https://api.trustedservices.intel.com/sgx/certification/v4/qe/identity?update=standard>
+#[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct QeIdentity {
     id: String,
@@ -70,6 +81,57 @@ pub struct QeIdentity {
     tcb_levels: Vec<TcbLevel>,
 }
 
+impl QeIdentity {
+    /// The MRSIGNER key value of the QE.
+    pub fn mr_signer(&self) -> MrSigner {
+        MrSigner::from(self.mr_signer)
+    }
+
+    /// The ISV product ID of the QE.
+    pub fn isv_prod_id(&self) -> IsvProductId {
+        self.isv_prod_id.into()
+    }
+
+    /// The list of current and former TCB levels of the QE.
+    pub fn tcb_levels(&self) -> &[TcbLevel] {
+        &self.tcb_levels
+    }
+
+    /// The expected [`MiscellaneousSelect`] bits of the QE report body.
+    pub fn miscellaneous_select(&self) -> MiscellaneousSelect {
+        let miscellaneous_select = u32::from_le_bytes(self.misc_select);
+        miscellaneous_select.into()
+    }
+
+    /// The [`MiscellaneousSelect`] mask to use when comparing the
+    /// [`MiscellaneousSelect`] bits of the QE report body.
+    pub fn miscellaneous_select_mask(&self) -> MiscellaneousSelect {
+        let mask = u32::from_le_bytes(self.misc_select_mask);
+        mask.into()
+    }
+
+    /// The expected [`Attributes`] of the QE report body.
+    pub fn attributes(&self) -> Attributes {
+        let mut bytes = [0u8; 8];
+        bytes.copy_from_slice(&self.attributes[..8]);
+        let flags = u64::from_le_bytes(bytes);
+        bytes.copy_from_slice(&self.attributes[8..]);
+        let xfrm = u64::from_le_bytes(bytes);
+        sgx_attributes_t { flags, xfrm }.into()
+    }
+
+    /// The [`Attributes`] mask to use when comparing the
+    /// [`Attributes`] of the QE report body.
+    pub fn attributes_mask(&self) -> Attributes {
+        let mut bytes = [0u8; 8];
+        bytes.copy_from_slice(&self.attributes_mask[..8]);
+        let flags = u64::from_le_bytes(bytes);
+        bytes.copy_from_slice(&self.attributes_mask[8..]);
+        let xfrm = u64::from_le_bytes(bytes);
+        sgx_attributes_t { flags, xfrm }.into()
+    }
+}
+
 impl<'a> TryFrom<&SignedQeIdentity<'a>> for QeIdentity {
     type Error = Error;
 
@@ -80,9 +142,9 @@ impl<'a> TryFrom<&SignedQeIdentity<'a>> for QeIdentity {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
-struct TcbLevel {
+pub struct TcbLevel {
     tcb: Tcb,
     tcb_date: String,
     tcb_status: AdvisoryStatus,
@@ -90,10 +152,41 @@ struct TcbLevel {
     advisory_ids: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct Tcb {
+impl TcbLevel {
+    pub fn new<'a, I, E>(tcb: Tcb, tcb_status: AdvisoryStatus, advisory_ids: I) -> Self
+    where
+        I: IntoIterator<Item = &'a E>,
+        E: ToString + 'a + ?Sized,
+    {
+        Self {
+            tcb,
+            tcb_date: UNIX_TIME_STR.to_string(),
+            tcb_status,
+            advisory_ids: advisory_ids.into_iter().map(ToString::to_string).collect(),
+        }
+    }
+
+    pub fn isv_svn(&self) -> IsvSvn {
+        self.tcb.isv_svn.into()
+    }
+
+    pub fn advisories(&self) -> Advisories {
+        Advisories::new(&self.advisory_ids, self.tcb_status)
+    }
+}
+
+#[derive(Debug, Deserialize, Clone, PartialEq)]
+pub struct Tcb {
     #[serde(rename = "isvsvn")]
-    isv_svn: u32,
+    isv_svn: u16,
+}
+
+impl Tcb {
+    pub fn new<I: Into<IsvSvn>>(isv_svn: I) -> Self {
+        Self {
+            isv_svn: isv_svn.into().into(),
+        }
+    }
 }
 
 /// Signed quoting enclave (QE) identity.
