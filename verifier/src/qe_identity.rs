@@ -38,7 +38,7 @@
 #![allow(dead_code)]
 
 use crate::advisories::AdvisoryStatus;
-use crate::{Accessor, Error, VerificationMessage, VerificationOutput, Verifier};
+use crate::{Accessor, Advisories, Error, VerificationMessage, VerificationOutput, Verifier};
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::fmt::Formatter;
@@ -170,12 +170,8 @@ impl TcbLevel {
         self.tcb.isv_svn.into()
     }
 
-    pub fn status(&self) -> AdvisoryStatus {
-        self.tcb_status
-    }
-
-    pub fn advisory_ids(&self) -> &[String] {
-        &self.advisory_ids
+    pub fn advisories(&self) -> Advisories {
+        Advisories::new(&self.advisory_ids, self.tcb_status)
     }
 }
 

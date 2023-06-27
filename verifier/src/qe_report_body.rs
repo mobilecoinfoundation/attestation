@@ -6,8 +6,9 @@ use crate::qe_identity::{QeIdentity, TcbLevel};
 use crate::report_body::MrSignerKeyVerifier;
 use crate::struct_name::SpacedStructName;
 use crate::{
-    choice_to_status_message, Accessor, AdvisoryStatus, AttributesVerifier, IsvProductIdVerifier,
-    MiscellaneousSelectVerifier, VerificationMessage, VerificationOutput, Verifier, MESSAGE_INDENT,
+    choice_to_status_message, Accessor, Advisories, AdvisoriesVerifier, AdvisoryStatus,
+    AttributesVerifier, IsvProductIdVerifier, MiscellaneousSelectVerifier, VerificationMessage,
+    VerificationOutput, Verifier, MESSAGE_INDENT,
 };
 use alloc::vec::Vec;
 use core::fmt::{Display, Formatter};
@@ -222,14 +223,16 @@ impl<E: Accessor<IsvSvn>> Verifier<E> for QeIsvSvnVerifier {
             }
         });
 
-        let mut is_success_bool = false;
+        let mut is_success = 0.into();
         if let Some(tcb_level) = &tcb_level {
-            is_success_bool = tcb_level.status() == AdvisoryStatus::UpToDate
-                && tcb_level.advisory_ids().is_empty();
+            let up_to_date_with_no_advisories =
+                Advisories::new([] as [&str; 0], AdvisoryStatus::UpToDate);
+            let advisories_verifier = AdvisoriesVerifier::new(up_to_date_with_no_advisories);
+            let result = advisories_verifier.verify(&tcb_level.advisories());
+            is_success = result.is_success();
         }
-        let is_success = if is_success_bool { 1 } else { 0 };
 
-        VerificationOutput::new((isv_svn, tcb_level), is_success.into())
+        VerificationOutput::new((isv_svn, tcb_level), is_success)
     }
 }
 
