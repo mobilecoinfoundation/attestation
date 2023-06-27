@@ -381,7 +381,7 @@ mod test {
 
         let displayable = VerificationTreeDisplay::new(&attributes_verifier, verification);
         let expected = r#"
-            - [x] The expected attributes is Flags: INITTED | DEBUG Xfrm: AVX | AVX_512 with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | AMX | RESERVED"#;
+            - [x] The expected attributes is Flags: INITTED | DEBUG Xfrm: AVX | AVX_512 with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | RESERVED"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
@@ -401,7 +401,7 @@ mod test {
 
         let displayable = VerificationTreeDisplay::new(&attributes_verifier, verification);
         let expected = r#"
-            - [ ] The expected attributes is Flags: INITTED | DEBUG Xfrm: AVX | AVX_512 with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | AMX | RESERVED, but the actual attributes was Flags: (none) Xfrm: AVX | AVX_512"#;
+            - [ ] The expected attributes is Flags: INITTED | DEBUG Xfrm: AVX | AVX_512 with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | RESERVED, but the actual attributes was Flags: (none) Xfrm: AVX | AVX_512"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
@@ -421,7 +421,7 @@ mod test {
 
         let displayable = VerificationTreeDisplay::new(&attributes_verifier, verification);
         let expected = r#"
-            - [ ] The expected attributes is Flags: INITTED | DEBUG Xfrm: AVX | AVX_512 with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | AMX | RESERVED, but the actual attributes was Flags: INITTED | DEBUG Xfrm: (none)"#;
+            - [ ] The expected attributes is Flags: INITTED | DEBUG Xfrm: AVX | AVX_512 with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | RESERVED, but the actual attributes was Flags: INITTED | DEBUG Xfrm: (none)"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
@@ -460,7 +460,7 @@ mod test {
 
         let displayable = VerificationTreeDisplay::new(&attributes_verifier, verification);
         let expected = r#"
-            - [x] The expected attributes is Flags: (none) Xfrm: (none) with mask Flags: 0xFFFF_FFFF_FFFF_FFFD Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | AMX | RESERVED"#;
+            - [x] The expected attributes is Flags: (none) Xfrm: (none) with mask Flags: 0xFFFF_FFFF_FFFF_FFFD Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | RESERVED"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
@@ -899,7 +899,7 @@ mod test {
         let inner = Attributes::from(REPORT_BODY_SRC.attributes);
         let verifier = AttributesVerifier::new(inner, ALL_ATTRIBUTE_BITS.into());
 
-        assert_eq!(verifier.to_string(), "The expected attributes is Flags: 0x0102_0304_0506_0708 Xfrm: 0x0807_0605_0403_0201 with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | AMX | RESERVED");
+        assert_eq!(verifier.to_string(), "The expected attributes is Flags: 0x0102_0304_0506_0708 Xfrm: 0x0807_0605_0403_0201 with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | RESERVED");
     }
 
     #[test]
