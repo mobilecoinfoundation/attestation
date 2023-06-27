@@ -179,19 +179,6 @@ impl TcbLevel {
     }
 }
 
-// A default value that will not be verified to be correct.
-// It will be `AdviceStatus::OutOfDate` and have an `isv_svn` of 0.
-impl Default for TcbLevel {
-    fn default() -> Self {
-        Self {
-            tcb: Tcb { isv_svn: 0 },
-            tcb_date: UNIX_TIME_STR.to_string(),
-            tcb_status: AdvisoryStatus::OutOfDate,
-            advisory_ids: Vec::new(),
-        }
-    }
-}
-
 #[derive(Debug, Deserialize, Clone, PartialEq)]
 pub struct Tcb {
     #[serde(rename = "isvsvn")]

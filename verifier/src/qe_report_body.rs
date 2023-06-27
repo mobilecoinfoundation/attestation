@@ -112,7 +112,7 @@ pub struct QeReportBodyValue {
     isv_prod_id: VerificationOutput<IsvProductId>,
     miscellaneous_select: VerificationOutput<MiscellaneousSelect>,
     attributes: VerificationOutput<Attributes>,
-    isv_svn: VerificationOutput<(IsvSvn, TcbLevel)>,
+    isv_svn: VerificationOutput<(IsvSvn, Option<TcbLevel>)>,
 }
 
 impl<E: Accessor<QeReportBody>> Verifier<E> for QeReportBodyVerifier {
@@ -204,23 +204,23 @@ impl QeIsvSvnVerifier {
 }
 
 impl<E: Accessor<IsvSvn>> Verifier<E> for QeIsvSvnVerifier {
-    type Value = (IsvSvn, TcbLevel);
+    type Value = (IsvSvn, Option<TcbLevel>);
     fn verify(&self, evidence: &E) -> VerificationOutput<Self::Value> {
         let isv_svn = evidence.get();
         let tcb_levels = &self.tcb_levels;
-        let tcb_level = tcb_levels
-            .iter()
-            .find_map(|tcb_level| {
-                if tcb_level.isv_svn().as_ref() <= isv_svn.as_ref() {
-                    Some(tcb_level.clone())
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_default();
+        let tcb_level = tcb_levels.iter().find_map(|tcb_level| {
+            if tcb_level.isv_svn().as_ref() <= isv_svn.as_ref() {
+                Some(tcb_level.clone())
+            } else {
+                None
+            }
+        });
 
-        let is_success_bool =
-            tcb_level.status() == AdvisoryStatus::UpToDate && tcb_level.advisory_ids().is_empty();
+        let mut is_success_bool = false;
+        if let Some(tcb_level) = &tcb_level {
+            is_success_bool = tcb_level.status() == AdvisoryStatus::UpToDate
+                && tcb_level.advisory_ids().is_empty();
+        }
         let is_success = if is_success_bool { 1 } else { 0 };
 
         VerificationOutput::new((isv_svn, tcb_level), is_success.into())
@@ -238,12 +238,12 @@ impl Display for QeIsvSvnVerifier {
     }
 }
 
-impl VerificationMessage<(IsvSvn, TcbLevel)> for QeIsvSvnVerifier {
+impl VerificationMessage<(IsvSvn, Option<TcbLevel>)> for QeIsvSvnVerifier {
     fn fmt_padded(
         &self,
         f: &mut Formatter<'_>,
         pad: usize,
-        output: &VerificationOutput<(IsvSvn, TcbLevel)>,
+        output: &VerificationOutput<(IsvSvn, Option<TcbLevel>)>,
     ) -> core::fmt::Result {
         let is_success = output.is_success();
         let status = choice_to_status_message(is_success);
@@ -251,11 +251,13 @@ impl VerificationMessage<(IsvSvn, TcbLevel)> for QeIsvSvnVerifier {
         if (!is_success).into() {
             let name = IsvSvn::spaced_struct_name();
             let actual = &output.value;
-            write!(
-                f,
-                ", but the {name} of {} corresponds to the {:?}",
-                actual.0, actual.1
-            )?;
+
+            write!(f, ", but the {name} of {} corresponds to ", actual.0)?;
+            if let Some(tcb_level) = &actual.1 {
+                write!(f, "{tcb_level:?}")?;
+            } else {
+                write!(f, "None")?;
+            }
         }
         Ok(())
     }
@@ -282,7 +284,7 @@ mod test {
         let displayable = VerificationTreeDisplay::new(&verifier, verification);
         assert_eq!(
             displayable.to_string(),
-            r#"- [ ] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [], but the ISV SVN of 1 corresponds to the TcbLevel { tcb: Tcb { isv_svn: 0 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: OutOfDate, advisory_ids: [] }"#
+            r#"- [ ] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [], but the ISV SVN of 1 corresponds to None"#
         );
     }
 
@@ -320,7 +322,7 @@ mod test {
         let displayable = VerificationTreeDisplay::new(&verifier, verification);
         assert_eq!(
             displayable.to_string(),
-            r#"- [ ] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [TcbLevel { tcb: Tcb { isv_svn: 2 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: UpToDate, advisory_ids: [] }], but the ISV SVN of 1 corresponds to the TcbLevel { tcb: Tcb { isv_svn: 0 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: OutOfDate, advisory_ids: [] }"#
+            r#"- [ ] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [TcbLevel { tcb: Tcb { isv_svn: 2 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: UpToDate, advisory_ids: [] }], but the ISV SVN of 1 corresponds to None"#
         );
     }
 
@@ -339,7 +341,7 @@ mod test {
         let displayable = VerificationTreeDisplay::new(&verifier, verification);
         assert_eq!(
             displayable.to_string(),
-            r#"- [ ] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: SWHardeningNeeded, advisory_ids: [] }], but the ISV SVN of 1 corresponds to the TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: SWHardeningNeeded, advisory_ids: [] }"#
+            r#"- [ ] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: SWHardeningNeeded, advisory_ids: [] }], but the ISV SVN of 1 corresponds to TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: SWHardeningNeeded, advisory_ids: [] }"#
         );
     }
 
@@ -358,7 +360,7 @@ mod test {
         let displayable = VerificationTreeDisplay::new(&verifier, verification);
         assert_eq!(
             displayable.to_string(),
-            r#"- [ ] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: UpToDate, advisory_ids: ["an id"] }], but the ISV SVN of 1 corresponds to the TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: UpToDate, advisory_ids: ["an id"] }"#
+            r#"- [ ] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: UpToDate, advisory_ids: ["an id"] }], but the ISV SVN of 1 corresponds to TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: UpToDate, advisory_ids: ["an id"] }"#
         );
     }
 
