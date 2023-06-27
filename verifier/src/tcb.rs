@@ -107,6 +107,11 @@ impl TcbInfo {
         Err(Error::UnsupportedTcbLevel)
     }
 
+    fn verify(&self, time: DateTime) -> Result<(), Error> {
+        self.verify_version()?.verify_time(time)?;
+        Ok(())
+    }
+
     fn verify_time(&self, time: DateTime) -> Result<&Self, Error> {
         let issue_date = self.issue_date.parse::<DateTime>()?;
         let next_update = self.next_update.parse::<DateTime>()?;
@@ -120,7 +125,10 @@ impl TcbInfo {
     }
     fn verify_version(&self) -> Result<&Self, Error> {
         if self.version != TCB_INFO_VERSION {
-            Err(Error::TcbInfoVersion(self.version))
+            Err(Error::TcbInfoVersion {
+                expected: TCB_INFO_VERSION,
+                actual: self.version,
+            })
         } else {
             Ok(self)
         }
@@ -239,7 +247,7 @@ impl TcbInfoRaw {
     pub fn verify(self, key: &VerifyingKey, time: DateTime) -> Result<(), Error> {
         self.verify_signature(key)?;
         let tcb_info = TcbInfo::try_from(&self)?;
-        tcb_info.verify_version()?.verify_time(time)?;
+        tcb_info.verify(time)?;
         Ok(())
     }
 
@@ -921,7 +929,7 @@ mod tests {
         assert_eq!(verification.is_success().unwrap_u8(), 0);
         assert_matches!(
             verification.value.expect("Expecting error"),
-            Error::TcbInfoVersion(v) if v == version
+            Error::TcbInfoVersion{expected: TCB_INFO_VERSION, actual} if actual == version
         );
     }
 }
