@@ -1,4 +1,4 @@
-// Copyrigh, _t (c) 2023 The MobileCoin Foundation
+// Copyright (c) 2023 The MobileCoin Foundation
 
 //! Handles the QE(Quoting Enclave) identity verification.
 //!
@@ -133,6 +133,11 @@ impl QeIdentity {
         sgx_attributes_t { flags, xfrm }.into()
     }
 
+    fn verify(&self, time: DateTime) -> Result<(), Error> {
+        self.verify_version()?.verify_time(time)?;
+        Ok(())
+    }
+
     fn verify_time(&self, time: DateTime) -> Result<&Self, Error> {
         let issue_date = self.issue_date.parse::<DateTime>()?;
         let next_update = self.next_update.parse::<DateTime>()?;
@@ -144,9 +149,13 @@ impl QeIdentity {
             Ok(self)
         }
     }
+
     fn verify_version(&self) -> Result<&Self, Error> {
         if self.version != QE_IDENTITY_VERSION {
-            Err(Error::QeIdentityVersion(self.version))
+            Err(Error::QeIdentityVersion {
+                expected: QE_IDENTITY_VERSION,
+                actual: self.version,
+            })
         } else {
             Ok(self)
         }
@@ -238,7 +247,7 @@ impl SignedQeIdentity {
     pub fn verify(self, key: &VerifyingKey, time: DateTime) -> Result<(), Error> {
         self.verify_signature(key)?;
         let qe_identity = QeIdentity::try_from(&self)?;
-        qe_identity.verify_version()?.verify_time(time)?;
+        qe_identity.verify(time)?;
         Ok(())
     }
 
@@ -708,7 +717,7 @@ mod test {
         assert_eq!(verification.is_failure().unwrap_u8(), 1);
         assert_matches!(
             verification.value.expect("Expecting error"),
-            Error::QeIdentityVersion(v) if v == version
+            Error::QeIdentityVersion{expected: QE_IDENTITY_VERSION, actual} if actual == version
         );
     }
 }

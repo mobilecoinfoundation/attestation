@@ -33,8 +33,9 @@ pub enum Error {
     QeIdentityExpired,
     /// QE identity not yet valid
     QeIdentityNotYetValid,
-    /// QE identity version mismatch, expecting 2 got {0}
-    QeIdentityVersion(u32),
+    /// QE identity version mismatch, expecting {expected} got {actual}
+    #[allow(missing_docs)]
+    QeIdentityVersion { expected: u32, actual: u32 },
 }
 
 impl From<der::Error> for Error {
