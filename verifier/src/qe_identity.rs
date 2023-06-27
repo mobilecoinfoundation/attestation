@@ -1,4 +1,4 @@
-// Copyright (c) 2023 The MobileCoin Foundation
+// Copyrigh, _t (c) 2023 The MobileCoin Foundation
 
 //! Handles the QE(Quoting Enclave) identity verification.
 //!
@@ -39,6 +39,7 @@
 
 use crate::advisories::AdvisoryStatus;
 use crate::{Accessor, Advisories, Error, VerificationMessage, VerificationOutput, Verifier};
+use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
 use core::fmt::Formatter;
@@ -50,6 +51,7 @@ use p256::ecdsa::{Signature, VerifyingKey};
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
+const QE_IDENTITY_VERSION: u32 = 2;
 const UNIX_TIME_STR: &str = "1970-01-01T00:00:00Z";
 
 /// QE(quoting enclave) identity information.
@@ -130,14 +132,33 @@ impl QeIdentity {
         let xfrm = u64::from_le_bytes(bytes);
         sgx_attributes_t { flags, xfrm }.into()
     }
+
+    fn verify_time(&self, time: DateTime) -> Result<&Self, Error> {
+        let issue_date = self.issue_date.parse::<DateTime>()?;
+        let next_update = self.next_update.parse::<DateTime>()?;
+        if time < issue_date {
+            Err(Error::QeIdentityNotYetValid)
+        } else if time >= next_update {
+            Err(Error::QeIdentityExpired)
+        } else {
+            Ok(self)
+        }
+    }
+    fn verify_version(&self) -> Result<&Self, Error> {
+        if self.version != QE_IDENTITY_VERSION {
+            Err(Error::QeIdentityVersion(self.version))
+        } else {
+            Ok(self)
+        }
+    }
 }
 
-impl<'a> TryFrom<&SignedQeIdentity<'a>> for QeIdentity {
+impl TryFrom<&SignedQeIdentity> for QeIdentity {
     type Error = Error;
 
-    fn try_from(signed_qe_identity: &SignedQeIdentity<'a>) -> Result<Self, Self::Error> {
+    fn try_from(signed_qe_identity: &SignedQeIdentity) -> Result<Self, Self::Error> {
         let qe_identity: QeIdentity =
-            serde_json::from_str(signed_qe_identity.enclave_identity.get())?;
+            serde_json::from_str(signed_qe_identity.enclave_identity.as_ref().get())?;
         Ok(qe_identity)
     }
 }
@@ -197,14 +218,13 @@ impl Tcb {
 /// signature.
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct SignedQeIdentity<'a> {
-    #[serde(borrow)]
-    enclave_identity: &'a RawValue,
+pub struct SignedQeIdentity {
+    enclave_identity: Box<RawValue>,
     #[serde(with = "hex")]
     signature: Vec<u8>,
 }
 
-impl<'a> SignedQeIdentity<'a> {
+impl SignedQeIdentity {
     /// Verify the `enclaveIdentity` signature and time are valid.
     ///
     /// # Arguments
@@ -217,7 +237,8 @@ impl<'a> SignedQeIdentity<'a> {
     ///   or equivalent
     pub fn verify(self, key: &VerifyingKey, time: DateTime) -> Result<(), Error> {
         self.verify_signature(key)?;
-        self.verify_time(time)?;
+        let qe_identity = QeIdentity::try_from(&self)?;
+        qe_identity.verify_version()?.verify_time(time)?;
         Ok(())
     }
 
@@ -225,29 +246,16 @@ impl<'a> SignedQeIdentity<'a> {
         let qe_identity = self.enclave_identity.get();
         let signature =
             Signature::try_from(&self.signature[..]).map_err(|_| Error::SignatureDecodeError)?;
-        key.verify(qe_identity.as_bytes(), &signature)
+        key.verify(qe_identity.as_ref().get().as_bytes(), &signature)
             .map_err(|_| Error::SignatureVerification)?;
         Ok(())
     }
-
-    fn verify_time(&self, time: DateTime) -> Result<(), Error> {
-        let qe_identity = QeIdentity::try_from(self)?;
-        let issue_date = qe_identity.issue_date.parse::<DateTime>()?;
-        let next_update = qe_identity.next_update.parse::<DateTime>()?;
-        if time < issue_date {
-            Err(Error::QeIdentityNotYetValid)
-        } else if time >= next_update {
-            Err(Error::QeIdentityExpired)
-        } else {
-            Ok(())
-        }
-    }
 }
 
-impl<'a> TryFrom<&'a str> for SignedQeIdentity<'a> {
+impl TryFrom<&str> for SignedQeIdentity {
     type Error = Error;
 
-    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
         let signed_qe_identity: SignedQeIdentity = serde_json::from_str(value)?;
         Ok(signed_qe_identity)
     }
@@ -284,7 +292,7 @@ impl SignedQeIdentityVerifier {
     }
 }
 
-impl<'a, E: Accessor<SignedQeIdentity<'a>>> Verifier<E> for SignedQeIdentityVerifier {
+impl<E: Accessor<SignedQeIdentity>> Verifier<E> for SignedQeIdentityVerifier {
     type Value = Option<Error>;
     fn verify(&self, evidence: &E) -> VerificationOutput<Self::Value> {
         let signed_qe_identity = evidence.get();
@@ -328,7 +336,8 @@ mod test {
     use alloc::{format, vec};
     use assert_matches::assert_matches;
     use der::DateTime;
-    use p256::ecdsa::VerifyingKey;
+    use p256::ecdsa::signature::Signer;
+    use p256::ecdsa::{SigningKey, VerifyingKey};
     use x509_cert::der::DecodePem;
     use x509_cert::Certificate;
     use yare::parameterized;
@@ -349,6 +358,34 @@ mod test {
         key
     }
 
+    /// Takes the test `qe_identity.json` file and will replace all instances of `from` with `to`.
+    ///
+    /// Returns the altered `SignedQeIdentity` and the `VerifyingKey` that was used to sign it.
+    fn alter_signed_qe_identity(from: &str, to: &str) -> (SignedQeIdentity, VerifyingKey) {
+        let json = include_str!("../data/tests/qe_identity.json");
+
+        let bad_json = json.replace(from, to);
+
+        let mut signed_qe_identity =
+            SignedQeIdentity::try_from(bad_json.as_ref()).expect("Failed to parse signed identity");
+
+        // Since the signature is based on the original contents we must re-sign
+        let mut rng = rand::thread_rng();
+        let signing_key = SigningKey::random(&mut rng);
+        let (signature, _) = signing_key.sign(
+            signed_qe_identity
+                .enclave_identity
+                .as_ref()
+                .get()
+                .as_bytes(),
+        );
+        signed_qe_identity.signature = signature.to_bytes().to_vec();
+
+        let key = signing_key.verifying_key().clone();
+
+        (signed_qe_identity, key)
+    }
+
     #[test]
     fn parse_signed_id() {
         // For this test we don't care what the contents of `enclave_identity` is, just
@@ -358,7 +395,7 @@ mod test {
             SignedQeIdentity::try_from(raw_identity).expect("Failed to parse signed identity");
         assert_eq!(signed_qe_identity.signature, vec![171, 205]);
         assert_eq!(
-            signed_qe_identity.enclave_identity.get(),
+            signed_qe_identity.enclave_identity.as_ref().get(),
             r#"{"id":"QE","version":2,"miscselect":"00000000"}"#
         );
     }
@@ -388,7 +425,7 @@ mod test {
             SignedQeIdentity::try_from(raw_identity).expect("Failed to parse signed identity");
         assert_eq!(signed_qe_identity.signature, vec![1, 2]);
         assert_eq!(
-            signed_qe_identity.enclave_identity.get(),
+            signed_qe_identity.enclave_identity.as_ref().get(),
             r#"{"id":"QE","version":2,"enclaveIdentity":"identity inside","miscselect":"00000000"}"#
         );
     }
@@ -564,47 +601,47 @@ mod test {
 
     #[test]
     fn qe_identity_fails_to_parse_issue_date() {
-        let json = include_str!("../data/tests/qe_identity.json");
-
-        let bad_time_json = json.replace("2023-06-14", "2023-16-14");
-
-        let signed_qe_identity = SignedQeIdentity::try_from(bad_time_json.as_ref())
-            .expect("Failed to parse signed identity");
+        let (signed_qe_identity, key) = alter_signed_qe_identity("2023-06-14", "2023-16-14");
         let time = "2023-06-14T15:55:15Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
+        let verifier = SignedQeIdentityVerifier::new(key, time);
 
-        assert_matches!(signed_qe_identity.verify_time(time), Err(Error::Der(_)));
+        let verification = verifier.verify(&signed_qe_identity);
+
+        assert_eq!(verification.is_failure().unwrap_u8(), 1);
+        assert_matches!(verification.value.expect("Expecting error"), Error::Der(_));
     }
 
     #[test]
     fn qe_identity_fails_to_parse_next_update() {
-        let json = include_str!("../data/tests/qe_identity.json");
-
-        let bad_time_json = json.replace("2023-07-14", "2023-17-14");
-
-        let signed_qe_identity = SignedQeIdentity::try_from(bad_time_json.as_ref())
-            .expect("Failed to parse signed identity");
+        let (signed_qe_identity, key) = alter_signed_qe_identity("2023-07-14", "2023-17-14");
         let time = "2023-06-14T15:55:15Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
+        let verifier = SignedQeIdentityVerifier::new(key, time);
 
-        assert_matches!(signed_qe_identity.verify_time(time), Err(Error::Der(_)));
+        let verification = verifier.verify(&signed_qe_identity);
+
+        assert_eq!(verification.is_failure().unwrap_u8(), 1);
+        assert_matches!(verification.value.expect("Expecting error"), Error::Der(_));
     }
 
     #[test]
-    fn time_verify_fails_to_parse_qe_identity() {
-        let json = include_str!("../data/tests/qe_identity.json");
-
-        let bad_qe_identity_json = json.replace("mrsigner", "signerjr");
-
-        let signed_qe_identity = SignedQeIdentity::try_from(bad_qe_identity_json.as_ref())
-            .expect("Failed to parse signed identity");
+    fn verify_fails_to_parse_qe_identity() {
+        let (signed_qe_identity, key) = alter_signed_qe_identity("mrsigner", "signerjr");
         let time = "2023-06-14T15:55:15Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
+        let verifier = SignedQeIdentityVerifier::new(key, time);
 
-        assert_matches!(signed_qe_identity.verify_time(time), Err(Error::Serde(_)));
+        let verification = verifier.verify(&signed_qe_identity);
+
+        assert_eq!(verification.is_failure().unwrap_u8(), 1);
+        assert_matches!(
+            verification.value.expect("Expecting error"),
+            Error::Serde(_)
+        );
     }
 
     #[test]
@@ -616,7 +653,7 @@ mod test {
         signed_qe_identity.signature[0] += 1;
 
         let key = qe_verifying_key();
-        let time = "2023-06-14T15:55:14Z"
+        let time = "2023-06-14T15:55:15Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
         let verifier = SignedQeIdentityVerifier::new(key, time);
@@ -640,7 +677,7 @@ mod test {
         signed_qe_identity.signature.truncate(63);
 
         let key = qe_verifying_key();
-        let time = "2023-06-14T15:55:14Z"
+        let time = "2023-06-14T15:55:15Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
         let verifier = SignedQeIdentityVerifier::new(key, time);
@@ -651,6 +688,27 @@ mod test {
         assert_matches!(
             verification.value.expect("Expecting error"),
             Error::SignatureDecodeError
+        );
+    }
+
+    #[parameterized(
+        version_1 = { 1 },
+        version_3 = { 3 },
+    )]
+    fn qe_identity_fails_to_verify_different_version(version: u32) {
+        let (signed_qe_identity, key) =
+            alter_signed_qe_identity("\"version\":2", &format!("\"version\":{version}"));
+        let time = "2023-06-14T15:55:15Z"
+            .parse::<DateTime>()
+            .expect("Failed to parse time");
+        let verifier = SignedQeIdentityVerifier::new(key, time);
+
+        let verification = verifier.verify(&signed_qe_identity);
+
+        assert_eq!(verification.is_failure().unwrap_u8(), 1);
+        assert_matches!(
+            verification.value.expect("Expecting error"),
+            Error::QeIdentityVersion(v) if v == version
         );
     }
 }
