@@ -21,15 +21,15 @@ use x509_cert::Certificate;
 /// Importantly this will derive the [`Advisories`] related to the provided
 /// `quote` and `tcb_info_raw`, so that one can verify the allowed advisories.
 #[derive(Debug)]
-pub struct Evidence<'a, Q> {
+pub struct Evidence<Q> {
     quote: Quote3<Q>,
-    tcb_info_raw: TcbInfoRaw<'a>,
+    tcb_info_raw: TcbInfoRaw,
     advisories: Advisories,
 }
 
-impl<'a, Q: AsRef<[u8]>> Evidence<'a, Q> {
+impl<Q: AsRef<[u8]>> Evidence<Q> {
     /// Create a new instance
-    pub fn new(quote: Quote3<Q>, tcb_info_raw: TcbInfoRaw<'a>) -> Result<Self> {
+    pub fn new(quote: Quote3<Q>, tcb_info_raw: TcbInfoRaw) -> Result<Self> {
         let quote_tcb_info = tcb_info_try_from_quote(&quote)?;
         let tcb_info = TcbInfo::try_from(&tcb_info_raw)?;
         let advisories = tcb_info.advisories(&quote_tcb_info)?;
@@ -41,19 +41,19 @@ impl<'a, Q: AsRef<[u8]>> Evidence<'a, Q> {
     }
 }
 
-impl<'a, Q> Accessor<TcbInfoRaw<'a>> for Evidence<'a, Q> {
-    fn get(&self) -> TcbInfoRaw<'a> {
+impl<Q> Accessor<TcbInfoRaw> for Evidence<Q> {
+    fn get(&self) -> TcbInfoRaw {
         self.tcb_info_raw.clone()
     }
 }
 
-impl<'a, Q: Clone> Accessor<Quote3<Q>> for Evidence<'a, Q> {
+impl<Q: Clone> Accessor<Quote3<Q>> for Evidence<Q> {
     fn get(&self) -> Quote3<Q> {
         self.quote.clone()
     }
 }
 
-impl<'a, Q> Accessor<Advisories> for Evidence<'a, Q> {
+impl<Q> Accessor<Advisories> for Evidence<Q> {
     fn get(&self) -> Advisories {
         self.advisories.clone()
     }
@@ -82,7 +82,7 @@ fn tcb_info_try_from_quote<Q: AsRef<[u8]>>(quote: &Quote3<Q>) -> Result<QuoteTcb
 /// * `accessor_method` - The method on `ReportBody` that returns the field
 macro_rules! quote_application_report_body_field_accessor {
     ($($field_type:ty, $accessor_method:ident;)*) => {$(
-        impl<'a, Q: AsRef<[u8]>> Accessor<$field_type> for Evidence<'a, Q> {
+        impl<Q: AsRef<[u8]>> Accessor<$field_type> for Evidence<Q> {
             fn get(&self) -> $field_type {
                 self.quote.app_report_body().$accessor_method()
             }
