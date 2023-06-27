@@ -207,7 +207,13 @@ impl<E: Accessor<IsvSvn>> Verifier<E> for QeIsvSvnVerifier {
     type Value = (IsvSvn, Option<TcbLevel>);
     fn verify(&self, evidence: &E) -> VerificationOutput<Self::Value> {
         let isv_svn = evidence.get();
-        let tcb_levels = &self.tcb_levels;
+        let mut tcb_levels = self.tcb_levels.clone();
+
+        // The tcb levels seem to be pre-sorted in the qe_identity, but the step 4 of determining
+        // ISV SVN says "sorted by ISVSVNs" which further stresses teh need so we sort here for
+        // robustness. This sorting is descending order.
+        tcb_levels.sort_by(|a, b| b.isv_svn().as_ref().cmp(a.isv_svn().as_ref()));
+
         let tcb_level = tcb_levels.iter().find_map(|tcb_level| {
             if tcb_level.isv_svn().as_ref() <= isv_svn.as_ref() {
                 Some(tcb_level.clone())
