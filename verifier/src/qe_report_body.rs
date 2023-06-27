@@ -261,12 +261,11 @@ impl VerificationMessage<(IsvSvn, Option<TcbLevel>)> for QeIsvSvnVerifier {
             let name = IsvSvn::spaced_struct_name();
             let actual = &output.value;
 
-            write!(f, ", but the {name} of {} corresponds to ", actual.0)?;
-            if let Some(tcb_level) = &actual.1 {
-                write!(f, "{tcb_level:?}")?;
-            } else {
-                write!(f, "None")?;
-            }
+            write!(
+                f,
+                ", but the {name} of {} corresponds to {:?}",
+                actual.0, actual.1
+            )?;
         }
         Ok(())
     }
@@ -350,7 +349,7 @@ mod test {
         let displayable = VerificationTreeDisplay::new(&verifier, verification);
         assert_eq!(
             displayable.to_string(),
-            r#"- [ ] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: SWHardeningNeeded, advisory_ids: [] }], but the ISV SVN of 1 corresponds to TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: SWHardeningNeeded, advisory_ids: [] }"#
+            r#"- [ ] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: SWHardeningNeeded, advisory_ids: [] }], but the ISV SVN of 1 corresponds to Some(TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: SWHardeningNeeded, advisory_ids: [] })"#
         );
     }
 
@@ -369,7 +368,7 @@ mod test {
         let displayable = VerificationTreeDisplay::new(&verifier, verification);
         assert_eq!(
             displayable.to_string(),
-            r#"- [ ] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: UpToDate, advisory_ids: ["an id"] }], but the ISV SVN of 1 corresponds to TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: UpToDate, advisory_ids: ["an id"] }"#
+            r#"- [ ] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: UpToDate, advisory_ids: ["an id"] }], but the ISV SVN of 1 corresponds to Some(TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "1970-01-01T00:00:00Z", tcb_status: UpToDate, advisory_ids: ["an id"] })"#
         );
     }
 
