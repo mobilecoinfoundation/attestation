@@ -21,6 +21,9 @@ pub enum Error {
     TcbInfoNotYetValid,
     /// TCB info expired
     TcbInfoExpired,
+    /// TCB info version mismatch, expecting {expected} got {actual}
+    #[allow(missing_docs)]
+    TcbInfoVersion { expected: u32, actual: u32 },
     /// Asking for TCB levels for a different FMSPC
     FmspcMismatch,
     /// The TCB level reported does not match an entry in the TCB info data.
