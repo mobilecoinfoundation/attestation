@@ -1,0 +1,13 @@
+{
+  "name": "MobileCoin SGX Attestation Crates",
+  "build": { "dockerfile": "Dockerfile" },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "eamodio.gitlens",
+        "vadimcn.vscode-lldb",
+        "rust-lang.rust-analyzer",
+      ]
+    }
+  }
+}
