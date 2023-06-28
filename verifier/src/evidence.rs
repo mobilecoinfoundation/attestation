@@ -2,7 +2,7 @@
 
 //! The full set of evidence needed for attesting a quote
 
-use crate::{Accessor, Advisories, Error, Result, TcbInfo, TcbInfoRaw};
+use crate::{Accessor, Advisories, Error, Result, SignedTcbInfo, TcbInfo};
 use der::DecodePem;
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
@@ -13,37 +13,37 @@ use x509_cert::Certificate;
 
 /// The full set of evidence needed for verifying a quote
 ///
-/// A wrapping container for a `Quote3` and a `TcbInfoRaw`. This can be used
+/// A wrapping container for a `Quote3` and a `SignedTcbInfo`. This can be used
 /// with the majority of the `Verifier` implementations from this crate.
 /// This allows one to compose one verifier and use an [`Evidence`] instance in
 /// the `verify()` method.
 ///
 /// Importantly this will derive the [`Advisories`] related to the provided
-/// `quote` and `tcb_info_raw`, so that one can verify the allowed advisories.
+/// `quote` and `signed_tcb_info`, so that one can verify the allowed advisories.
 #[derive(Debug)]
 pub struct Evidence<Q> {
     quote: Quote3<Q>,
-    tcb_info_raw: TcbInfoRaw,
+    signed_tcb_info: SignedTcbInfo,
     advisories: Advisories,
 }
 
 impl<Q: AsRef<[u8]>> Evidence<Q> {
     /// Create a new instance
-    pub fn new(quote: Quote3<Q>, tcb_info_raw: TcbInfoRaw) -> Result<Self> {
+    pub fn new(quote: Quote3<Q>, signed_tcb_info: SignedTcbInfo) -> Result<Self> {
         let quote_tcb_info = tcb_info_try_from_quote(&quote)?;
-        let tcb_info = TcbInfo::try_from(&tcb_info_raw)?;
+        let tcb_info = TcbInfo::try_from(&signed_tcb_info)?;
         let advisories = tcb_info.advisories(&quote_tcb_info)?;
         Ok(Self {
             quote,
-            tcb_info_raw,
+            signed_tcb_info,
             advisories,
         })
     }
 }
 
-impl<Q> Accessor<TcbInfoRaw> for Evidence<Q> {
-    fn get(&self) -> TcbInfoRaw {
-        self.tcb_info_raw.clone()
+impl<Q> Accessor<SignedTcbInfo> for Evidence<Q> {
+    fn get(&self) -> SignedTcbInfo {
+        self.signed_tcb_info.clone()
     }
 }
 
@@ -110,7 +110,7 @@ mod test {
     use super::*;
     use crate::{
         AdvisoriesVerifier, AdvisoryStatus, And, AttributesVerifier, MrSignerVerifier,
-        Quote3Verifier, TcbInfoRawVerifier, VerificationTreeDisplay, Verifier,
+        Quote3Verifier, SignedTcbInfoVerifier, VerificationTreeDisplay, Verifier,
     };
     use alloc::format;
     use core::mem;
@@ -161,7 +161,10 @@ mod test {
 
     type VerifierType<T> = And<
         Quote3Verifier<T>,
-        And<MrSignerVerifier, And<AttributesVerifier, And<TcbInfoRawVerifier, AdvisoriesVerifier>>>,
+        And<
+            MrSignerVerifier,
+            And<AttributesVerifier, And<SignedTcbInfoVerifier, AdvisoriesVerifier>>,
+        >,
     >;
 
     // Get a common verifier used in these tests.
@@ -212,7 +215,7 @@ mod test {
                         .into(),
                     ),
                     And::new(
-                        TcbInfoRawVerifier::new(tcb_key, time),
+                        SignedTcbInfoVerifier::new(tcb_key, time),
                         AdvisoriesVerifier::new(allowed_advisories),
                     ),
                 ),
@@ -227,10 +230,10 @@ mod test {
         let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
 
         let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
-        let tcb_info_raw = TcbInfoRaw::try_from(tcb_json).expect("Failed to parse TCB info");
+        let signed_tcb_info = SignedTcbInfo::try_from(tcb_json).expect("Failed to parse TCB info");
 
         let verifier = verifier(0.into(), &quote);
-        let evidence = Evidence::new(quote, tcb_info_raw).expect("Failed to create evidence");
+        let evidence = Evidence::new(quote, signed_tcb_info).expect("Failed to create evidence");
         let verification = verifier.verify(&evidence);
 
         assert_eq!(verification.is_success().unwrap_u8(), 1);
@@ -247,7 +250,7 @@ mod test {
                 - [x] Both of the following must be true:
                   - [x] The expected attributes is Flags: INITTED | MODE_64BIT Xfrm: LEGACY | AVX with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | RESERVED
                   - [x] Both of the following must be true:
-                    - [x] The raw TCB info was verified for the provided key
+                    - [x] The TCB info was verified for the provided key
                     - [x] The allowed advisories are IDs: {"INTEL-SA-00161", "INTEL-SA-00219", "INTEL-SA-00289", "INTEL-SA-00334", "INTEL-SA-00614", "INTEL-SA-00615", "INTEL-SA-00617"} Status: OutOfDate"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
@@ -258,10 +261,10 @@ mod test {
         let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
 
         let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
-        let tcb_info_raw = TcbInfoRaw::try_from(tcb_json).expect("Failed to parse TCB info");
+        let signed_tcb_info = SignedTcbInfo::try_from(tcb_json).expect("Failed to parse TCB info");
 
         let verifier = verifier(1.into(), &quote);
-        let evidence = Evidence::new(quote, tcb_info_raw).expect("Failed to create evidence");
+        let evidence = Evidence::new(quote, signed_tcb_info).expect("Failed to create evidence");
         let verification = verifier.verify(&evidence);
 
         assert_eq!(verification.is_failure().unwrap_u8(), 1);
@@ -278,7 +281,7 @@ mod test {
                 - [x] Both of the following must be true:
                   - [x] The expected attributes is Flags: INITTED | MODE_64BIT Xfrm: LEGACY | AVX with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | RESERVED
                   - [x] Both of the following must be true:
-                    - [x] The raw TCB info was verified for the provided key
+                    - [x] The TCB info was verified for the provided key
                     - [x] The allowed advisories are IDs: {"INTEL-SA-00161", "INTEL-SA-00219", "INTEL-SA-00289", "INTEL-SA-00334", "INTEL-SA-00614", "INTEL-SA-00615", "INTEL-SA-00617"} Status: OutOfDate"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
@@ -306,10 +309,10 @@ mod test {
         let quote = Quote3::try_from(quote_bytes).expect("Failed to parse quote");
 
         let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
-        let tcb_info_raw = TcbInfoRaw::try_from(tcb_json).expect("Failed to parse TCB info");
+        let signed_tcb_info = SignedTcbInfo::try_from(tcb_json).expect("Failed to parse TCB info");
 
         assert!(matches!(
-            Evidence::new(quote, tcb_info_raw),
+            Evidence::new(quote, signed_tcb_info),
             Err(Error::UnsupportedQuoteCertificationData)
         ));
     }
@@ -320,10 +323,10 @@ mod test {
         let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
 
         let tcb_json = include_str!("../data/tests/example_tcb.json");
-        let tcb_info_raw = TcbInfoRaw::try_from(tcb_json).expect("Failed to parse TCB info");
+        let signed_tcb_info = SignedTcbInfo::try_from(tcb_json).expect("Failed to parse TCB info");
 
         assert!(matches!(
-            Evidence::new(quote, tcb_info_raw),
+            Evidence::new(quote, signed_tcb_info),
             Err(Error::FmspcMismatch)
         ));
     }
@@ -335,11 +338,11 @@ mod test {
 
         let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
         let bad_tcb_json = tcb_json.replace("SWHardeningNeeded", "NotGonnaHappen");
-        let tcb_info_raw =
-            TcbInfoRaw::try_from(bad_tcb_json.as_str()).expect("Failed to parse TCB info");
+        let signed_tcb_info =
+            SignedTcbInfo::try_from(bad_tcb_json.as_str()).expect("Failed to parse TCB info");
 
         assert!(matches!(
-            Evidence::new(quote, tcb_info_raw),
+            Evidence::new(quote, signed_tcb_info),
             Err(Error::Serde(_))
         ));
     }

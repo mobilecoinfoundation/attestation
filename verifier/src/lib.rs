@@ -33,7 +33,7 @@ pub use report_body::{
     MiscellaneousSelectVerifier, MrEnclaveVerifier, MrSignerVerifier, ReportDataVerifier,
 };
 
-pub use tcb::{TcbInfo, TcbInfoRaw, TcbInfoRawVerifier};
+pub use tcb::{SignedTcbInfo, SignedTcbInfoVerifier, TcbInfo};
 
 #[cfg(feature = "x509")]
 pub use x509::{
