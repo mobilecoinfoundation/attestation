@@ -144,11 +144,11 @@ impl TryFrom<&str> for TcbInfo {
     }
 }
 
-impl TryFrom<&TcbInfoRaw> for TcbInfo {
+impl TryFrom<&SignedTcbInfo> for TcbInfo {
     type Error = Error;
 
-    fn try_from(tcb_info_raw: &TcbInfoRaw) -> Result<Self, Self::Error> {
-        TcbInfo::try_from(tcb_info_raw.tcb_info.as_ref().get())
+    fn try_from(signed_tcb_info: &SignedTcbInfo) -> Result<Self, Self::Error> {
+        TcbInfo::try_from(signed_tcb_info.tcb_info.as_ref().get())
     }
 }
 
@@ -220,20 +220,19 @@ pub struct TcbComponent {
     r#type: Option<String>,
 }
 
-/// Raw unverified representation of the TCB(Trusted Computing Base) info
-/// provided from
+/// Signed TCB(Trusted Computing Base) info provided from
 /// <https://api.trustedservices.intel.com/sgx/certification/v4/tcb?fmspc={}>
 ///
 /// Due to the way the TCB info is signed the contents should be provided as is.
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct TcbInfoRaw {
+pub struct SignedTcbInfo {
     tcb_info: Box<RawValue>,
     #[serde(with = "hex")]
     signature: Vec<u8>,
 }
 
-impl TcbInfoRaw {
+impl SignedTcbInfo {
     /// Verify the `tcbInfo` signature and time are valid.
     ///
     /// # Arguments
@@ -261,26 +260,26 @@ impl TcbInfoRaw {
     }
 }
 
-impl TryFrom<&str> for TcbInfoRaw {
+impl TryFrom<&str> for SignedTcbInfo {
     type Error = Error;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let tcb_info: TcbInfoRaw = serde_json::from_str(value)?;
+        let tcb_info: SignedTcbInfo = serde_json::from_str(value)?;
         Ok(tcb_info)
     }
 }
 
-/// Verifier for ensuring a raw TCB was signed with the provided key
+/// Verifier for ensuring a TCB info was signed with the provided key
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct TcbInfoRawVerifier {
+pub struct SignedTcbInfoVerifier {
     key: VerifyingKey,
     time: DateTime,
 }
 
-impl TcbInfoRawVerifier {
+impl SignedTcbInfoVerifier {
     /// Create a new instance.
     ///
-    /// The `TcbInfoRawVerifier::verify()` will fail if the signature doesn't
+    /// The `SignedTcbInfoVerifier::verify()` will fail if the signature doesn't
     /// match for the `key` or if the `time` is outside the `issueDate` and
     /// `nextUpdate` times in the `tcbInfo`.
     ///
@@ -300,18 +299,18 @@ impl TcbInfoRawVerifier {
     }
 }
 
-impl<E: Accessor<TcbInfoRaw>> Verifier<E> for TcbInfoRawVerifier {
+impl<E: Accessor<SignedTcbInfo>> Verifier<E> for SignedTcbInfoVerifier {
     type Value = Option<Error>;
     fn verify(&self, evidence: &E) -> VerificationOutput<Self::Value> {
-        let tcb_raw = evidence.get();
-        let result = tcb_raw.verify(&self.key, self.time);
+        let signed_tcb_info = evidence.get();
+        let result = signed_tcb_info.verify(&self.key, self.time);
         let is_success = result.is_ok() as u8;
 
         VerificationOutput::new(result.err(), is_success.into())
     }
 }
 
-impl VerificationMessage<Option<Error>> for TcbInfoRawVerifier {
+impl VerificationMessage<Option<Error>> for SignedTcbInfoVerifier {
     fn fmt_padded(
         &self,
         f: &mut Formatter<'_>,
@@ -323,13 +322,13 @@ impl VerificationMessage<Option<Error>> for TcbInfoRawVerifier {
         write!(f, "{:pad$}{status} ", "")?;
 
         if is_success.into() {
-            write!(f, "The raw TCB info was verified for the provided key")
+            write!(f, "The TCB info was verified for the provided key")
         } else {
             let error = result
                 .value()
                 .as_ref()
                 .expect("Should have an error if not successful");
-            write!(f, "The raw TCB info could not be verified: {error}")
+            write!(f, "The TCB info could not be verified: {error}")
         }
     }
 }
@@ -364,59 +363,59 @@ mod tests {
     /// Takes the test `fmspc_00906ED50000_2023_05_10.json` file and will replace all instances of
     /// `from` with `to`.
     ///
-    /// Returns the altered `TcbInfoRaw` and the `VerifyingKey` that was used to sign it.
-    fn alter_tcb_info_raw(from: &str, to: &str) -> (TcbInfoRaw, VerifyingKey) {
+    /// Returns the altered `SignedTcbInfo` and the `VerifyingKey` that was used to sign it.
+    fn alter_signed_tcb_info(from: &str, to: &str) -> (SignedTcbInfo, VerifyingKey) {
         let json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
 
         let bad_json = json.replace(from, to);
 
-        let mut tcb_info_raw =
-            TcbInfoRaw::try_from(bad_json.as_ref()).expect("Failed to parse raw TCB");
+        let mut signed_tcb_info =
+            SignedTcbInfo::try_from(bad_json.as_ref()).expect("Failed to parse signed TCB info");
 
         // Since the signature is based on the original contents we must re-sign
         let mut rng = rand::thread_rng();
         let signing_key = SigningKey::random(&mut rng);
-        let (signature, _) = signing_key.sign(tcb_info_raw.tcb_info.as_ref().get().as_bytes());
-        tcb_info_raw.signature = signature.to_bytes().to_vec();
+        let (signature, _) = signing_key.sign(signed_tcb_info.tcb_info.as_ref().get().as_bytes());
+        signed_tcb_info.signature = signature.to_bytes().to_vec();
 
         let key = signing_key.verifying_key().clone();
 
-        (tcb_info_raw, key)
+        (signed_tcb_info, key)
     }
 
     #[test]
-    fn raw_parse_info() {
+    fn parse_tcb_json() {
         // For this test we don't care what the contents of `tcbInfo` is, just
         // that we separate the signature from the tcbInfo correctly.
-        let raw_info =
+        let tcb_json =
             r#"{"tcbInfo":{"id":"SGX","version":3,"fmspc":"00906ED50000"},"signature":"abcd"}"#;
-        let tcb_info = TcbInfoRaw::try_from(raw_info).expect("Failed to parse TCB info");
-        assert_eq!(tcb_info.signature, vec![171, 205]);
+        let signed_tcb_info = SignedTcbInfo::try_from(tcb_json).expect("Failed to parse TCB info");
+        assert_eq!(signed_tcb_info.signature, vec![171, 205]);
         assert_eq!(
-            tcb_info.tcb_info.as_ref().get(),
+            signed_tcb_info.tcb_info.as_ref().get(),
             r#"{"id":"SGX","version":3,"fmspc":"00906ED50000"}"#
         );
     }
 
     #[test]
-    fn raw_two_signatures_errors() {
-        let raw_info = r#"{"tcbInfo":{"id":"SGX","version":3,"fmspc":"00906ED50000"},"signature":"hello","signature":"abcd"}"#;
-        assert_matches!(TcbInfoRaw::try_from(raw_info), Err(Error::Serde(_)));
+    fn tcb_json_with_two_signatures_errors() {
+        let tcb_json = r#"{"tcbInfo":{"id":"SGX","version":3,"fmspc":"00906ED50000"},"signature":"hello","signature":"abcd"}"#;
+        assert_matches!(SignedTcbInfo::try_from(tcb_json), Err(Error::Serde(_)));
     }
 
     #[test]
-    fn raw_two_tcb_infos_errors() {
-        let raw_info = r#"{"tcbInfo":"too many cooks","tcbInfo":{"id":"SGX","version":3,"fmspc":"00906ED50000"},"signature":"abcd"}"#;
-        assert_matches!(TcbInfoRaw::try_from(raw_info), Err(Error::Serde(_)));
+    fn tcb_json_with_two_tcb_infos_errors() {
+        let tcb_json = r#"{"tcbInfo":"too many cooks","tcbInfo":{"id":"SGX","version":3,"fmspc":"00906ED50000"},"signature":"abcd"}"#;
+        assert_matches!(SignedTcbInfo::try_from(tcb_json), Err(Error::Serde(_)));
     }
 
     #[test]
-    fn raw_nested_tcb_info_still_in_parent() {
-        let raw_info = r#"{"tcbInfo":{"tcbInfo":"nested","version":3,"fmspc":"00906ED50000"},"signature":"f012"}"#;
-        let tcb_info = TcbInfoRaw::try_from(raw_info).expect("Failed to parse TCB info");
-        assert_eq!(tcb_info.signature, vec![240, 18]);
+    fn tcb_json_with_nested_tcb_info_stops_parsing_at_outer_tcb_info() {
+        let tcb_json = r#"{"tcbInfo":{"tcbInfo":"nested","version":3,"fmspc":"00906ED50000"},"signature":"f012"}"#;
+        let signed_tcb_info = SignedTcbInfo::try_from(tcb_json).expect("Failed to parse TCB info");
+        assert_eq!(signed_tcb_info.signature, vec![240, 18]);
         assert_eq!(
-            tcb_info.tcb_info.as_ref().get(),
+            signed_tcb_info.tcb_info.as_ref().get(),
             r#"{"tcbInfo":"nested","version":3,"fmspc":"00906ED50000"}"#
         );
     }
@@ -424,9 +423,9 @@ mod tests {
     #[test]
     fn parse_example_tcb_info() {
         let json = include_str!("../data/tests/example_tcb.json");
-        let tcb_raw = TcbInfoRaw::try_from(json).expect("Failed to parse raw TCB");
-        let tcb_info =
-            TcbInfo::try_from(tcb_raw.tcb_info.as_ref().get()).expect("Failed to parse TCB info");
+        let signed_tcb_info = SignedTcbInfo::try_from(json).expect("Failed to parse signed TCB");
+        let tcb_info = TcbInfo::try_from(signed_tcb_info.tcb_info.as_ref().get())
+            .expect("Failed to parse TCB info");
         assert_eq!(tcb_info.id, "SGX");
         assert_eq!(tcb_info.version, 3);
         assert_eq!(tcb_info.issue_date, "2022-04-13T09:38:17Z");
@@ -461,9 +460,9 @@ mod tests {
     #[test]
     fn parse_tcb_info() {
         let json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
-        let tcb_raw = TcbInfoRaw::try_from(json).expect("Failed to parse raw TCB");
-        let tcb_info =
-            TcbInfo::try_from(tcb_raw.tcb_info.as_ref().get()).expect("Failed to parse TCB info");
+        let signed_tcb_info = SignedTcbInfo::try_from(json).expect("Failed to parse signed TCB");
+        let tcb_info = TcbInfo::try_from(signed_tcb_info.tcb_info.as_ref().get())
+            .expect("Failed to parse TCB info");
         assert_eq!(tcb_info.id, "SGX");
         assert_eq!(tcb_info.version, 3);
         assert_eq!(tcb_info.issue_date, "2023-05-10T13:43:27Z");
@@ -637,37 +636,46 @@ mod tests {
     fn tcb_verification(time: &str) {
         let key = tcb_verifying_key();
         let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
-        let raw_tcb = TcbInfoRaw::try_from(tcb_json).expect("Failed to parse raw TCB");
+        let signed_tcb_info =
+            SignedTcbInfo::try_from(tcb_json).expect("Failed to parse signed TCB");
 
         let time = time.parse::<DateTime>().expect("Failed to parse time");
 
-        assert_eq!(raw_tcb.verify(&key, time).is_ok(), true);
+        assert_eq!(signed_tcb_info.verify(&key, time).is_ok(), true);
     }
 
     #[test]
     fn fails_before_issue_date() {
         let key = tcb_verifying_key();
         let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
-        let raw_tcb = TcbInfoRaw::try_from(tcb_json).expect("Failed to parse raw TCB");
+        let signed_tcb_info =
+            SignedTcbInfo::try_from(tcb_json).expect("Failed to parse signed TCB");
 
         let time = "2023-05-10T13:43:26Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
 
-        assert_matches!(raw_tcb.verify(&key, time), Err(Error::TcbInfoNotYetValid));
+        assert_matches!(
+            signed_tcb_info.verify(&key, time),
+            Err(Error::TcbInfoNotYetValid)
+        );
     }
 
     #[test]
     fn fails_at_next_update() {
         let key = tcb_verifying_key();
         let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
-        let raw_tcb = TcbInfoRaw::try_from(tcb_json).expect("Failed to parse raw TCB");
+        let signed_tcb_info =
+            SignedTcbInfo::try_from(tcb_json).expect("Failed to parse signed TCB");
 
         let time = "2023-06-09T13:43:27Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
 
-        assert_matches!(raw_tcb.verify(&key, time), Err(Error::TcbInfoExpired));
+        assert_matches!(
+            signed_tcb_info.verify(&key, time),
+            Err(Error::TcbInfoExpired)
+        );
     }
 
     #[test]
@@ -677,12 +685,16 @@ mod tests {
         let time = "2023-05-10T13:43:27Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
-        let mut raw_tcb = TcbInfoRaw::try_from(tcb_json).expect("Failed to parse raw TCB");
+        let mut signed_tcb_info =
+            SignedTcbInfo::try_from(tcb_json).expect("Failed to parse signed TCB");
 
         // Note enough bytes to decode to the Signature type
-        raw_tcb.signature.truncate(63);
+        signed_tcb_info.signature.truncate(63);
 
-        assert_matches!(raw_tcb.verify(&key, time), Err(Error::SignatureDecodeError));
+        assert_matches!(
+            signed_tcb_info.verify(&key, time),
+            Err(Error::SignatureDecodeError)
+        );
     }
 
     #[test]
@@ -692,25 +704,26 @@ mod tests {
         let time = "2023-05-10T13:43:27Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
-        let mut raw_tcb = TcbInfoRaw::try_from(tcb_json).expect("Failed to parse raw TCB");
+        let mut signed_tcb_info =
+            SignedTcbInfo::try_from(tcb_json).expect("Failed to parse signed TCB");
 
-        raw_tcb.signature[0] += 1;
+        signed_tcb_info.signature[0] += 1;
 
         assert_matches!(
-            raw_tcb.verify(&key, time),
+            signed_tcb_info.verify(&key, time),
             Err(Error::SignatureVerification)
         );
     }
 
     #[test]
     fn tcb_info_fails_to_parse_when_verifying() {
-        let (raw_tcb, key) = alter_tcb_info_raw("pceId", "unknown_field");
+        let (signed_tcb_info, key) = alter_signed_tcb_info("pceId", "unknown_field");
         let time = "2023-05-10T13:43:27Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
 
-        let verifier = TcbInfoRawVerifier::new(key, time);
-        let verification = verifier.verify(&raw_tcb);
+        let verifier = SignedTcbInfoVerifier::new(key, time);
+        let verification = verifier.verify(&signed_tcb_info);
 
         assert_eq!(verification.is_success().unwrap_u8(), 0);
         assert_matches!(
@@ -721,13 +734,13 @@ mod tests {
 
     #[test]
     fn tcb_issue_time_fails_to_parse_when_verifying() {
-        let (raw_tcb, key) = alter_tcb_info_raw("2023-05-10", "2023-15-10");
+        let (signed_tcb_info, key) = alter_signed_tcb_info("2023-05-10", "2023-15-10");
         let time = "2023-05-10T13:43:27Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
 
-        let verifier = TcbInfoRawVerifier::new(key, time);
-        let verification = verifier.verify(&raw_tcb);
+        let verifier = SignedTcbInfoVerifier::new(key, time);
+        let verification = verifier.verify(&signed_tcb_info);
 
         assert_eq!(verification.is_success().unwrap_u8(), 0);
         assert_matches!(verification.value.expect("Expecting error"), Error::Der(_));
@@ -735,13 +748,13 @@ mod tests {
 
     #[test]
     fn tcb_next_update_time_fails_to_parse_when_verifying() {
-        let (raw_tcb, key) = alter_tcb_info_raw("2023-06-09", "2023-16-09");
+        let (signed_tcb_info, key) = alter_signed_tcb_info("2023-06-09", "2023-16-09");
         let time = "2023-05-10T13:43:27Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
 
-        let verifier = TcbInfoRawVerifier::new(key, time);
-        let verification = verifier.verify(&raw_tcb);
+        let verifier = SignedTcbInfoVerifier::new(key, time);
+        let verification = verifier.verify(&signed_tcb_info);
 
         assert_eq!(verification.is_success().unwrap_u8(), 0);
         assert_matches!(verification.value.expect("Expecting error"), Error::Der(_));
@@ -754,9 +767,9 @@ mod tests {
     )]
     fn advisories_from_tcb(svns: &[u32], pce_svn: u32, ids: &[&str], status: AdvisoryStatus) {
         let json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
-        let tcb_raw = TcbInfoRaw::try_from(json).expect("Failed to parse raw TCB");
-        let tcb_info =
-            TcbInfo::try_from(tcb_raw.tcb_info.as_ref().get()).expect("Failed to parse TCB info");
+        let signed_tcb_info = SignedTcbInfo::try_from(json).expect("Failed to parse signed TCB");
+        let tcb_info = TcbInfo::try_from(signed_tcb_info.tcb_info.as_ref().get())
+            .expect("Failed to parse TCB info");
 
         let tcb = PckTcb::new(
             svns.try_into().expect("Not enough svns"),
@@ -775,9 +788,9 @@ mod tests {
     )]
     fn no_advisories_from_tcb(svns: &[u32], pce_svn: u32) {
         let json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
-        let tcb_raw = TcbInfoRaw::try_from(json).expect("Failed to parse raw TCB");
-        let tcb_info =
-            TcbInfo::try_from(tcb_raw.tcb_info.as_ref().get()).expect("Failed to parse TCB info");
+        let signed_tcb_info = SignedTcbInfo::try_from(json).expect("Failed to parse signed TCB");
+        let tcb_info = TcbInfo::try_from(signed_tcb_info.tcb_info.as_ref().get())
+            .expect("Failed to parse TCB info");
 
         let tcb = PckTcb::new(
             svns.try_into().expect("Not enough svns"),
@@ -791,9 +804,9 @@ mod tests {
     #[test]
     fn fmspc_mismatch_no_advisories() {
         let json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
-        let tcb_raw = TcbInfoRaw::try_from(json).expect("Failed to parse raw TCB");
-        let tcb_info =
-            TcbInfo::try_from(tcb_raw.tcb_info.as_ref().get()).expect("Failed to parse TCB info");
+        let signed_tcb_info = SignedTcbInfo::try_from(json).expect("Failed to parse signed TCB");
+        let tcb_info = TcbInfo::try_from(signed_tcb_info.tcb_info.as_ref().get())
+            .expect("Failed to parse TCB info");
         let first_level = &tcb_info.tcb_levels[0].tcb;
         let svns = first_level
             .sgx_tcb_components
@@ -819,9 +832,9 @@ mod tests {
     )]
     fn advisories_from_example_tcb(svns: &[u32], pce_svn: u32, status: AdvisoryStatus) {
         let json = include_str!("../data/tests/example_tcb.json");
-        let tcb_raw = TcbInfoRaw::try_from(json).expect("Failed to parse raw TCB");
-        let tcb_info =
-            TcbInfo::try_from(tcb_raw.tcb_info.as_ref().get()).expect("Failed to parse TCB info");
+        let signed_tcb_info = SignedTcbInfo::try_from(json).expect("Failed to parse signed TCB");
+        let tcb_info = TcbInfo::try_from(signed_tcb_info.tcb_info.as_ref().get())
+            .expect("Failed to parse TCB info");
 
         let tcb = PckTcb::new(
             svns.try_into().expect("Not enough svns"),
@@ -872,44 +885,46 @@ mod tests {
     }
 
     #[test]
-    fn tcb_raw_verifier_succeeds() {
+    fn signed_tcb_info_verifier_succeeds() {
         let key = tcb_verifying_key();
         let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
-        let raw_tcb = TcbInfoRaw::try_from(tcb_json).expect("Failed to parse raw TCB");
+        let signed_tcb_info =
+            SignedTcbInfo::try_from(tcb_json).expect("Failed to parse signed TCB");
 
         let time = "2023-06-08T13:43:27Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
 
-        let verifier = TcbInfoRawVerifier::new(key, time);
-        let verification = verifier.verify(&raw_tcb);
+        let verifier = SignedTcbInfoVerifier::new(key, time);
+        let verification = verifier.verify(&signed_tcb_info);
 
         assert_eq!(verification.is_success().unwrap_u8(), 1);
 
         let displayable = VerificationTreeDisplay::new(&verifier, verification);
         let expected = r#"
-            - [x] The raw TCB info was verified for the provided key"#;
+            - [x] The TCB info was verified for the provided key"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
     #[test]
-    fn tcb_raw_verifier_fails_at_next_update() {
+    fn signed_tcb_info_verifier_fails_at_next_update() {
         let key = tcb_verifying_key();
         let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
-        let raw_tcb = TcbInfoRaw::try_from(tcb_json).expect("Failed to parse raw TCB");
+        let signed_tcb_info =
+            SignedTcbInfo::try_from(tcb_json).expect("Failed to parse signed TCB");
 
         let time = "2023-06-09T13:43:27Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
 
-        let verifier = TcbInfoRawVerifier::new(key, time);
-        let verification = verifier.verify(&raw_tcb);
+        let verifier = SignedTcbInfoVerifier::new(key, time);
+        let verification = verifier.verify(&signed_tcb_info);
 
         assert_eq!(verification.is_success().unwrap_u8(), 0);
 
         let displayable = VerificationTreeDisplay::new(&verifier, verification);
         let expected = r#"
-            - [ ] The raw TCB info could not be verified: TCB info expired"#;
+            - [ ] The TCB info could not be verified: TCB info expired"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
@@ -917,14 +932,15 @@ mod tests {
         version_1 = { 2 },
         version_3 = { 4 },
     )]
-    fn tcb_raw_verifier_fails_for_different_version(version: u32) {
-        let (raw_tcb, key) = alter_tcb_info_raw("\"version\":3", &format!("\"version\":{version}"));
+    fn signed_tcb_info_verifier_fails_for_different_version(version: u32) {
+        let (signed_tcb_info, key) =
+            alter_signed_tcb_info("\"version\":3", &format!("\"version\":{version}"));
         let time = "2023-06-09T13:43:26Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
 
-        let verifier = TcbInfoRawVerifier::new(key, time);
-        let verification = verifier.verify(&raw_tcb);
+        let verifier = SignedTcbInfoVerifier::new(key, time);
+        let verification = verifier.verify(&signed_tcb_info);
 
         assert_eq!(verification.is_success().unwrap_u8(), 0);
         assert_matches!(
