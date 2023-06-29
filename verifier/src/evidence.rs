@@ -8,18 +8,18 @@ use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
     MiscellaneousSelect, MrEnclave, MrSigner, ReportData,
 };
-use mc_sgx_dcap_types::{CertificationData, Quote3, TcbInfo as QuoteTcbInfo};
+use mc_sgx_dcap_types::{CertificationData, Collateral, Quote3, TcbInfo as QuoteTcbInfo};
 use x509_cert::Certificate;
 
 /// The full set of evidence needed for verifying a quote
 ///
-/// A wrapping container for a `Quote3` and a `SignedTcbInfo`. This can be used
+/// A wrapping container for a `Quote3` and a `Collateral`. This can be used
 /// with the majority of the `Verifier` implementations from this crate.
 /// This allows one to compose one verifier and use an [`Evidence`] instance in
 /// the `verify()` method.
 ///
 /// Importantly this will derive the [`Advisories`] related to the provided
-/// `quote` and `signed_tcb_info`, so that one can verify the allowed advisories.
+/// `quote` and `collateral`, so that one can verify the allowed advisories.
 #[derive(Debug)]
 pub struct Evidence<Q> {
     quote: Quote3<Q>,
@@ -29,7 +29,10 @@ pub struct Evidence<Q> {
 
 impl<Q: AsRef<[u8]>> Evidence<Q> {
     /// Create a new instance
-    pub fn new(quote: Quote3<Q>, signed_tcb_info: SignedTcbInfo) -> Result<Self> {
+    pub fn new(quote: Quote3<Q>, collateral: Collateral) -> Result<Self> {
+        // We perform any fallible conversions now to keep the verification focused on the values
+        // and not the types/format.
+        let signed_tcb_info = SignedTcbInfo::try_from(collateral.tcb_info())?;
         let quote_tcb_info = tcb_info_try_from_quote(&quote)?;
         let tcb_info = TcbInfo::try_from(&signed_tcb_info)?;
         let advisories = tcb_info.advisories(&quote_tcb_info)?;
@@ -113,12 +116,60 @@ mod test {
         Quote3Verifier, SignedTcbInfoVerifier, VerificationTreeDisplay, Verifier,
     };
     use alloc::format;
+    use assert_matches::assert_matches;
     use core::mem;
     use der::DateTime;
     use mc_sgx_core_sys_types::sgx_attributes_t;
     use mc_sgx_core_types::{AttributeFlags, ExtendedFeatureRequestMask};
-    use mc_sgx_dcap_sys_types::{sgx_ql_ecdsa_sig_data_t, sgx_quote3_t};
+    use mc_sgx_dcap_sys_types::{sgx_ql_ecdsa_sig_data_t, sgx_ql_qve_collateral_t, sgx_quote3_t};
     use p256::ecdsa::VerifyingKey;
+    use x509_cert::der::DecodePem;
+
+    fn collateral(tcb_info: &str) -> Collateral {
+        let mut sgx_collateral = sgx_ql_qve_collateral_t::default();
+
+        // SAFETY: Version is a union which is inherently unsafe
+        #[allow(unsafe_code)]
+        let version = unsafe { sgx_collateral.__bindgen_anon_1.__bindgen_anon_1.as_mut() };
+        version.major_version = 3;
+        version.minor_version = 1;
+
+        let pck_issuer_cert = include_str!("../data/tests/processor_ca.pem");
+        let root_cert = include_str!("../data/tests/root_ca.pem");
+        let mut pck_crl_chain = [pck_issuer_cert, root_cert].join("\n").as_bytes().to_vec();
+        pck_crl_chain.push(0);
+        sgx_collateral.pck_crl_issuer_chain = pck_crl_chain.as_ptr() as _;
+        sgx_collateral.pck_crl_issuer_chain_size = pck_crl_chain.len() as u32;
+
+        let mut root_crl = include_bytes!("../data/tests/root_crl.der").to_vec();
+        root_crl.push(0);
+        sgx_collateral.root_ca_crl = root_crl.as_ptr() as _;
+        sgx_collateral.root_ca_crl_size = root_crl.len() as u32;
+
+        let mut pck_crl = include_bytes!("../data/tests/processor_crl.der").to_vec();
+        pck_crl.push(0);
+        sgx_collateral.pck_crl = pck_crl.as_ptr() as _;
+        sgx_collateral.pck_crl_size = pck_crl.len() as u32;
+
+        let tcb_cert = include_str!("../data/tests/tcb_signer.pem");
+        let mut tcb_chain = [tcb_cert, root_cert].join("\n").as_bytes().to_vec();
+        tcb_chain.push(0);
+        sgx_collateral.tcb_info_issuer_chain = tcb_chain.as_ptr() as _;
+        sgx_collateral.tcb_info_issuer_chain_size = tcb_chain.len() as u32;
+
+        sgx_collateral.tcb_info = tcb_info.as_ptr() as _;
+        sgx_collateral.tcb_info_size = tcb_info.len() as u32;
+
+        // For live data the QE identity uses the same chain as the TCB info
+        sgx_collateral.qe_identity_issuer_chain = tcb_chain.as_ptr() as _;
+        sgx_collateral.qe_identity_issuer_chain_size = tcb_chain.len() as u32;
+
+        let qe_identity = include_str!("../data/tests/qe_identity.json");
+        sgx_collateral.qe_identity = qe_identity.as_ptr() as _;
+        sgx_collateral.qe_identity_size = qe_identity.len() as u32;
+
+        Collateral::try_from(&sgx_collateral).expect("Failed to parse collateral")
+    }
 
     fn tcb_signing_key() -> VerifyingKey {
         let pem = include_str!("../data/tests/tcb_signer.pem");
@@ -228,12 +279,11 @@ mod test {
     fn evidence_verifies_correctly() {
         let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
         let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
-
         let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
-        let signed_tcb_info = SignedTcbInfo::try_from(tcb_json).expect("Failed to parse TCB info");
+        let collateral = collateral(tcb_json);
 
         let verifier = verifier(0.into(), &quote);
-        let evidence = Evidence::new(quote, signed_tcb_info).expect("Failed to create evidence");
+        let evidence = Evidence::new(quote, collateral).expect("Failed to create evidence");
         let verification = verifier.verify(&evidence);
 
         assert_eq!(verification.is_success().unwrap_u8(), 1);
@@ -261,10 +311,10 @@ mod test {
         let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
 
         let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
-        let signed_tcb_info = SignedTcbInfo::try_from(tcb_json).expect("Failed to parse TCB info");
+        let collateral = collateral(tcb_json);
 
         let verifier = verifier(1.into(), &quote);
-        let evidence = Evidence::new(quote, signed_tcb_info).expect("Failed to create evidence");
+        let evidence = Evidence::new(quote, collateral).expect("Failed to create evidence");
         let verification = verifier.verify(&evidence);
 
         assert_eq!(verification.is_failure().unwrap_u8(), 1);
@@ -309,12 +359,12 @@ mod test {
         let quote = Quote3::try_from(quote_bytes).expect("Failed to parse quote");
 
         let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
-        let signed_tcb_info = SignedTcbInfo::try_from(tcb_json).expect("Failed to parse TCB info");
+        let collateral = collateral(tcb_json);
 
-        assert!(matches!(
-            Evidence::new(quote, signed_tcb_info),
+        assert_matches!(
+            Evidence::new(quote, collateral),
             Err(Error::UnsupportedQuoteCertificationData)
-        ));
+        );
     }
 
     #[test]
@@ -323,12 +373,9 @@ mod test {
         let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
 
         let tcb_json = include_str!("../data/tests/example_tcb.json");
-        let signed_tcb_info = SignedTcbInfo::try_from(tcb_json).expect("Failed to parse TCB info");
+        let collateral = collateral(tcb_json);
 
-        assert!(matches!(
-            Evidence::new(quote, signed_tcb_info),
-            Err(Error::FmspcMismatch)
-        ));
+        assert_matches!(Evidence::new(quote, collateral), Err(Error::FmspcMismatch));
     }
 
     #[test]
@@ -338,12 +385,8 @@ mod test {
 
         let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
         let bad_tcb_json = tcb_json.replace("SWHardeningNeeded", "NotGonnaHappen");
-        let signed_tcb_info =
-            SignedTcbInfo::try_from(bad_tcb_json.as_str()).expect("Failed to parse TCB info");
+        let collateral = collateral(bad_tcb_json.as_str());
 
-        assert!(matches!(
-            Evidence::new(quote, signed_tcb_info),
-            Err(Error::Serde(_))
-        ));
+        assert_matches!(Evidence::new(quote, collateral), Err(Error::Serde(_)));
     }
 }
