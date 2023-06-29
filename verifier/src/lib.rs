@@ -24,7 +24,9 @@ pub use error::Error;
 pub(crate) use error::Result;
 pub use evidence::Evidence;
 
-pub use identity::{TrustedIdentity, TrustedMrEnclaveIdentity, TrustedMrSignerIdentity};
+pub use identity::{
+    TrustedIdentitiesVerifier, TrustedIdentity, TrustedMrEnclaveIdentity, TrustedMrSignerIdentity,
+};
 
 pub use qe_identity::{QeIdentity, SignedQeIdentity, SignedQeIdentityVerifier};
 pub use qe_report_body::{QeReportBody, QeReportBodyVerifier};
@@ -349,7 +351,7 @@ impl<L, R> AndOutput<L, R> {
 ///
 /// This is will be a long operation. If the `left` side fails
 /// the `right` side will *still* be exercised.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct And<L, R> {
     left: L,
     right: R,
