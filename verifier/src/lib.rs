@@ -9,6 +9,7 @@ extern crate alloc;
 mod advisories;
 mod error;
 mod evidence;
+mod identity;
 mod qe_identity;
 mod qe_report_body;
 mod quote;
@@ -22,6 +23,8 @@ pub use advisories::{Advisories, AdvisoriesVerifier, AdvisoryStatus};
 pub use error::Error;
 pub(crate) use error::Result;
 pub use evidence::Evidence;
+
+pub use identity::{TrustedIdentity, TrustedMrEnclaveIdentity, TrustedMrSignerIdentity};
 
 pub use qe_identity::{QeIdentity, SignedQeIdentity, SignedQeIdentityVerifier};
 pub use qe_report_body::{QeReportBody, QeReportBodyVerifier};
