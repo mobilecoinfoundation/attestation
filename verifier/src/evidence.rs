@@ -2,7 +2,9 @@
 
 //! The full set of evidence needed for attesting a quote
 
-use crate::{Accessor, Advisories, Error, Result, SignedTcbInfo, TcbInfo};
+use crate::{
+    Accessor, Advisories, Error, QeIdentity, Result, SignedQeIdentity, SignedTcbInfo, TcbInfo,
+};
 use der::DecodePem;
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
@@ -24,6 +26,8 @@ use x509_cert::Certificate;
 pub struct Evidence<Q> {
     quote: Quote3<Q>,
     signed_tcb_info: SignedTcbInfo,
+    signed_qe_identity: SignedQeIdentity,
+    _qe_identity: QeIdentity,
     advisories: Advisories,
 }
 
@@ -32,6 +36,9 @@ impl<Q: AsRef<[u8]>> Evidence<Q> {
     pub fn new(quote: Quote3<Q>, collateral: Collateral) -> Result<Self> {
         // We perform any fallible conversions now to keep the verification focused on the values
         // and not the types/format.
+        let signed_qe_identity = SignedQeIdentity::try_from(collateral.qe_identity())?;
+        let qe_identity = QeIdentity::try_from(&signed_qe_identity)?;
+
         let signed_tcb_info = SignedTcbInfo::try_from(collateral.tcb_info())?;
         let quote_tcb_info = tcb_info_try_from_quote(&quote)?;
         let tcb_info = TcbInfo::try_from(&signed_tcb_info)?;
@@ -39,8 +46,16 @@ impl<Q: AsRef<[u8]>> Evidence<Q> {
         Ok(Self {
             quote,
             signed_tcb_info,
+            signed_qe_identity,
+            _qe_identity: qe_identity,
             advisories,
         })
+    }
+}
+
+impl<Q> Accessor<SignedQeIdentity> for Evidence<Q> {
+    fn get(&self) -> SignedQeIdentity {
+        self.signed_qe_identity.clone()
     }
 }
 
@@ -125,7 +140,10 @@ mod test {
     use p256::ecdsa::VerifyingKey;
     use x509_cert::der::DecodePem;
 
-    fn collateral(tcb_info: &str) -> Collateral {
+    const TCB_INFO_JSON: &str = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
+    const QE_IDENTITY_JSON: &str = include_str!("../data/tests/qe_identity.json");
+
+    fn collateral(tcb_info: &str, qe_identity: &str) -> Collateral {
         let mut sgx_collateral = sgx_ql_qve_collateral_t::default();
 
         // SAFETY: Version is a union which is inherently unsafe
@@ -164,7 +182,6 @@ mod test {
         sgx_collateral.qe_identity_issuer_chain = tcb_chain.as_ptr() as _;
         sgx_collateral.qe_identity_issuer_chain_size = tcb_chain.len() as u32;
 
-        let qe_identity = include_str!("../data/tests/qe_identity.json");
         sgx_collateral.qe_identity = qe_identity.as_ptr() as _;
         sgx_collateral.qe_identity_size = qe_identity.len() as u32;
 
@@ -279,8 +296,7 @@ mod test {
     fn evidence_verifies_correctly() {
         let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
         let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
-        let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
-        let collateral = collateral(tcb_json);
+        let collateral = collateral(TCB_INFO_JSON, QE_IDENTITY_JSON);
 
         let verifier = verifier(0.into(), &quote);
         let evidence = Evidence::new(quote, collateral).expect("Failed to create evidence");
@@ -309,9 +325,7 @@ mod test {
     fn evidence_fails_verification() {
         let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
         let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
-
-        let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
-        let collateral = collateral(tcb_json);
+        let collateral = collateral(TCB_INFO_JSON, QE_IDENTITY_JSON);
 
         let verifier = verifier(1.into(), &quote);
         let evidence = Evidence::new(quote, collateral).expect("Failed to create evidence");
@@ -358,8 +372,7 @@ mod test {
 
         let quote = Quote3::try_from(quote_bytes).expect("Failed to parse quote");
 
-        let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
-        let collateral = collateral(tcb_json);
+        let collateral = collateral(TCB_INFO_JSON, QE_IDENTITY_JSON);
 
         assert_matches!(
             Evidence::new(quote, collateral),
@@ -373,7 +386,7 @@ mod test {
         let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
 
         let tcb_json = include_str!("../data/tests/example_tcb.json");
-        let collateral = collateral(tcb_json);
+        let collateral = collateral(tcb_json, QE_IDENTITY_JSON);
 
         assert_matches!(Evidence::new(quote, collateral), Err(Error::FmspcMismatch));
     }
@@ -383,9 +396,39 @@ mod test {
         let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
         let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
 
-        let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
+        let tcb_json = TCB_INFO_JSON;
         let bad_tcb_json = tcb_json.replace("SWHardeningNeeded", "NotGonnaHappen");
-        let collateral = collateral(bad_tcb_json.as_str());
+        let collateral = collateral(bad_tcb_json.as_str(), QE_IDENTITY_JSON);
+
+        assert_matches!(Evidence::new(quote, collateral), Err(Error::Serde(_)));
+    }
+
+    #[test]
+    fn evidence_fails_due_inability_get_underlying_signed_qe_identity() {
+        let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
+        let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
+
+        let qe_json = QE_IDENTITY_JSON;
+
+        // Modifies an outer JSON field, i.e. only the Signed QE Identity
+        let bad_qe_json = qe_json.replace("enclaveIdentity", "NotGonnaHappen");
+
+        let collateral = collateral(TCB_INFO_JSON, bad_qe_json.as_str());
+
+        assert_matches!(Evidence::new(quote, collateral), Err(Error::Serde(_)));
+    }
+
+    #[test]
+    fn evidence_fails_due_inability_get_underlying_qe_identity() {
+        let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
+        let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
+
+        let qe_json = QE_IDENTITY_JSON;
+
+        // Modifies a JSON field inside of the `enclaveIdentity`
+        let bad_qe_json = qe_json.replace("UpToDate", "NotGonnaHappen");
+
+        let collateral = collateral(TCB_INFO_JSON, bad_qe_json.as_str());
 
         assert_matches!(Evidence::new(quote, collateral), Err(Error::Serde(_)));
     }
