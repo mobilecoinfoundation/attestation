@@ -23,7 +23,7 @@ pub use error::Error;
 pub(crate) use error::Result;
 pub use evidence::Evidence;
 
-pub use qe_identity::QeIdentity;
+pub use qe_identity::{QeIdentity, SignedQeIdentity, SignedQeIdentityVerifier};
 pub use qe_report_body::{QeReportBody, QeReportBodyVerifier};
 pub use quote::Quote3Verifier;
 
