@@ -7,8 +7,10 @@
 //! [Intel SGX ECDSA QuoteLibReference DCAP API](https://download.01.org/intel-sgx/sgx-dcap/1.16/linux/docs/Intel_SGX_ECDSA_QuoteLibReference_DCAP_API.pdf#%5B%7B%22num%22%3A63%2C%22gen%22%3A0%7D%2C%7B%22name%22%3A%22XYZ%22%7D%2C69%2C468%2C0%5D)
 //! documents the identity types, Strict Policy and Security Policy.
 
+use crate::{Advisories, AdvisoryStatus};
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use core::ops::Not;
 use serde::{Deserialize, Serialize};
 
 /// Trusted identity for MRENCLAVE values.
@@ -65,6 +67,14 @@ impl TrustedMrEnclaveIdentity {
                 .map(ToString::to_string)
                 .collect(),
         }
+    }
+
+    /// Get the known allowed [`Advisories`] for this identity.
+    pub fn advisories(&self) -> Advisories {
+        mitigated_advisories_to_advisories(
+            &self.mitigated_config_advisories,
+            &self.mitigated_hardening_advisories,
+        )
     }
 }
 
@@ -134,6 +144,14 @@ impl TrustedMrSignerIdentity {
                 .collect(),
         }
     }
+
+    /// Get the known allowed [`Advisories`] for this identity.
+    pub fn advisories(&self) -> Advisories {
+        mitigated_advisories_to_advisories(
+            &self.mitigated_config_advisories,
+            &self.mitigated_hardening_advisories,
+        )
+    }
 }
 
 /// Trusted identity for an enclave.
@@ -159,5 +177,122 @@ impl From<TrustedMrEnclaveIdentity> for TrustedIdentity {
 impl From<TrustedMrSignerIdentity> for TrustedIdentity {
     fn from(mr_signer: TrustedMrSignerIdentity) -> Self {
         Self::MrSigner(mr_signer)
+    }
+}
+
+// Convert two separate lists of config and sw hardening advisories into [`Advisories`]
+fn mitigated_advisories_to_advisories(
+    config_advisories: &[String],
+    sw_hardening_advisories: &[String],
+) -> Advisories {
+    let config_needed = config_advisories.is_empty().not();
+    let sw_hardening_needed = sw_hardening_advisories.is_empty().not();
+    let status = match (config_needed, sw_hardening_needed) {
+        (true, true) => AdvisoryStatus::ConfigurationAndSWHardeningNeeded,
+        (true, false) => AdvisoryStatus::ConfigurationNeeded,
+        (false, true) => AdvisoryStatus::SWHardeningNeeded,
+        (false, false) => AdvisoryStatus::UpToDate,
+    };
+
+    let advisories = config_advisories
+        .iter()
+        .chain(sw_hardening_advisories.iter());
+    Advisories::new(advisories, status)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn up_to_date_advisories_for_mr_enclave_identity() {
+        let mr_enclave_identity =
+            TrustedMrEnclaveIdentity::new(&[5; 32], [] as [&str; 0], [] as [&str; 0]);
+        assert_eq!(
+            mr_enclave_identity.advisories(),
+            Advisories::new([] as [&str; 0], AdvisoryStatus::UpToDate)
+        );
+    }
+
+    #[test]
+    fn config_needed_advisories_for_mr_enclave_identity() {
+        let mr_enclave_identity = TrustedMrEnclaveIdentity::new(
+            &[5; 32],
+            ["an advisory", "another one"],
+            [] as [&str; 0],
+        );
+        assert_eq!(
+            mr_enclave_identity.advisories(),
+            Advisories::new(
+                ["an advisory", "another one"],
+                AdvisoryStatus::ConfigurationNeeded
+            )
+        );
+    }
+
+    #[test]
+    fn sw_hardening_needed_advisories_for_mr_enclave_identity() {
+        let mr_enclave_identity =
+            TrustedMrEnclaveIdentity::new(&[5; 32], [] as [&str; 0], ["what's", "up", "doc"]);
+        assert_eq!(
+            mr_enclave_identity.advisories(),
+            Advisories::new(["what's", "up", "doc"], AdvisoryStatus::SWHardeningNeeded)
+        );
+    }
+
+    #[test]
+    fn config_and_sw_hardening_needed_advisories_for_mr_enclave_identity() {
+        let mr_enclave_identity =
+            TrustedMrEnclaveIdentity::new(&[5; 32], ["one", "two"], ["three", "four"]);
+        assert_eq!(
+            mr_enclave_identity.advisories(),
+            Advisories::new(
+                ["one", "two", "three", "four"],
+                AdvisoryStatus::ConfigurationAndSWHardeningNeeded
+            )
+        );
+    }
+
+    #[test]
+    fn up_to_date_advisories_for_mr_signer_identity() {
+        let mr_signer_identity =
+            TrustedMrSignerIdentity::new(&[8; 32], 9, 10, [] as [&str; 0], [] as [&str; 0]);
+        assert_eq!(
+            mr_signer_identity.advisories(),
+            Advisories::new([] as [&str; 0], AdvisoryStatus::UpToDate)
+        );
+    }
+
+    #[test]
+    fn config_needed_advisories_for_mr_signer_identity() {
+        let mr_signer_identity =
+            TrustedMrSignerIdentity::new(&[8; 32], 9, 10, ["mr", "signer"], [] as [&str; 0]);
+        assert_eq!(
+            mr_signer_identity.advisories(),
+            Advisories::new(["mr", "signer"], AdvisoryStatus::ConfigurationNeeded)
+        );
+    }
+
+    #[test]
+    fn sw_hardening_needed_advisories_for_mr_signer_identity() {
+        let mr_signer_identity =
+            TrustedMrSignerIdentity::new(&[5; 32], 9, 10, [] as [&str; 0], ["who's", "there?"]);
+        assert_eq!(
+            mr_signer_identity.advisories(),
+            Advisories::new(["who's", "there?"], AdvisoryStatus::SWHardeningNeeded)
+        );
+    }
+
+    #[test]
+    fn config_and_sw_hardening_needed_advisories_for_mr_signer_identity() {
+        let mr_signer_identity =
+            TrustedMrSignerIdentity::new(&[5; 32], 9, 10, ["nine", "8"], ["seven", "6"]);
+        assert_eq!(
+            mr_signer_identity.advisories(),
+            Advisories::new(
+                ["nine", "8", "seven", "6"],
+                AdvisoryStatus::ConfigurationAndSWHardeningNeeded
+            )
+        );
     }
 }
