@@ -39,6 +39,16 @@ pub enum Error {
     /// QE identity version mismatch, expecting {expected} got {actual}
     #[allow(missing_docs)]
     QeIdentityVersion { expected: u32, actual: u32 },
+    /// X509 certificate not yet valid
+    CertificateNotYetValid,
+    /// X509 certificate has expired
+    CertificateExpired,
+    /// X509 certificate has been revoked
+    CertificateRevoked,
+    /// Error decoding a public key
+    PublicKeyDecodeError,
+    /// General error trying to verify a certificate chain
+    GeneralCertificateError,
 }
 
 impl From<der::Error> for Error {
