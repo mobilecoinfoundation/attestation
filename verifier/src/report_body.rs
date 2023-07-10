@@ -138,6 +138,20 @@ pub struct MrSignerValue {
     isv_svn: VerificationOutput<IsvSvn>,
 }
 
+impl MrSignerValue {
+    pub fn new(
+        mr_signer_key: VerificationOutput<MrSigner>,
+        product_id: VerificationOutput<IsvProductId>,
+        isv_svn: VerificationOutput<IsvSvn>,
+    ) -> Self {
+        Self {
+            mr_signer_key,
+            product_id,
+            isv_svn,
+        }
+    }
+}
+
 /// Verifier for ensuring all of the MRSIGNER inputs are sufficient.
 ///
 /// The Intel SDK docs refer to this as "Security Enclave Modification Policy"
@@ -172,11 +186,7 @@ impl<E: Accessor<MrSigner> + Accessor<IsvProductId> + Accessor<IsvSvn>> Verifier
             mr_signer_key.is_success() & product_id.is_success() & isv_svn.is_success();
 
         VerificationOutput::new(
-            MrSignerValue {
-                mr_signer_key,
-                product_id,
-                isv_svn,
-            },
+            MrSignerValue::new(mr_signer_key, product_id, isv_svn),
             is_success,
         )
     }
