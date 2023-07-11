@@ -7,6 +7,7 @@
 extern crate alloc;
 
 mod advisories;
+mod certificate_chain;
 mod error;
 mod evidence;
 mod identity;
@@ -20,8 +21,8 @@ mod tcb;
 mod x509;
 
 pub use advisories::{Advisories, AdvisoriesVerifier, AdvisoryStatus};
+pub use certificate_chain::{CertificateChainVerifier, CertificateChainVerifierError};
 pub use error::Error;
-pub(crate) use error::Result;
 pub use evidence::{Evidence, EvidenceVerifier};
 
 pub use identity::{
@@ -49,44 +50,7 @@ pub use x509::{
 use crate::struct_name::SpacedStructName;
 use core::fmt::{Debug, Display, Formatter};
 use core::ops::BitAnd;
-use der::DateTime;
-use p256::ecdsa::VerifyingKey;
 use subtle::Choice;
-use x509_cert::crl::CertificateList;
-use x509_cert::Certificate;
-
-/// A trait whose implementation will verify multiple certificate chains which all use the same
-/// trust anchor.
-pub trait CertificateChainVerifier {
-    /// Verify a certificate chain.
-    ///
-    /// # Returns
-    /// The public signing key from the leaf certificate.
-    ///
-    /// # Arguments
-    /// * `certificate_chain` - The certificate chain to verify.
-    /// * `crls` - The certificate revocation lists to use when verifying the certificate chain.
-    ///
-    /// # Errors
-    /// * [`Error::CertificateRevoked`] - If a certificate in the `certificate_chain` has been
-    ///   revoked.
-    /// * [`Error::CertificateExpired`] - If a certificate in the `certificate_chain`, or crl in
-    ///   `crls`, has expired.
-    /// * [`Error::CertificateNotYetValid`] - If a certificate in the `certificate_chain`, or crl in
-    ///   `crls`, is not yet valid.
-    /// * [`Error::PublicKeyDecodeError`] - If there is a failure getting the public signature key
-    ///   from the leaf certificate.
-    /// * [`Error::SignatureVerification`] - If there is a failure verifying one of the signatures
-    ///   in the `certificate_chain`.
-    /// * [`Error::GeneralCertificateError`] - Any other error verifying the `certificate_chain`
-    ///   that isn't covered by the other errors.
-    fn verify_certificate_chain<'a, 'b>(
-        &self,
-        certificate_chain: impl IntoIterator<Item = &'a Certificate>,
-        crls: impl IntoIterator<Item = &'b CertificateList>,
-        _time: DateTime,
-    ) -> Result<VerifyingKey>;
-}
 
 /// Number of spaces to indent nested messages.
 const MESSAGE_INDENT: usize = 2;
