@@ -15,6 +15,8 @@ pub enum Error {
     SignatureDecodeError,
     /// Error verifying the signature
     SignatureVerification,
+    /// No public key available for signature verification
+    MissingPublicKey,
     /// TCB info not yet valid
     TcbInfoNotYetValid,
     /// TCB info expired
