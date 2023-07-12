@@ -9,7 +9,6 @@ use crate::{
     Verifier, MESSAGE_INDENT,
 };
 use alloc::vec::Vec;
-use core::cell::Cell;
 use core::fmt::Formatter;
 use der::{DateTime, DecodePem};
 use mc_sgx_core_types::{
@@ -176,7 +175,6 @@ pub struct EvidenceVerifier<'a, C> {
     certificate_verifier: &'a C,
     _trusted_identities: Vec<TrustedIdentity>,
     time: DateTime,
-    tcb_verifier: Cell<Option<SignedTcbInfoVerifier>>,
 }
 
 impl<'a, C> EvidenceVerifier<'a, C>
@@ -203,10 +201,23 @@ where
             certificate_verifier,
             _trusted_identities: trusted_identities.into_iter().map(Into::into).collect(),
             time,
-            tcb_verifier: Cell::new(None),
         }
     }
 
+    // Assumes that `chain` is ordered such that the leaf is the first element and root is the last.
+    //
+    // This order matches that documented at
+    // <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v4>
+    //
+    //      all certificates in the chain, appended to each other in the following order:
+    //      <Signing Certificate><Root CA Certificate>)
+    //
+    // and in
+    // <https://download.01.org/intel-sgx/latest/dcap-latest/linux/docs/Intel_SGX_ECDSA_QuoteLibReference_DCAP_API.pdf#%5B%7B%22num%22%3A77%2C%22gen%22%3A0%7D%2C%7B%22name%22%3A%22XYZ%22%7D%2C120%2C282%2C0%5D>
+    //
+    //      5: Concatenated PCK Cert Chain (PEM formatted).
+    //      PCK Leaf Cert||Intermediate CA Cert||Root CA Cert
+    //
     fn verify_certificate_chain<'c, 'd>(
         &self,
         chain: &[Certificate],
@@ -224,10 +235,10 @@ where
         // the signed data. So we try to get the key from the certificate chain, even if the
         // verification failed. This handles the most likely failure case of an expired
         // certificate, whose key is still the key that signed the data of interest.
-        let key = match chain.first() {
-            Some(cert) => key_from_certificate(cert).unwrap_or_else(|_| default_verifying_key()),
-            None => default_verifying_key(),
-        };
+        let key = chain
+            .first()
+            .and_then(key_from_certificate)
+            .unwrap_or_else(default_verifying_key);
 
         (
             key,
@@ -290,14 +301,13 @@ where
     }
 }
 
-fn key_from_certificate(cert: &Certificate) -> Result<VerifyingKey, ()> {
+fn key_from_certificate(cert: &Certificate) -> Option<VerifyingKey> {
     let key_bytes = cert
         .tbs_certificate
         .subject_public_key_info
         .subject_public_key
-        .as_bytes()
-        .ok_or(())?;
-    VerifyingKey::from_sec1_bytes(key_bytes).map_err(|_| ())
+        .as_bytes()?;
+    VerifyingKey::from_sec1_bytes(key_bytes).ok()
 }
 
 fn default_verifying_key() -> VerifyingKey {
@@ -313,8 +323,8 @@ fn default_verifying_key() -> VerifyingKey {
     //              4BB226E4 19287290 63ADC7AE 43529E61 B563BBC6 06CC5E09
     //
     // The `VerifyingKey` type requires the key to be a valid curve point so we can't use all 0s or
-    // 1s. Since this key is used in as a documented example it is not likely to be seen in
-    // production use.
+    // 1s. Since this key is used in a documented example it is not likely to be seen in production
+    // use.
     let mut sec1_key = [0u8; 65];
     sec1_key[0] = 0x04;
     sec1_key[1..].copy_from_slice(
@@ -346,19 +356,18 @@ impl<'a, C: CertificateChainVerifier, E: Accessor<Evidence<Vec<u8>>>> Verifier<E
 
         let tcb_info_verifier = SignedTcbInfoVerifier::new(tcb_key, self.time);
         let tcb_info_verification = tcb_info_verifier.verify(&evidence);
-        self.tcb_verifier.set(Some(tcb_info_verifier));
 
         let evidence_value = EvidenceValue {
             tcb_signing_key: tcb_chain_verification,
             qe_identity_signing_key: qe_chain_verification,
             quote_signing_key: quote_chain_verification,
-            tcb_info: tcb_info_verification,
+            tcb_info: (tcb_info_verifier, tcb_info_verification),
         };
 
         let is_success = evidence_value.tcb_signing_key.is_success()
             & evidence_value.qe_identity_signing_key.is_success()
             & evidence_value.quote_signing_key.is_success()
-            & evidence_value.tcb_info.is_success();
+            & evidence_value.tcb_info.1.is_success();
 
         VerificationOutput::new(evidence_value, is_success)
     }
@@ -369,7 +378,7 @@ pub struct EvidenceValue {
     tcb_signing_key: VerificationOutput<Option<CertificateChainVerifierError>>,
     qe_identity_signing_key: VerificationOutput<Option<CertificateChainVerifierError>>,
     quote_signing_key: VerificationOutput<Option<CertificateChainVerifierError>>,
-    tcb_info: VerificationOutput<Option<Error>>,
+    tcb_info: (SignedTcbInfoVerifier, VerificationOutput<Option<Error>>),
 }
 
 fn fmt_chain_verification_result_padded(
@@ -419,10 +428,8 @@ where
         writeln!(f)?;
         fmt_chain_verification_result_padded(f, pad, "Quote", &output.value.quote_signing_key)?;
         writeln!(f)?;
-        self.tcb_verifier
-            .get()
-            .expect("Should have a TCB info verifier at this point")
-            .fmt_padded(f, pad, &output.value.tcb_info)
+        let (tcb_info_verifier, tcb_info_verification) = &output.value.tcb_info;
+        tcb_info_verifier.fmt_padded(f, pad, tcb_info_verification)
     }
 }
 

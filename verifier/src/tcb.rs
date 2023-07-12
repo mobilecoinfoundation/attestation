@@ -270,7 +270,7 @@ impl TryFrom<&str> for SignedTcbInfo {
 }
 
 /// Verifier for ensuring a TCB info was signed with the provided key
-#[derive(Clone, Debug, Eq, PartialEq, Copy)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SignedTcbInfoVerifier {
     key: VerifyingKey,
     time: DateTime,
