@@ -4,8 +4,6 @@
 
 use mc_sgx_dcap_types::TcbError;
 
-pub type Result<T> = core::result::Result<T, Error>;
-
 /// Error working with quote evidence
 #[derive(displaydoc::Display, Debug)]
 pub enum Error {

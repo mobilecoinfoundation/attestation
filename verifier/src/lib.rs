@@ -7,6 +7,7 @@
 extern crate alloc;
 
 mod advisories;
+mod certificate_chain;
 mod error;
 mod evidence;
 mod identity;
@@ -20,9 +21,9 @@ mod tcb;
 mod x509;
 
 pub use advisories::{Advisories, AdvisoriesVerifier, AdvisoryStatus};
+pub use certificate_chain::{CertificateChainVerifier, CertificateChainVerifierError};
 pub use error::Error;
-pub(crate) use error::Result;
-pub use evidence::Evidence;
+pub use evidence::{Evidence, EvidenceVerifier};
 
 pub use identity::{
     TrustedIdentitiesVerifier, TrustedIdentity, TrustedMrEnclaveIdentity, TrustedMrSignerIdentity,

@@ -3,14 +3,19 @@
 //! The full set of evidence needed for attesting a quote
 
 use crate::{
-    Accessor, Advisories, Error, QeIdentity, Result, SignedQeIdentity, SignedTcbInfo, TcbInfo,
+    choice_to_status_message, Accessor, Advisories, CertificateChainVerifier,
+    CertificateChainVerifierError, Error, QeIdentity, SignedQeIdentity, SignedTcbInfo, TcbInfo,
+    TrustedIdentity, VerificationMessage, VerificationOutput, Verifier, MESSAGE_INDENT,
 };
-use der::DecodePem;
+use alloc::vec::Vec;
+use core::fmt::Formatter;
+use der::{DateTime, DecodePem};
 use mc_sgx_core_types::{
     Attributes, ConfigId, ConfigSvn, CpuSvn, ExtendedProductId, FamilyId, IsvProductId, IsvSvn,
     MiscellaneousSelect, MrEnclave, MrSigner, ReportData,
 };
 use mc_sgx_dcap_types::{CertificationData, Collateral, Quote3, TcbInfo as QuoteTcbInfo};
+use p256::ecdsa::VerifyingKey;
 use x509_cert::Certificate;
 
 /// The full set of evidence needed for verifying a quote
@@ -22,18 +27,19 @@ use x509_cert::Certificate;
 ///
 /// Importantly this will derive the [`Advisories`] related to the provided
 /// `quote` and `collateral`, so that one can verify the allowed advisories.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Evidence<Q> {
     quote: Quote3<Q>,
     signed_tcb_info: SignedTcbInfo,
     signed_qe_identity: SignedQeIdentity,
     _qe_identity: QeIdentity,
     advisories: Advisories,
+    collateral: Collateral,
 }
 
 impl<Q: AsRef<[u8]>> Evidence<Q> {
     /// Create a new instance
-    pub fn new(quote: Quote3<Q>, collateral: Collateral) -> Result<Self> {
+    pub fn new(quote: Quote3<Q>, collateral: Collateral) -> Result<Self, Error> {
         // We perform any fallible conversions now to keep the verification focused on the values
         // and not the types/format.
         let signed_qe_identity = SignedQeIdentity::try_from(collateral.qe_identity())?;
@@ -49,7 +55,28 @@ impl<Q: AsRef<[u8]>> Evidence<Q> {
             signed_qe_identity,
             _qe_identity: qe_identity,
             advisories,
+            collateral,
         })
+    }
+}
+
+impl From<Evidence<&[u8]>> for Evidence<Vec<u8>> {
+    fn from(value: Evidence<&[u8]>) -> Self {
+        Self {
+            // See https://github.com/mobilecoinfoundation/sgx/issues/357 to make the quote
+            // conversion more ergonomic
+            quote: value
+                .quote
+                .as_ref()
+                .to_vec()
+                .try_into()
+                .expect("Quote should already be valid"),
+            signed_tcb_info: value.signed_tcb_info,
+            signed_qe_identity: value.signed_qe_identity,
+            _qe_identity: value._qe_identity,
+            advisories: value.advisories,
+            collateral: value.collateral,
+        }
     }
 }
 
@@ -77,19 +104,29 @@ impl<Q> Accessor<Advisories> for Evidence<Q> {
     }
 }
 
-// TODO think this should go in tcb.rs of `mc-sgx-dcap-types`
-fn tcb_info_try_from_quote<Q: AsRef<[u8]>>(quote: &Quote3<Q>) -> Result<QuoteTcbInfo> {
+// Get the certificate chain from the quote's certification data. Table 9 in appendix A of
+// <https://download.01.org/intel-sgx/latest/dcap-latest/linux/docs/Intel_SGX_ECDSA_QuoteLibReference_DCAP_API.pdf#%5B%7B%22num%22%3A77%2C%22gen%22%3A0%7D%2C%7B%22name%22%3A%22XYZ%22%7D%2C120%2C282%2C0%5D>
+fn certificate_chain_try_from_quote<Q: AsRef<[u8]>>(
+    quote: &Quote3<Q>,
+) -> Result<Vec<Certificate>, Error> {
     let signature_data = quote.signature_data();
     let certification_data = signature_data.certification_data();
     let CertificationData::PckCertificateChain(pem_chain) = certification_data else {
         return Err(Error::UnsupportedQuoteCertificationData);
     };
-    let leaf_cert = pem_chain
+    Ok(pem_chain
         .into_iter()
-        .next()
+        .map(Certificate::from_pem)
+        .collect::<Result<Vec<_>, _>>()?)
+}
+
+// TODO think this should go in tcb.rs of `mc-sgx-dcap-types`
+fn tcb_info_try_from_quote<Q: AsRef<[u8]>>(quote: &Quote3<Q>) -> Result<QuoteTcbInfo, Error> {
+    let chain = certificate_chain_try_from_quote(quote)?;
+    let leaf_cert = chain
+        .first()
         .ok_or(Error::UnsupportedQuoteCertificationData)?;
-    let certificate = Certificate::from_pem(leaf_cert)?;
-    Ok(QuoteTcbInfo::try_from(&certificate)?)
+    Ok(QuoteTcbInfo::try_from(leaf_cert)?)
 }
 
 /// Macro to generate boilerplate for implementing [`Accessor`] for a field of
@@ -123,22 +160,189 @@ quote_application_report_body_field_accessor! {
     ReportData, report_data;
 }
 
+/// Verifier for evidence
+///
+/// This will perform most of the verification to be done on [`Evidence`] this includes:
+/// - verifying the certificate chains
+/// - verifying the QE identity (TODO)
+/// - verifying the TCB info (TODO)
+/// - verifying the [`TrustedIdentity`] of the application enclave (TODO)
+/// - verifying the signature of the Quote (TODO)
+#[derive(Debug)]
+pub struct EvidenceVerifier<'a, C> {
+    certificate_verifier: &'a C,
+    _trusted_identities: Vec<TrustedIdentity>,
+    time: DateTime,
+}
+
+impl<'a, C> EvidenceVerifier<'a, C>
+where
+    C: CertificateChainVerifier,
+{
+    /// Create a new instance
+    ///
+    /// # Arguments
+    /// * `certificate_verifier` - The verifier to use for verifying the certificate chains. The
+    ///   certificate chains all use a common trust root and the verifier is responsible for
+    ///   knowing the trust root and verifying the chains up to that root.
+    /// * `trusted_identities` - The trusted identities to use for verifying the evidence. Only one
+    ///   of the identities needs to match to succeed for the identity verification portion.
+    /// * `time` - The time to use for verifying the evidence. In particular the TCB Info and QE
+    ///   identity have expiry times that need to be verified. Note: that the `certificate_verifier`
+    ///   will also be passed this time.
+    pub fn new<I, ID>(certificate_verifier: &'a C, trusted_identities: I, time: DateTime) -> Self
+    where
+        I: IntoIterator<Item = ID>,
+        ID: Into<TrustedIdentity>,
+    {
+        Self {
+            certificate_verifier,
+            _trusted_identities: trusted_identities.into_iter().map(Into::into).collect(),
+            time,
+        }
+    }
+
+    fn verify_tcb_signing_key(
+        &self,
+        collateral: &Collateral,
+    ) -> Result<VerifyingKey, CertificateChainVerifierError> {
+        let chain = collateral.tcb_issuer_chain();
+        let crls = [collateral.root_ca_crl()];
+        self.certificate_verifier
+            .verify_certificate_chain(chain, crls, self.time)
+    }
+
+    fn verify_qe_identity_signing_key(
+        &self,
+        collateral: &Collateral,
+    ) -> Result<VerifyingKey, CertificateChainVerifierError> {
+        let chain = collateral.qe_identity_issuer_chain();
+        let crls = [collateral.root_ca_crl()];
+        self.certificate_verifier
+            .verify_certificate_chain(chain, crls, self.time)
+    }
+
+    fn verify_quote_signing_key<Q: AsRef<[u8]>>(
+        &self,
+        quote: &Quote3<Q>,
+        collateral: &Collateral,
+    ) -> Result<VerifyingKey, CertificateChainVerifierError> {
+        let crls = [collateral.root_ca_crl(), collateral.pck_crl()];
+        // The Quote's chain is not in the collateral. It is in the quote itself.
+        // As documented in table 9 of appendix A,
+        // <https://download.01.org/intel-sgx/latest/dcap-latest/linux/docs/Intel_SGX_ECDSA_QuoteLibReference_DCAP_API.pdf#%5B%7B%22num%22%3A77%2C%22gen%22%3A0%7D%2C%7B%22name%22%3A%22XYZ%22%7D%2C120%2C282%2C0%5D>
+        // the certificate chain is at the end of the quote bytes for quotes with type `5`
+        // certification data.
+        let chain = certificate_chain_try_from_quote(quote)
+            .map_err(|_| CertificateChainVerifierError::GeneralCertificateError)?;
+        self.certificate_verifier
+            .verify_certificate_chain(&chain, crls, self.time)
+    }
+}
+
+impl<'a, C: CertificateChainVerifier, E: Accessor<Evidence<Vec<u8>>>> Verifier<E>
+    for EvidenceVerifier<'a, C>
+{
+    type Value = EvidenceValue;
+
+    fn verify(&self, evidence: &E) -> VerificationOutput<Self::Value> {
+        let evidence = evidence.get();
+        let collateral = &evidence.collateral;
+        let quote = &evidence.quote;
+
+        let tcb_key_verification = self.verify_tcb_signing_key(collateral);
+        let qe_key_verification = self.verify_qe_identity_signing_key(collateral);
+        let quote_key_verification = self.verify_quote_signing_key(quote, collateral);
+
+        let evidence_value = EvidenceValue {
+            tcb_signing_key: tcb_key_verification.into(),
+            qe_identity_signing_key: qe_key_verification.into(),
+            quote_signing_key: quote_key_verification.into(),
+        };
+
+        let is_success = evidence_value.tcb_signing_key.is_success()
+            & evidence_value.qe_identity_signing_key.is_success()
+            & evidence_value.quote_signing_key.is_success();
+
+        VerificationOutput::new(evidence_value, is_success)
+    }
+}
+
+impl<T> From<Result<T, CertificateChainVerifierError>>
+    for VerificationOutput<Option<CertificateChainVerifierError>>
+{
+    fn from(result: Result<T, CertificateChainVerifierError>) -> Self {
+        let is_success = result.is_ok() as u8;
+        VerificationOutput::new(result.err(), is_success.into())
+    }
+}
+
+#[derive(Debug)]
+pub struct EvidenceValue {
+    tcb_signing_key: VerificationOutput<Option<CertificateChainVerifierError>>,
+    qe_identity_signing_key: VerificationOutput<Option<CertificateChainVerifierError>>,
+    quote_signing_key: VerificationOutput<Option<CertificateChainVerifierError>>,
+}
+
+fn fmt_chain_verification_result_padded(
+    f: &mut Formatter<'_>,
+    pad: usize,
+    name: &str,
+    result: &VerificationOutput<Option<CertificateChainVerifierError>>,
+) -> core::fmt::Result {
+    let is_success = result.is_success();
+    let status = choice_to_status_message(is_success);
+    write!(f, "{:pad$}{status} The {name} issuer chain ", "")?;
+
+    if is_success.into() {
+        write!(f, "was verified.")
+    } else {
+        let error = result
+            .value()
+            .as_ref()
+            .expect("Should have an error if not successful");
+        write!(f, "could not be verified: {error}")
+    }
+}
+
+impl<'a, C> VerificationMessage<EvidenceValue> for EvidenceVerifier<'a, C>
+where
+    C: CertificateChainVerifier,
+{
+    fn fmt_padded(
+        &self,
+        f: &mut Formatter<'_>,
+        pad: usize,
+        output: &VerificationOutput<EvidenceValue>,
+    ) -> core::fmt::Result {
+        let status = choice_to_status_message(output.is_success());
+
+        write!(f, "{:pad$}{status} all of the following must be true:", "")?;
+        let pad = pad + MESSAGE_INDENT;
+        writeln!(f)?;
+        fmt_chain_verification_result_padded(f, pad, "TCB", &output.value.tcb_signing_key)?;
+        writeln!(f)?;
+        fmt_chain_verification_result_padded(
+            f,
+            pad,
+            "QE identity",
+            &output.value.qe_identity_signing_key,
+        )?;
+        writeln!(f)?;
+        fmt_chain_verification_result_padded(f, pad, "Quote", &output.value.quote_signing_key)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        AdvisoriesVerifier, AdvisoryStatus, And, AttributesVerifier, MrSignerVerifier,
-        Quote3Verifier, SignedTcbInfoVerifier, VerificationTreeDisplay, Verifier,
-    };
+    use crate::{VerificationTreeDisplay, Verifier};
     use alloc::format;
+    use alloc::string::{String, ToString};
     use assert_matches::assert_matches;
     use core::mem;
-    use der::DateTime;
-    use mc_sgx_core_sys_types::sgx_attributes_t;
-    use mc_sgx_core_types::{AttributeFlags, ExtendedFeatureRequestMask};
     use mc_sgx_dcap_sys_types::{sgx_ql_ecdsa_sig_data_t, sgx_ql_qve_collateral_t, sgx_quote3_t};
-    use p256::ecdsa::VerifyingKey;
-    use x509_cert::der::DecodePem;
+    use x509_cert::crl::CertificateList;
 
     const TCB_INFO_JSON: &str = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
     const QE_IDENTITY_JSON: &str = include_str!("../data/tests/qe_identity.json");
@@ -186,168 +390,6 @@ mod test {
         sgx_collateral.qe_identity_size = qe_identity.len() as u32;
 
         Collateral::try_from(&sgx_collateral).expect("Failed to parse collateral")
-    }
-
-    fn tcb_signing_key() -> VerifyingKey {
-        let pem = include_str!("../data/tests/tcb_signer.pem");
-        let certificate = Certificate::from_pem(pem).expect("failed to parse PEM");
-        let key = VerifyingKey::from_sec1_bytes(
-            certificate
-                .tbs_certificate
-                .subject_public_key_info
-                .subject_public_key
-                .as_bytes()
-                .expect("Failed to parse public key"),
-        )
-        .expect("Failed to decode public key");
-
-        key
-    }
-
-    fn quote_signing_key<T: AsRef<[u8]>>(quote: &Quote3<T>) -> VerifyingKey {
-        let signature_data = quote.signature_data();
-        let certification_data = signature_data.certification_data();
-        let CertificationData::PckCertificateChain(chain) = certification_data else {
-            panic!("Unexpected certification data type");
-        };
-        let leaf_pem = chain.into_iter().next().expect("No leaf certificate");
-        let certificate =
-            Certificate::from_pem(leaf_pem).expect("Failed to parse leaf certificate");
-
-        let key = VerifyingKey::from_sec1_bytes(
-            certificate
-                .tbs_certificate
-                .subject_public_key_info
-                .subject_public_key
-                .as_bytes()
-                .expect("Failed to parse public key"),
-        )
-        .expect("Failed to decode public key");
-
-        key
-    }
-
-    type VerifierType<T> = And<
-        Quote3Verifier<T>,
-        And<
-            MrSignerVerifier,
-            And<AttributesVerifier, And<SignedTcbInfoVerifier, AdvisoriesVerifier>>,
-        >,
-    >;
-
-    // Get a common verifier used in these tests.
-    //
-    // The values were taking from the on test files
-    // "../data/tests/hw_quote.dat" and
-    // "../data/tests/fmspc_00906ED50000_2023_05_10.json"
-    fn verifier<Q: AsRef<[u8]>>(product_id: IsvProductId, quote: &Quote3<Q>) -> VerifierType<Q> {
-        let quote_key = quote_signing_key(quote);
-        let tcb_key = tcb_signing_key();
-        let mr_signer = [
-            0x9F, 0x06, 0xDF, 0x5C, 0xA7, 0x9A, 0x23, 0xFF, 0xDF, 0xB6, 0xCA, 0x0E, 0xC8, 0x55,
-            0x14, 0xE2, 0x1D, 0xD1, 0xCB, 0xD1, 0xED, 0x11, 0xAB, 0xC4, 0x5D, 0xBE, 0x8D, 0xC8,
-            0x94, 0xEF, 0xDD, 0xDF,
-        ];
-        let isv_svn = 0;
-        let attributes = Attributes::default()
-            .set_flags(AttributeFlags::INITTED | AttributeFlags::MODE_64BIT)
-            .set_extended_features_mask(
-                ExtendedFeatureRequestMask::LEGACY | ExtendedFeatureRequestMask::AVX,
-            );
-        let time = "2023-06-08T13:43:27Z"
-            .parse::<DateTime>()
-            .expect("Failed to parse time");
-        let allowed_advisories = Advisories::new(
-            [
-                "INTEL-SA-00161",
-                "INTEL-SA-00219",
-                "INTEL-SA-00289",
-                "INTEL-SA-00334",
-                "INTEL-SA-00614",
-                "INTEL-SA-00615",
-                "INTEL-SA-00617",
-            ],
-            AdvisoryStatus::OutOfDate,
-        );
-        let verifier = And::new(
-            Quote3Verifier::new(quote_key),
-            And::new(
-                MrSignerVerifier::new(mr_signer.into(), product_id, isv_svn.into()),
-                And::new(
-                    AttributesVerifier::new(
-                        attributes,
-                        sgx_attributes_t {
-                            flags: 0xFFFF_FFFF_FFFF_FFFF,
-                            xfrm: 0xFFFF_FFFF_FFFF_FFFF,
-                        }
-                        .into(),
-                    ),
-                    And::new(
-                        SignedTcbInfoVerifier::new(tcb_key, time),
-                        AdvisoriesVerifier::new(allowed_advisories),
-                    ),
-                ),
-            ),
-        );
-        verifier
-    }
-
-    #[test]
-    fn evidence_verifies_correctly() {
-        let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
-        let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
-        let collateral = collateral(TCB_INFO_JSON, QE_IDENTITY_JSON);
-
-        let verifier = verifier(0.into(), &quote);
-        let evidence = Evidence::new(quote, collateral).expect("Failed to create evidence");
-        let verification = verifier.verify(&evidence);
-
-        assert_eq!(verification.is_success().unwrap_u8(), 1);
-
-        let displayable = VerificationTreeDisplay::new(&verifier, verification);
-        let expected = r#"
-            - [x] Both of the following must be true:
-              - [x] The quote was signed with the provided key
-              - [x] Both of the following must be true:
-                - [x] MRSIGNER all of the following must be true:
-                  - [x] The MRSIGNER key hash should be 9f06df5ca79a23ffdfb6ca0ec85514e21dd1cbd1ed11abc45dbe8dc894efdddf
-                  - [x] The ISV product ID should be 0
-                  - [x] The ISV SVN should be at least 0
-                - [x] Both of the following must be true:
-                  - [x] The expected attributes is Flags: INITTED | MODE_64BIT Xfrm: LEGACY | AVX with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | RESERVED
-                  - [x] Both of the following must be true:
-                    - [x] The TCB info was verified for the provided key
-                    - [x] The allowed advisories are IDs: {"INTEL-SA-00161", "INTEL-SA-00219", "INTEL-SA-00289", "INTEL-SA-00334", "INTEL-SA-00614", "INTEL-SA-00615", "INTEL-SA-00617"} Status: OutOfDate"#;
-        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
-    }
-
-    #[test]
-    fn evidence_fails_verification() {
-        let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
-        let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
-        let collateral = collateral(TCB_INFO_JSON, QE_IDENTITY_JSON);
-
-        let verifier = verifier(1.into(), &quote);
-        let evidence = Evidence::new(quote, collateral).expect("Failed to create evidence");
-        let verification = verifier.verify(&evidence);
-
-        assert_eq!(verification.is_failure().unwrap_u8(), 1);
-
-        let displayable = VerificationTreeDisplay::new(&verifier, verification);
-        let expected = r#"
-            - [ ] Both of the following must be true:
-              - [x] The quote was signed with the provided key
-              - [ ] Both of the following must be true:
-                - [ ] MRSIGNER all of the following must be true:
-                  - [x] The MRSIGNER key hash should be 9f06df5ca79a23ffdfb6ca0ec85514e21dd1cbd1ed11abc45dbe8dc894efdddf
-                  - [ ] The ISV product ID should be 1, but the actual ISV product ID was 0
-                  - [x] The ISV SVN should be at least 0
-                - [x] Both of the following must be true:
-                  - [x] The expected attributes is Flags: INITTED | MODE_64BIT Xfrm: LEGACY | AVX with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | RESERVED
-                  - [x] Both of the following must be true:
-                    - [x] The TCB info was verified for the provided key
-                    - [x] The allowed advisories are IDs: {"INTEL-SA-00161", "INTEL-SA-00219", "INTEL-SA-00289", "INTEL-SA-00334", "INTEL-SA-00614", "INTEL-SA-00615", "INTEL-SA-00617"} Status: OutOfDate"#;
-        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
     #[test]
@@ -431,5 +473,169 @@ mod test {
         let collateral = collateral(TCB_INFO_JSON, bad_qe_json.as_str());
 
         assert_matches!(Evidence::new(quote, collateral), Err(Error::Serde(_)));
+    }
+
+    struct TestDoubleChainVerifier {
+        failed_certificate_subject: String,
+        error: CertificateChainVerifierError,
+    }
+
+    impl Default for TestDoubleChainVerifier {
+        fn default() -> Self {
+            Self {
+                failed_certificate_subject: String::new(),
+                error: CertificateChainVerifierError::GeneralCertificateError,
+            }
+        }
+    }
+
+    impl TestDoubleChainVerifier {
+        // Cause certificate chain verification to fail at the subject certificate with `error`
+        fn fail_at_certificate(subject: &str, error: CertificateChainVerifierError) -> Self {
+            Self {
+                failed_certificate_subject: String::from(subject),
+                error,
+            }
+        }
+
+        fn try_forced_failure(
+            &self,
+            subject_names: &[String],
+        ) -> Result<(), CertificateChainVerifierError> {
+            if subject_names.contains(&self.failed_certificate_subject) {
+                Err(self.error.clone())
+            } else {
+                Ok(())
+            }
+        }
+
+        fn verify_all_crls_present(subject_names: &[String], crls: &[&CertificateList]) {
+            let crl_subject_names = crls
+                .iter()
+                .map(|crl| crl.tbs_cert_list.issuer.to_string())
+                .collect::<Vec<_>>();
+
+            // We take advantage that certificate chains are ordered from the subject to the root
+            // and skip the leaf since it won't have a CRL.
+            if !subject_names[1..]
+                .into_iter()
+                .all(|name| crl_subject_names.contains(name))
+            {
+                panic!("Missing a CRL for the certificate chain");
+            }
+        }
+
+        fn verify_crl_time_is_valid(&self, crl: &CertificateList, time: DateTime) {
+            let start_time = crl.tbs_cert_list.this_update.to_unix_duration();
+            let end_time = crl
+                .tbs_cert_list
+                .next_update
+                .expect("No next update time")
+                .to_unix_duration();
+            let time = time.unix_duration();
+            if !(start_time <= time && time < end_time) {
+                panic!("Time not valid");
+            }
+        }
+    }
+
+    impl CertificateChainVerifier for TestDoubleChainVerifier {
+        // This is a test verifier, it does not verify the certificate chains, but instead verifies
+        // that the `CertificateChainVerifier` is correctly used by the `EvidenceVerifier`
+        //
+        // If constructed with the `fail_at_certificate` method, it will fail if the subject of a
+        // certificate in the `certificate_chain` matches.
+        //
+        // For test verification, the `time` provided should be within range of the first CRL.
+        // Normally `time` would be system time.
+        fn verify_certificate_chain<'a, 'b>(
+            &self,
+            certificate_chain: impl IntoIterator<Item = &'a Certificate>,
+            crls: impl IntoIterator<Item = &'b CertificateList>,
+            time: DateTime,
+        ) -> Result<VerifyingKey, CertificateChainVerifierError> {
+            let certificate_chain = certificate_chain.into_iter().collect::<Vec<_>>();
+            let subject_names = certificate_chain
+                .iter()
+                .map(|cert| cert.tbs_certificate.subject.to_string())
+                .collect::<Vec<_>>();
+
+            self.try_forced_failure(&subject_names)?;
+
+            let crls = crls.into_iter().collect::<Vec<_>>();
+            Self::verify_all_crls_present(&subject_names, &crls);
+
+            // Loose assurance that time was passed through
+            self.verify_crl_time_is_valid(&crls[0], time);
+
+            let key_bytes = certificate_chain[0]
+                .tbs_certificate
+                .subject_public_key_info
+                .subject_public_key
+                .as_bytes()
+                .ok_or(CertificateChainVerifierError::PublicKeyDecodeError)?;
+            Ok(VerifyingKey::from_sec1_bytes(key_bytes)
+                .map_err(|_| CertificateChainVerifierError::PublicKeyDecodeError)?)
+        }
+    }
+
+    #[test]
+    fn evidence_verifier_succeeds() {
+        let time = "2023-06-14T15:55:15Z"
+            .parse::<DateTime>()
+            .expect("Failed to parse time");
+
+        let certificate_verifier = TestDoubleChainVerifier::default();
+
+        let verifier =
+            EvidenceVerifier::new(&certificate_verifier, [] as [TrustedIdentity; 0], time);
+
+        let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
+        let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
+        let collateral = collateral(TCB_INFO_JSON, QE_IDENTITY_JSON);
+        let evidence: Evidence<Vec<u8>> = Evidence::new(quote, collateral)
+            .expect("Failed to create evidence")
+            .into();
+
+        let verification = verifier.verify(&evidence);
+
+        assert_eq!(verification.is_success().unwrap_u8(), 1);
+
+        let displayable = VerificationTreeDisplay::new(&verifier, verification);
+        let expected = r#"
+            - [x] all of the following must be true:
+              - [x] The TCB issuer chain was verified.
+              - [x] The QE identity issuer chain was verified.
+              - [x] The Quote issuer chain was verified."#;
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
+    }
+
+    #[test]
+    fn evidence_verifier_fails_for_expired_certificate() {
+        let time = "2023-06-14T15:55:15Z"
+            .parse::<DateTime>()
+            .expect("Failed to parse time");
+
+        let certificate_verifier = TestDoubleChainVerifier::fail_at_certificate("CN=Intel SGX PCK Certificate,O=Intel Corporation,L=Santa Clara,STATEORPROVINCENAME=CA,C=US", CertificateChainVerifierError::CertificateExpired);
+
+        let verifier =
+            EvidenceVerifier::new(&certificate_verifier, [] as [TrustedIdentity; 0], time);
+
+        let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
+        let quote = Quote3::try_from(quote_bytes.to_vec()).expect("Failed to parse quote");
+        let collateral = collateral(TCB_INFO_JSON, QE_IDENTITY_JSON);
+        let evidence = Evidence::new(quote, collateral).expect("Failed to create evidence");
+
+        let verification = verifier.verify(&evidence);
+
+        assert_eq!(verification.is_success().unwrap_u8(), 0);
+
+        let displayable = VerificationTreeDisplay::new(&verifier, verification);
+        let expected = r#"
+            - [ ] all of the following must be true:
+              - [x] The TCB issuer chain was verified.
+              - [x] The QE identity issuer chain was verified.
+              - [ ] The Quote issuer chain could not be verified: X509 certificate has expired"#;
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 }
