@@ -3,7 +3,6 @@
 //! Trait and Error for verifying certificate chains
 
 use der::DateTime;
-use p256::ecdsa::VerifyingKey;
 use x509_cert::crl::CertificateList;
 use x509_cert::Certificate;
 
@@ -16,8 +15,6 @@ pub enum CertificateChainVerifierError {
     CertificateExpired,
     /// X509 certificate has been revoked
     CertificateRevoked,
-    /// Error decoding a public key
-    PublicKeyDecodeError,
     /// General error trying to verify a certificate chain
     GeneralCertificateError,
     /// Error verifying the signature
@@ -43,5 +40,5 @@ pub trait CertificateChainVerifier {
         certificate_chain: impl IntoIterator<Item = &'a Certificate>,
         crls: impl IntoIterator<Item = &'b CertificateList>,
         time: DateTime,
-    ) -> Result<VerifyingKey, CertificateChainVerifierError>;
+    ) -> Result<(), CertificateChainVerifierError>;
 }
