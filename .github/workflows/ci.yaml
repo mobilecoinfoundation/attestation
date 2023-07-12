@@ -196,7 +196,7 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
       - uses: r7kamura/rust-problem-matchers@v1
-      - run: cargo +${{ matrix.rust }} build --release --all-features
+      - run: cargo +${{ matrix.rust }} build --release --all-features --locked
 
   test:
     runs-on: ubuntu-22.04
@@ -216,7 +216,7 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
       - uses: r7kamura/rust-problem-matchers@v1
-      - run: cargo +${{ matrix.rust }} test --release --all-features
+      - run: cargo +${{ matrix.rust }} test --release --all-features --locked
 
   doc:
     runs-on: ubuntu-22.04
@@ -254,7 +254,7 @@ jobs:
         with:
           tool: cargo-llvm-cov
       - run: |
-          cargo llvm-cov --all-features --workspace --lcov \
+          cargo llvm-cov --locked --all-features --workspace --lcov \
             --output-path lcov.info
       - uses: codecov/codecov-action@v3
         with:
