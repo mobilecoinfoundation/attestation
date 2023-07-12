@@ -223,7 +223,7 @@ where
         chain: &[Certificate],
         crls: impl IntoIterator<Item = &'d CertificateList>,
     ) -> (
-        VerifyingKey,
+        Option<VerifyingKey>,
         VerificationOutput<Option<CertificateChainVerifierError>>,
     ) {
         let result = self
@@ -235,10 +235,7 @@ where
         // the signed data. So we try to get the key from the certificate chain, even if the
         // verification failed. This handles the most likely failure case of an expired
         // certificate, whose key is still the key that signed the data of interest.
-        let key = chain
-            .first()
-            .and_then(key_from_certificate)
-            .unwrap_or_else(default_verifying_key);
+        let key = chain.first().and_then(key_from_certificate);
 
         (
             key,
@@ -250,7 +247,7 @@ where
         &self,
         collateral: &Collateral,
     ) -> (
-        VerifyingKey,
+        Option<VerifyingKey>,
         VerificationOutput<Option<CertificateChainVerifierError>>,
     ) {
         let chain = collateral.tcb_issuer_chain();
@@ -262,7 +259,7 @@ where
         &self,
         collateral: &Collateral,
     ) -> (
-        VerifyingKey,
+        Option<VerifyingKey>,
         VerificationOutput<Option<CertificateChainVerifierError>>,
     ) {
         let chain = collateral.qe_identity_issuer_chain();
@@ -275,7 +272,7 @@ where
         quote: &Quote3<Q>,
         collateral: &Collateral,
     ) -> (
-        VerifyingKey,
+        Option<VerifyingKey>,
         VerificationOutput<Option<CertificateChainVerifierError>>,
     ) {
         let crls = [collateral.root_ca_crl(), collateral.pck_crl()];
@@ -287,10 +284,9 @@ where
         match certificate_chain_try_from_quote(quote) {
             Ok(chain) => self.verify_certificate_chain(&chain, crls),
             Err(_) => {
-                let key = default_verifying_key();
                 let is_success = 0u8;
                 (
-                    key,
+                    None,
                     VerificationOutput::new(
                         Some(CertificateChainVerifierError::GeneralCertificateError),
                         is_success.into(),
@@ -308,36 +304,6 @@ fn key_from_certificate(cert: &Certificate) -> Option<VerifyingKey> {
         .subject_public_key
         .as_bytes()?;
     VerifyingKey::from_sec1_bytes(key_bytes).ok()
-}
-
-fn default_verifying_key() -> VerifyingKey {
-    // This public key is taken from
-    // <https://csrc.nist.gov/csrc/media/projects/cryptographic-standards-and-guidelines/documents/examples/ecdsa_prime.pdf>
-    //
-    //      Public Key:
-    //          Q_x is
-    //              B7E08AFD FE94BAD3
-    //              F1DC8C73 4798BA1C 62B3A0AD 1E9EA2A3 8201CD08 89BC7A19
-    //          Q_y is
-    //              3603F747 959DBF7A
-    //              4BB226E4 19287290 63ADC7AE 43529E61 B563BBC6 06CC5E09
-    //
-    // The `VerifyingKey` type requires the key to be a valid curve point so we can't use all 0s or
-    // 1s. Since this key is used in a documented example it is not likely to be seen in production
-    // use.
-    let mut sec1_key = [0u8; 65];
-    sec1_key[0] = 0x04;
-    sec1_key[1..].copy_from_slice(
-        [
-            0xB7, 0xE0, 0x8A, 0xFD, 0xFE, 0x94, 0xBA, 0xD3, 0xF1, 0xDC, 0x8C, 0x73, 0x47, 0x98,
-            0xBA, 0x1C, 0x62, 0xB3, 0xA0, 0xAD, 0x1E, 0x9E, 0xA2, 0xA3, 0x82, 0x01, 0xCD, 0x08,
-            0x89, 0xBC, 0x7A, 0x19, 0x36, 0x03, 0xF7, 0x47, 0x95, 0x9D, 0xBF, 0x7A, 0x4B, 0xB2,
-            0x26, 0xE4, 0x19, 0x28, 0x72, 0x90, 0x63, 0xAD, 0xC7, 0xAE, 0x43, 0x52, 0x9E, 0x61,
-            0xB5, 0x63, 0xBB, 0xC6, 0x06, 0xCC, 0x5E, 0x09,
-        ]
-        .as_ref(),
-    );
-    VerifyingKey::try_from(sec1_key.as_ref()).expect("Failed to create default verifying key")
 }
 
 impl<'a, C: CertificateChainVerifier, E: Accessor<Evidence<Vec<u8>>>> Verifier<E>
@@ -572,14 +538,6 @@ mod test {
         let collateral = collateral(TCB_INFO_JSON, bad_qe_json.as_str());
 
         assert_matches!(Evidence::new(quote, collateral), Err(Error::Serde(_)));
-    }
-
-    #[test]
-    fn default_key_does_not_abort() {
-        // We aren't concerned with the actual value of the key, just that it doesn't abort being
-        // created and that it's not the identity
-        let default_key = default_verifying_key();
-        assert_ne!(default_key.to_encoded_point(false).as_bytes(), [0u8; 65]);
     }
 
     struct TestDoubleChainVerifier {
