@@ -314,9 +314,13 @@ impl VerificationMessage<TrustedIdentityValue> for TrustedIdentitiesVerifier {
 
         writeln!(f)?;
         write!(f, "{:pad$}Searched through the following identities:", "")?;
-        for identity_verifier in &self.identity_verifiers {
-            writeln!(f)?;
-            identity_verifier.fmt_padded(f, pad, identity)?;
+        if self.identity_verifiers.is_empty() {
+            write!(f, " None")?;
+        } else {
+            for identity_verifier in &self.identity_verifiers {
+                writeln!(f)?;
+                identity_verifier.fmt_padded(f, pad, identity)?;
+            }
         }
         Ok(())
     }
@@ -710,6 +714,28 @@ mod test {
                 - [x] The ISV product ID should be 3
                 - [x] The ISV SVN should be at least 4
               - [x] The allowed advisories are IDs: {"four", "one", "three", "two"} Status: ConfigurationAndSWHardeningNeeded"#;
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
+    }
+
+    #[test]
+    fn identities_verifier_no_identities() {
+        let identity = identity();
+
+        let allowed_identities: &[TrustedIdentity] = &[];
+
+        let verifier = TrustedIdentitiesVerifier::new(allowed_identities);
+        let verification = verifier.verify(&identity);
+        assert_eq!(verification.is_success().unwrap_u8(), 0);
+
+        let displayable = VerificationTreeDisplay::new(&verifier, verification);
+        let expected = r#"
+            - [ ] No enclave identity matched for:
+              - MRENCLAVE: 0101010101010101010101010101010101010101010101010101010101010101
+              - MRSIGNER key hash: 0202020202020202020202020202020202020202020202020202020202020202
+              - ISV product ID: 3
+              - ISV SVN: 4
+              - advisories: IDs: {"four", "one", "three", "two"} Status: ConfigurationAndSWHardeningNeeded
+              Searched through the following identities: None"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
