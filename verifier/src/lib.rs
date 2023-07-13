@@ -42,10 +42,7 @@ pub use report_body::{
 pub use tcb::{SignedTcbInfo, SignedTcbInfoVerifier, TcbInfo};
 
 #[cfg(feature = "x509")]
-pub use x509::{
-    CertificateRevocationList, Error as X509Error, TrustAnchor, UnverifiedCertChain,
-    VerifiedCertChain,
-};
+pub use x509::{Error as X509Error, TrustAnchor, X509CertificateChainVerifier};
 
 use crate::struct_name::SpacedStructName;
 use core::fmt::{Debug, Display, Formatter};
