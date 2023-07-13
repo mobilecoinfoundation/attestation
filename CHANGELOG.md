@@ -8,5 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+## [0.1.0] - 2023-07-13
+
+- Initial release of attestation verifier crate
+
 <!-- next-url -->
-[Unreleased]: https://github.com/mobilecoinfoundation/attestation/compare/v0.0.0...HEAD
+[Unreleased]: https://github.com/mobilecoinfoundation/attestation/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/mobilecoinfoundation/sgx/compare/v0.1.0
