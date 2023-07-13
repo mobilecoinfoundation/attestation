@@ -28,10 +28,10 @@
   openssl crl -in verifier/data/tests/processor_crl.pem -out verifier/data/tests/processor_crl.der -outform DEr
   ```
 
-* `fmspc_00906ED50000_2023_05_10.json` - JSON file containing the result of a
+* `fmspc_00906ED50000_2023_07_12.json` - JSON file containing the result of a
   TCB request from
   <https://api.trustedservices.intel.com/sgx/certification/v4/tcb?fmspc=00906ED50000>.
-  This was captured on 2023-05-10.
+  This was captured on 2023-07-12.
 * `example_tcb.json` - JSON file containing the example TCB response from
   <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v4>.
 * `tcb_signer.pem` - The signer certificate for TCB data from

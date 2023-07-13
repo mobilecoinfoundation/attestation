@@ -2,11 +2,12 @@
 
 //! The full set of evidence needed for attesting a quote
 
+use crate::qe_report_body::QeReportBodyValue;
 use crate::{
     choice_to_status_message, Accessor, Advisories, CertificateChainVerifier,
-    CertificateChainVerifierError, Error, QeIdentity, SignedQeIdentity, SignedTcbInfo,
-    SignedTcbInfoVerifier, TcbInfo, TrustedIdentity, VerificationMessage, VerificationOutput,
-    Verifier, MESSAGE_INDENT,
+    CertificateChainVerifierError, Error, QeIdentity, QeReportBody, QeReportBodyVerifier,
+    SignedQeIdentity, SignedQeIdentityVerifier, SignedTcbInfo, SignedTcbInfoVerifier, TcbInfo,
+    TrustedIdentity, VerificationMessage, VerificationOutput, Verifier, MESSAGE_INDENT,
 };
 use alloc::vec::Vec;
 use core::fmt::Formatter;
@@ -34,7 +35,7 @@ pub struct Evidence<Q> {
     quote: Quote3<Q>,
     signed_tcb_info: SignedTcbInfo,
     signed_qe_identity: SignedQeIdentity,
-    _qe_identity: QeIdentity,
+    qe_identity: QeIdentity,
     advisories: Advisories,
     collateral: Collateral,
 }
@@ -55,7 +56,7 @@ impl<Q: AsRef<[u8]>> Evidence<Q> {
             quote,
             signed_tcb_info,
             signed_qe_identity,
-            _qe_identity: qe_identity,
+            qe_identity,
             advisories,
             collateral,
         })
@@ -75,7 +76,7 @@ impl From<Evidence<&[u8]>> for Evidence<Vec<u8>> {
                 .expect("Quote should already be valid"),
             signed_tcb_info: value.signed_tcb_info,
             signed_qe_identity: value.signed_qe_identity,
-            _qe_identity: value._qe_identity,
+            qe_identity: value.qe_identity,
             advisories: value.advisories,
             collateral: value.collateral,
         }
@@ -103,6 +104,12 @@ impl<Q: Clone> Accessor<Quote3<Q>> for Evidence<Q> {
 impl<Q> Accessor<Advisories> for Evidence<Q> {
     fn get(&self) -> Advisories {
         self.advisories.clone()
+    }
+}
+
+impl<Q: AsRef<[u8]>> Accessor<QeReportBody> for Evidence<Q> {
+    fn get(&self) -> QeReportBody {
+        (&self.quote).into()
     }
 }
 
@@ -166,7 +173,7 @@ quote_application_report_body_field_accessor! {
 ///
 /// This will perform most of the verification to be done on [`Evidence`] this includes:
 /// - verifying the certificate chains
-/// - verifying the QE identity (TODO)
+/// - verifying the QE identity
 /// - verifying the TCB info
 /// - verifying the [`TrustedIdentity`] of the application enclave (TODO)
 /// - verifying the signature of the Quote (TODO)
@@ -317,23 +324,33 @@ impl<'a, C: CertificateChainVerifier, E: Accessor<Evidence<Vec<u8>>>> Verifier<E
         let quote = &evidence.quote;
 
         let (tcb_key, tcb_chain_verification) = self.verify_tcb_signing_chain(collateral);
-        let (_, qe_chain_verification) = self.verify_qe_identity_signing_chain(collateral);
+        let (qe_key, qe_chain_verification) = self.verify_qe_identity_signing_chain(collateral);
         let (_, quote_chain_verification) = self.verify_quote_signing_chain(quote, collateral);
 
         let tcb_info_verifier = SignedTcbInfoVerifier::new(tcb_key, self.time);
         let tcb_info_verification = tcb_info_verifier.verify(&evidence);
+
+        let qe_identity_verifier = SignedQeIdentityVerifier::new(qe_key, self.time);
+        let qe_identity_verification = qe_identity_verifier.verify(&evidence);
+
+        let qe_report_body_verifier = QeReportBodyVerifier::new(evidence.qe_identity.clone());
+        let qe_report_body_verification = qe_report_body_verifier.verify(&evidence);
 
         let evidence_value = EvidenceValue {
             tcb_signing_key: tcb_chain_verification,
             qe_identity_signing_key: qe_chain_verification,
             quote_signing_key: quote_chain_verification,
             tcb_info: (tcb_info_verifier, tcb_info_verification),
+            qe_identity: (qe_identity_verifier, qe_identity_verification),
+            qe_report_body: (qe_report_body_verifier, qe_report_body_verification),
         };
 
         let is_success = evidence_value.tcb_signing_key.is_success()
             & evidence_value.qe_identity_signing_key.is_success()
             & evidence_value.quote_signing_key.is_success()
-            & evidence_value.tcb_info.1.is_success();
+            & evidence_value.tcb_info.1.is_success()
+            & evidence_value.qe_identity.1.is_success()
+            & evidence_value.qe_report_body.1.is_success();
 
         VerificationOutput::new(evidence_value, is_success)
     }
@@ -345,6 +362,8 @@ pub struct EvidenceValue {
     qe_identity_signing_key: VerificationOutput<Option<CertificateChainVerifierError>>,
     quote_signing_key: VerificationOutput<Option<CertificateChainVerifierError>>,
     tcb_info: (SignedTcbInfoVerifier, VerificationOutput<Option<Error>>),
+    qe_identity: (SignedQeIdentityVerifier, VerificationOutput<Option<Error>>),
+    qe_report_body: (QeReportBodyVerifier, VerificationOutput<QeReportBodyValue>),
 }
 
 fn fmt_chain_verification_result_padded(
@@ -395,7 +414,13 @@ where
         fmt_chain_verification_result_padded(f, pad, "Quote", &output.value.quote_signing_key)?;
         writeln!(f)?;
         let (tcb_info_verifier, tcb_info_verification) = &output.value.tcb_info;
-        tcb_info_verifier.fmt_padded(f, pad, tcb_info_verification)
+        tcb_info_verifier.fmt_padded(f, pad, tcb_info_verification)?;
+        writeln!(f)?;
+        let (qe_identity_verifier, qe_identity_verification) = &output.value.qe_identity;
+        qe_identity_verifier.fmt_padded(f, pad, qe_identity_verification)?;
+        writeln!(f)?;
+        let (qe_report_body_verifier, qe_report_body_verification) = &output.value.qe_report_body;
+        qe_report_body_verifier.fmt_padded(f, pad, qe_report_body_verification)
     }
 }
 
@@ -409,7 +434,7 @@ mod test {
     use core::mem;
     use mc_sgx_dcap_sys_types::{sgx_ql_ecdsa_sig_data_t, sgx_ql_qve_collateral_t, sgx_quote3_t};
 
-    const TCB_INFO_JSON: &str = include_str!("../data/tests/fmspc_00906ED50000_2023_05_10.json");
+    const TCB_INFO_JSON: &str = include_str!("../data/tests/fmspc_00906ED50000_2023_07_12.json");
     const QE_IDENTITY_JSON: &str = include_str!("../data/tests/qe_identity.json");
 
     fn collateral(tcb_info: &str, qe_identity: &str) -> Collateral {
@@ -639,7 +664,7 @@ mod test {
 
     #[test]
     fn evidence_verifier_succeeds() {
-        let time = "2023-06-08T15:55:15Z"
+        let time = "2023-07-12T20:48:25Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
 
@@ -665,13 +690,20 @@ mod test {
               - [x] The TCB issuer chain was verified.
               - [x] The QE identity issuer chain was verified.
               - [x] The Quote issuer chain was verified.
-              - [x] The TCB info was verified for the provided key"#;
+              - [x] The TCB info was verified for the provided key
+              - [x] The QE identity was verified for the provided key
+              - [x] QE Report Body all of the following must be true:
+                - [x] The MRSIGNER key hash should be 8c4f5775d796503e96137f77c68a829a0056ac8ded70140b081b094490c57bff
+                - [x] The ISV product ID should be 1
+                - [x] The expected miscellaneous select is 0x0000_0000 with mask 0xFFFF_FFFF
+                - [x] The expected attributes is Flags: INITTED | PROVISION_KEY Xfrm: (none) with mask Flags: 0xFFFF_FFFF_FFFF_FFFB Xfrm: (none)
+                - [x] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [TcbLevel { tcb: Tcb { isv_svn: 8 }, tcb_date: "2023-02-15T00:00:00Z", tcb_status: UpToDate, advisory_ids: [] }, TcbLevel { tcb: Tcb { isv_svn: 6 }, tcb_date: "2021-11-10T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 5 }, tcb_date: "2020-11-11T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 4 }, tcb_date: "2019-11-13T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 2 }, tcb_date: "2019-05-15T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00219", "INTEL-SA-00293", "INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "2018-08-15T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00202", "INTEL-SA-00219", "INTEL-SA-00293", "INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }]"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
     #[test]
     fn evidence_verifier_fails_for_expired_quote_certificate() {
-        let time = "2023-06-08T15:55:15Z"
+        let time = "2023-07-12T20:48:25Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
 
@@ -695,13 +727,20 @@ mod test {
               - [x] The TCB issuer chain was verified.
               - [x] The QE identity issuer chain was verified.
               - [ ] The Quote issuer chain could not be verified: X509 certificate has expired
-              - [x] The TCB info was verified for the provided key"#;
+              - [x] The TCB info was verified for the provided key
+              - [x] The QE identity was verified for the provided key
+              - [x] QE Report Body all of the following must be true:
+                - [x] The MRSIGNER key hash should be 8c4f5775d796503e96137f77c68a829a0056ac8ded70140b081b094490c57bff
+                - [x] The ISV product ID should be 1
+                - [x] The expected miscellaneous select is 0x0000_0000 with mask 0xFFFF_FFFF
+                - [x] The expected attributes is Flags: INITTED | PROVISION_KEY Xfrm: (none) with mask Flags: 0xFFFF_FFFF_FFFF_FFFB Xfrm: (none)
+                - [x] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [TcbLevel { tcb: Tcb { isv_svn: 8 }, tcb_date: "2023-02-15T00:00:00Z", tcb_status: UpToDate, advisory_ids: [] }, TcbLevel { tcb: Tcb { isv_svn: 6 }, tcb_date: "2021-11-10T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 5 }, tcb_date: "2020-11-11T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 4 }, tcb_date: "2019-11-13T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 2 }, tcb_date: "2019-05-15T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00219", "INTEL-SA-00293", "INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "2018-08-15T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00202", "INTEL-SA-00219", "INTEL-SA-00293", "INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }]"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
     #[test]
     fn evidence_verifier_fails_for_tcb_certificate_revoked() {
-        let time = "2023-06-08T15:55:15Z"
+        let time = "2023-07-12T20:48:25Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
 
@@ -728,13 +767,20 @@ mod test {
               - [ ] The TCB issuer chain could not be verified: X509 certificate has been revoked
               - [ ] The QE identity issuer chain could not be verified: X509 certificate has been revoked
               - [x] The Quote issuer chain was verified.
-              - [x] The TCB info was verified for the provided key"#;
+              - [x] The TCB info was verified for the provided key
+              - [x] The QE identity was verified for the provided key
+              - [x] QE Report Body all of the following must be true:
+                - [x] The MRSIGNER key hash should be 8c4f5775d796503e96137f77c68a829a0056ac8ded70140b081b094490c57bff
+                - [x] The ISV product ID should be 1
+                - [x] The expected miscellaneous select is 0x0000_0000 with mask 0xFFFF_FFFF
+                - [x] The expected attributes is Flags: INITTED | PROVISION_KEY Xfrm: (none) with mask Flags: 0xFFFF_FFFF_FFFF_FFFB Xfrm: (none)
+                - [x] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [TcbLevel { tcb: Tcb { isv_svn: 8 }, tcb_date: "2023-02-15T00:00:00Z", tcb_status: UpToDate, advisory_ids: [] }, TcbLevel { tcb: Tcb { isv_svn: 6 }, tcb_date: "2021-11-10T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 5 }, tcb_date: "2020-11-11T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 4 }, tcb_date: "2019-11-13T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 2 }, tcb_date: "2019-05-15T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00219", "INTEL-SA-00293", "INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "2018-08-15T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00202", "INTEL-SA-00219", "INTEL-SA-00293", "INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }]"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
     #[test]
     fn evidence_verifier_fails_for_expired_tcb_info() {
-        let time = "2023-06-14T15:55:15Z"
+        let time = "2023-08-11T19:56:44Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
 
@@ -758,7 +804,51 @@ mod test {
               - [x] The TCB issuer chain was verified.
               - [x] The QE identity issuer chain was verified.
               - [x] The Quote issuer chain was verified.
-              - [ ] The TCB info could not be verified: TCB info expired"#;
+              - [ ] The TCB info could not be verified: TCB info expired
+              - [x] The QE identity was verified for the provided key
+              - [x] QE Report Body all of the following must be true:
+                - [x] The MRSIGNER key hash should be 8c4f5775d796503e96137f77c68a829a0056ac8ded70140b081b094490c57bff
+                - [x] The ISV product ID should be 1
+                - [x] The expected miscellaneous select is 0x0000_0000 with mask 0xFFFF_FFFF
+                - [x] The expected attributes is Flags: INITTED | PROVISION_KEY Xfrm: (none) with mask Flags: 0xFFFF_FFFF_FFFF_FFFB Xfrm: (none)
+                - [x] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [TcbLevel { tcb: Tcb { isv_svn: 8 }, tcb_date: "2023-02-15T00:00:00Z", tcb_status: UpToDate, advisory_ids: [] }, TcbLevel { tcb: Tcb { isv_svn: 6 }, tcb_date: "2021-11-10T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 5 }, tcb_date: "2020-11-11T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 4 }, tcb_date: "2019-11-13T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 2 }, tcb_date: "2019-05-15T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00219", "INTEL-SA-00293", "INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "2018-08-15T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00202", "INTEL-SA-00219", "INTEL-SA-00293", "INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }]"#;
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
+    }
+
+    #[test]
+    fn evidence_verifier_fails_for_qe_identity_not_yet_valid() {
+        let time = "2023-07-12T19:56:44Z"
+            .parse::<DateTime>()
+            .expect("Failed to parse time");
+
+        let certificate_verifier = TestDoubleChainVerifier::default();
+
+        let verifier =
+            EvidenceVerifier::new(&certificate_verifier, [] as [TrustedIdentity; 0], time);
+
+        let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
+        let quote = Quote3::try_from(quote_bytes.to_vec()).expect("Failed to parse quote");
+        let collateral = collateral(TCB_INFO_JSON, QE_IDENTITY_JSON);
+        let evidence = Evidence::new(quote, collateral).expect("Failed to create evidence");
+
+        let verification = verifier.verify(&evidence);
+
+        assert_eq!(verification.is_success().unwrap_u8(), 0);
+
+        let displayable = VerificationTreeDisplay::new(&verifier, verification);
+        let expected = r#"
+            - [ ] all of the following must be true:
+              - [x] The TCB issuer chain was verified.
+              - [x] The QE identity issuer chain was verified.
+              - [x] The Quote issuer chain was verified.
+              - [x] The TCB info was verified for the provided key
+              - [ ] The QE identity signature could not be verified: QE identity not yet valid
+              - [x] QE Report Body all of the following must be true:
+                - [x] The MRSIGNER key hash should be 8c4f5775d796503e96137f77c68a829a0056ac8ded70140b081b094490c57bff
+                - [x] The ISV product ID should be 1
+                - [x] The expected miscellaneous select is 0x0000_0000 with mask 0xFFFF_FFFF
+                - [x] The expected attributes is Flags: INITTED | PROVISION_KEY Xfrm: (none) with mask Flags: 0xFFFF_FFFF_FFFF_FFFB Xfrm: (none)
+                - [x] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [TcbLevel { tcb: Tcb { isv_svn: 8 }, tcb_date: "2023-02-15T00:00:00Z", tcb_status: UpToDate, advisory_ids: [] }, TcbLevel { tcb: Tcb { isv_svn: 6 }, tcb_date: "2021-11-10T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 5 }, tcb_date: "2020-11-11T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 4 }, tcb_date: "2019-11-13T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 2 }, tcb_date: "2019-05-15T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00219", "INTEL-SA-00293", "INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "2018-08-15T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00202", "INTEL-SA-00219", "INTEL-SA-00293", "INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }]"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 }

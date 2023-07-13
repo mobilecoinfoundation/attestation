@@ -32,8 +32,8 @@ impl QeReportBody {
     }
 }
 
-impl<T: AsRef<[u8]>> From<Quote3<T>> for QeReportBody {
-    fn from(quote: Quote3<T>) -> Self {
+impl<T: AsRef<[u8]>> From<&Quote3<T>> for QeReportBody {
+    fn from(quote: &Quote3<T>) -> Self {
         let signature_data = quote.signature_data();
         let report_body = signature_data.qe_report_body();
         Self::new(report_body.clone())
@@ -427,7 +427,7 @@ mod test {
     fn qe_report_body_succeeds() {
         let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
         let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
-        let qe_report_body = QeReportBody::from(quote);
+        let qe_report_body = QeReportBody::from(&quote);
         let json = include_str!("../data/tests/qe_identity.json");
         let signed_qe_identity =
             SignedQeIdentity::try_from(json).expect("Failed to parse signed identity");
@@ -460,7 +460,7 @@ mod test {
             QeIdentity::try_from(&signed_qe_identity).expect("Failed to verify identity");
         let verifier = QeReportBodyVerifier::new(identity);
 
-        let mut sgx_report_body: sgx_report_body_t = QeReportBody::from(quote).0.into();
+        let mut sgx_report_body: sgx_report_body_t = QeReportBody::from(&quote).0.into();
         sgx_report_body.mr_signer.m[0] += 1;
         let qe_report_body = QeReportBody::new(ReportBody::from(sgx_report_body));
 
@@ -489,7 +489,7 @@ mod test {
             QeIdentity::try_from(&signed_qe_identity).expect("Failed to verify identity");
         let verifier = QeReportBodyVerifier::new(identity);
 
-        let mut sgx_report_body: sgx_report_body_t = QeReportBody::from(quote).0.into();
+        let mut sgx_report_body: sgx_report_body_t = QeReportBody::from(&quote).0.into();
         sgx_report_body.isv_prod_id += 1;
         let qe_report_body = QeReportBody::new(ReportBody::from(sgx_report_body));
 
@@ -508,7 +508,7 @@ mod test {
             QeIdentity::try_from(&signed_qe_identity).expect("Failed to verify identity");
         let verifier = QeReportBodyVerifier::new(identity);
 
-        let mut sgx_report_body: sgx_report_body_t = QeReportBody::from(quote).0.into();
+        let mut sgx_report_body: sgx_report_body_t = QeReportBody::from(&quote).0.into();
         // The isv svn in the identity is 8, can be seen by looking at the json file
         sgx_report_body.isv_svn = 7;
         let qe_report_body = QeReportBody::new(ReportBody::from(sgx_report_body));
@@ -528,7 +528,7 @@ mod test {
             QeIdentity::try_from(&signed_qe_identity).expect("Failed to verify identity");
         let verifier = QeReportBodyVerifier::new(identity);
 
-        let mut sgx_report_body: sgx_report_body_t = QeReportBody::from(quote).0.into();
+        let mut sgx_report_body: sgx_report_body_t = QeReportBody::from(&quote).0.into();
         // Current mask is 0xFFFF_FFFF so any change will fail
         sgx_report_body.misc_select += 1;
         let qe_report_body = QeReportBody::new(ReportBody::from(sgx_report_body));
@@ -548,7 +548,7 @@ mod test {
             QeIdentity::try_from(&signed_qe_identity).expect("Failed to verify identity");
         let verifier = QeReportBodyVerifier::new(identity);
 
-        let mut sgx_report_body: sgx_report_body_t = QeReportBody::from(quote).0.into();
+        let mut sgx_report_body: sgx_report_body_t = QeReportBody::from(&quote).0.into();
         sgx_report_body.attributes.flags |= AttributeFlags::DEBUG.bits();
         let qe_report_body = QeReportBody::new(ReportBody::from(sgx_report_body));
 
