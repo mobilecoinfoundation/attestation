@@ -68,14 +68,7 @@ impl<Q: AsRef<[u8]>> Evidence<Q> {
 impl From<Evidence<&[u8]>> for Evidence<Vec<u8>> {
     fn from(value: Evidence<&[u8]>) -> Self {
         Self {
-            // See https://github.com/mobilecoinfoundation/sgx/issues/357 to make the quote
-            // conversion more ergonomic
-            quote: value
-                .quote
-                .as_ref()
-                .to_vec()
-                .try_into()
-                .expect("Quote should already be valid"),
+            quote: value.quote.into(),
             signed_tcb_info: value.signed_tcb_info,
             signed_qe_identity: value.signed_qe_identity,
             qe_identity: value.qe_identity,
@@ -512,7 +505,7 @@ mod test {
             0x29, 0x64, 0x23, 0xf4,
         ]);
         let identity = TrustedMrEnclaveIdentity::new(
-            &mr_enclave,
+            mr_enclave,
             [] as [&str; 0],
             ["INTEL-SA-00334", "INTEL-SA-00615"],
         );
