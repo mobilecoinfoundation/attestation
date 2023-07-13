@@ -211,7 +211,7 @@ impl VerifiedCertChain {
     ///
     /// # Panics
     /// If the leaf certificate is not valid DER. The leaf certificate was
-    /// loaded via [`UnverifiedCertChain::try_from`] so it should be valid DER.
+    /// loaded via an [`UnverifiedCertChain`] so it should be valid DER.
     pub fn leaf(&self) -> Option<X509Certificate> {
         for cert in self.0.iter() {
             // Per [rfc5280](https://datatracker.ietf.org/doc/html/rfc5280)

@@ -16,7 +16,7 @@ impl<T> Quote3Verifier<T> {
     /// Create a new instance.
     ///
     /// The `key` should be retrieved from the leaf certificate of the quote's
-    /// [`CertificationData`].
+    /// [`mc-sgx-dcap-types::CertificationData`].
     pub fn new(key: VerifyingKey) -> Self {
         Self {
             key,
