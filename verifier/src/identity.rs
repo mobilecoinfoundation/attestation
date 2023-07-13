@@ -39,7 +39,7 @@ pub struct TrustedMrEnclaveIdentity {
     ///
     /// For JSON this will be hex-encoded bytes.
     #[serde(with = "hex", rename = "MRENCLAVE")]
-    mr_enclave: [u8; 32],
+    mr_enclave: MrEnclave,
     /// The list of config advisories that are known to be mitigated in software at this enclave
     /// revision.
     #[serde(default)]
@@ -53,7 +53,7 @@ pub struct TrustedMrEnclaveIdentity {
 impl TrustedMrEnclaveIdentity {
     /// Create a new instance.
     pub fn new<'a, CA, I, HA, J>(
-        mr_enclave: &MrEnclave,
+        mr_enclave: MrEnclave,
         config_advisories: I,
         hardening_advisories: J,
     ) -> Self
@@ -63,10 +63,8 @@ impl TrustedMrEnclaveIdentity {
         J: IntoIterator<Item = &'a HA>,
         HA: ToString + 'a + ?Sized,
     {
-        let mut local_mr_enclave = [0u8; 32];
-        local_mr_enclave.copy_from_slice(mr_enclave.as_ref());
         Self {
-            mr_enclave: local_mr_enclave,
+            mr_enclave,
             mitigated_config_advisories: config_advisories
                 .into_iter()
                 .map(ToString::to_string)
@@ -80,7 +78,7 @@ impl TrustedMrEnclaveIdentity {
 
     /// Get the MRENCLAVE measurement for this identity
     pub fn mr_enclave(&self) -> MrEnclave {
-        self.mr_enclave.into()
+        self.mr_enclave
     }
 
     /// Get the known allowed [`Advisories`] for this identity.
@@ -114,7 +112,7 @@ pub struct TrustedMrSignerIdentity {
     ///
     /// For JSON this will be hex-encoded bytes.
     #[serde(with = "hex", rename = "MRSIGNER")]
-    mr_signer: [u8; 32],
+    mr_signer: MrSigner,
     /// The product ID for this enclave.
     product_id: u16,
     /// The minimum security version number that is trusted
@@ -132,7 +130,7 @@ pub struct TrustedMrSignerIdentity {
 impl TrustedMrSignerIdentity {
     /// Create a new instance.
     pub fn new<'a, CA, I, HA, J>(
-        mr_signer: &MrSigner,
+        mr_signer: MrSigner,
         isv_product_id: IsvProductId,
         isv_svn: IsvSvn,
         config_advisories: I,
@@ -144,11 +142,8 @@ impl TrustedMrSignerIdentity {
         J: IntoIterator<Item = &'a HA>,
         HA: ToString + 'a + ?Sized,
     {
-        let mut local_mr_signer = [0u8; 32];
-        local_mr_signer.copy_from_slice(mr_signer.as_ref());
-
         Self {
-            mr_signer: local_mr_signer,
+            mr_signer,
             product_id: isv_product_id.into(),
             minimum_svn: isv_svn.into(),
             mitigated_config_advisories: config_advisories
@@ -164,7 +159,7 @@ impl TrustedMrSignerIdentity {
 
     /// Get the MRSIGNER hash value for this identity
     pub fn mr_signer(&self) -> MrSigner {
-        self.mr_signer.into()
+        self.mr_signer
     }
 
     /// Get the ISV product ID for this identity
@@ -552,7 +547,7 @@ mod test {
     #[test]
     fn up_to_date_advisories_for_mr_enclave_identity() {
         let mr_enclave_identity =
-            TrustedMrEnclaveIdentity::new(&[5; 32].into(), [] as [&str; 0], [] as [&str; 0]);
+            TrustedMrEnclaveIdentity::new([5; 32].into(), [] as [&str; 0], [] as [&str; 0]);
         assert_eq!(
             mr_enclave_identity.advisories(),
             Advisories::new([] as [&str; 0], AdvisoryStatus::UpToDate)
@@ -562,7 +557,7 @@ mod test {
     #[test]
     fn config_needed_advisories_for_mr_enclave_identity() {
         let mr_enclave_identity = TrustedMrEnclaveIdentity::new(
-            &[5; 32].into(),
+            [5; 32].into(),
             ["an advisory", "another one"],
             [] as [&str; 0],
         );
@@ -577,11 +572,8 @@ mod test {
 
     #[test]
     fn sw_hardening_needed_advisories_for_mr_enclave_identity() {
-        let mr_enclave_identity = TrustedMrEnclaveIdentity::new(
-            &[5; 32].into(),
-            [] as [&str; 0],
-            ["what's", "up", "doc"],
-        );
+        let mr_enclave_identity =
+            TrustedMrEnclaveIdentity::new([5; 32].into(), [] as [&str; 0], ["what's", "up", "doc"]);
         assert_eq!(
             mr_enclave_identity.advisories(),
             Advisories::new(["what's", "up", "doc"], AdvisoryStatus::SWHardeningNeeded)
@@ -591,7 +583,7 @@ mod test {
     #[test]
     fn config_and_sw_hardening_needed_advisories_for_mr_enclave_identity() {
         let mr_enclave_identity =
-            TrustedMrEnclaveIdentity::new(&[5; 32].into(), ["one", "two"], ["three", "four"]);
+            TrustedMrEnclaveIdentity::new([5; 32].into(), ["one", "two"], ["three", "four"]);
         assert_eq!(
             mr_enclave_identity.advisories(),
             Advisories::new(
@@ -604,7 +596,7 @@ mod test {
     #[test]
     fn up_to_date_advisories_for_mr_signer_identity() {
         let mr_signer_identity = TrustedMrSignerIdentity::new(
-            &[8; 32].into(),
+            [8; 32].into(),
             9.into(),
             10.into(),
             [] as [&str; 0],
@@ -619,7 +611,7 @@ mod test {
     #[test]
     fn config_needed_advisories_for_mr_signer_identity() {
         let mr_signer_identity = TrustedMrSignerIdentity::new(
-            &[8; 32].into(),
+            [8; 32].into(),
             9.into(),
             10.into(),
             ["mr", "signer"],
@@ -634,7 +626,7 @@ mod test {
     #[test]
     fn sw_hardening_needed_advisories_for_mr_signer_identity() {
         let mr_signer_identity = TrustedMrSignerIdentity::new(
-            &[5; 32].into(),
+            [5; 32].into(),
             9.into(),
             10.into(),
             [] as [&str; 0],
@@ -649,7 +641,7 @@ mod test {
     #[test]
     fn config_and_sw_hardening_needed_advisories_for_mr_signer_identity() {
         let mr_signer_identity = TrustedMrSignerIdentity::new(
-            &[5; 32].into(),
+            [5; 32].into(),
             9.into(),
             10.into(),
             ["nine", "8"],
@@ -668,7 +660,7 @@ mod test {
     fn identity_verifiers_one_identity_matches() {
         let identity = identity();
         let allowed_identities: &[TrustedIdentity] = &[TrustedMrEnclaveIdentity::new(
-            &identity.mr_enclave,
+            identity.mr_enclave,
             ["one", "two"],
             ["three", "four"],
         )
@@ -690,17 +682,17 @@ mod test {
         let identity = identity();
 
         let allowed_identities: &[TrustedIdentity] = &[
-            TrustedMrEnclaveIdentity::new(&[11; 32].into(), ["one", "two"], ["three", "four"])
+            TrustedMrEnclaveIdentity::new([11; 32].into(), ["one", "two"], ["three", "four"])
                 .into(),
             TrustedMrSignerIdentity::new(
-                &identity.mr_signer,
+                identity.mr_signer,
                 identity.isv_product_id,
                 identity.isv_svn,
                 ["one", "two"],
                 ["three", "four"],
             )
             .into(),
-            TrustedMrEnclaveIdentity::new(&identity.mr_enclave, ["two"], ["three", "four"]).into(),
+            TrustedMrEnclaveIdentity::new(identity.mr_enclave, ["two"], ["three", "four"]).into(),
         ];
         let verifier = TrustedIdentitiesVerifier::new(allowed_identities);
         let verification = verifier.verify(&identity);
@@ -745,11 +737,11 @@ mod test {
 
         let allowed_identities: &[TrustedIdentity] = &[
             // Mismatched MRENCLAVE
-            TrustedMrEnclaveIdentity::new(&[11; 32].into(), ["one", "two"], ["three", "four"])
+            TrustedMrEnclaveIdentity::new([11; 32].into(), ["one", "two"], ["three", "four"])
                 .into(),
             // Mismatched MRSIGNER
             TrustedMrSignerIdentity::new(
-                &[12; 32].into(),
+                [12; 32].into(),
                 identity.isv_product_id,
                 identity.isv_svn,
                 ["one", "two"],
@@ -758,7 +750,7 @@ mod test {
             .into(),
             // Mismatched product ID
             TrustedMrSignerIdentity::new(
-                &identity.mr_signer,
+                identity.mr_signer,
                 (identity.isv_product_id.as_ref() - 1).into(),
                 identity.isv_svn,
                 ["one", "two"],
@@ -767,7 +759,7 @@ mod test {
             .into(),
             // Required SVN is greater than the identity's SVN
             TrustedMrSignerIdentity::new(
-                &identity.mr_signer,
+                identity.mr_signer,
                 identity.isv_product_id,
                 (identity.isv_svn.as_ref() + 1).into(),
                 ["one", "two"],
@@ -776,7 +768,7 @@ mod test {
             .into(),
             // Requires an advisory status no worse than AdvisoryStatus::ConfigurationNeeded
             TrustedMrSignerIdentity::new(
-                &identity.mr_signer,
+                identity.mr_signer,
                 identity.isv_product_id,
                 identity.isv_svn,
                 ["one", "two", "three", "four"],
@@ -785,13 +777,13 @@ mod test {
             .into(),
             // Requires an advisory status no worse than AdvisoryStatus::SWHardeningNeeded
             TrustedMrEnclaveIdentity::new(
-                &identity.mr_enclave,
+                identity.mr_enclave,
                 [] as [&str; 0],
                 ["one", "two", "three", "four"],
             )
             .into(),
             // Doesn't allow the "four" advisory id
-            TrustedMrEnclaveIdentity::new(&identity.mr_enclave, ["one", "two"], ["three"]).into(),
+            TrustedMrEnclaveIdentity::new(identity.mr_enclave, ["one", "two"], ["three"]).into(),
         ];
 
         let verifier = TrustedIdentitiesVerifier::new(allowed_identities);

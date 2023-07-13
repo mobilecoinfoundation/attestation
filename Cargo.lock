@@ -549,9 +549,9 @@ dependencies = [
 
 [[package]]
 name = "mc-sgx-core-build"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1784654e22ce8151cc489ab3085ad60fe316b9e622287bdbe2fe5a9e6309ee50"
+checksum = "a29ce004d8e863037cf466e91b5fb7785359cff14878b3f1f5b6ed6ac0a392ca"
 dependencies = [
  "bindgen 0.66.1",
  "cargo-emit",
@@ -559,9 +559,9 @@ dependencies = [
 
 [[package]]
 name = "mc-sgx-core-sys-types"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a677ce030ac497d65bc09db138ea0b0132751ae3c42a8c355036c1fce27b0b94"
+checksum = "bac9ad99ac0bc9cf3d201ae691158b73b5a3c3db4b1a1c32cfd78dbf678fc891"
 dependencies = [
  "bindgen 0.66.1",
  "cargo-emit",
@@ -571,13 +571,14 @@ dependencies = [
 
 [[package]]
 name = "mc-sgx-core-types"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b63a299fb2c7fd97b002e1f336c8e9a3851e239d1bd4747f3e8a1fbb9d6aea8"
+checksum = "366cab7056886ffbeddf1010136e866aaaafe3accc141ff5de56daaf1be625c2"
 dependencies = [
  "bitflags 2.3.3",
  "displaydoc",
  "getrandom",
+ "hex",
  "mc-sgx-core-sys-types",
  "mc-sgx-util",
  "nom",
@@ -587,9 +588,9 @@ dependencies = [
 
 [[package]]
 name = "mc-sgx-dcap-sys-types"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "434b695f211ecf89d04913c1c512d2fbffe8aecd4287d9ffc7c3e5f956f552d5"
+checksum = "edd2aa476ecf1405aa70bea9a2aa5afd1635003048e7b788b1495afc8df18abc"
 dependencies = [
  "bindgen 0.66.1",
  "mc-sgx-core-build",
@@ -598,9 +599,9 @@ dependencies = [
 
 [[package]]
 name = "mc-sgx-dcap-types"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0af155a86381bf02e74f60f957fafca91ada01640ac62a4f12fba41c95fb36bd"
+checksum = "3223a9cd6b52fc88facf3f6ff7c04503cafe9864a7bbb1e5a032b5c7d96b1246"
 dependencies = [
  "const-oid",
  "displaydoc",
@@ -619,9 +620,9 @@ dependencies = [
 
 [[package]]
 name = "mc-sgx-util"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4be2b6aafa233df6bdbb27d46e4badd0de8347c9907081e6a2abfe24fd132455"
+checksum = "736b6f06a9a76c1a73c5ab42e2f8e22e0ca3948e19c6cc3a79852652cc61cda5"
 
 [[package]]
 name = "memchr"
