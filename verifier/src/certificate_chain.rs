@@ -3,11 +3,10 @@
 //! Trait and Error for verifying certificate chains
 
 use der::DateTime;
-use x509_cert::crl::CertificateList;
-use x509_cert::Certificate;
+use x509_cert::{crl::CertificateList, Certificate};
 
 /// Error verifying a certificate chain
-#[derive(displaydoc::Display, Debug, Clone)]
+#[derive(displaydoc::Display, Debug, Clone, PartialEq)]
 pub enum CertificateChainVerifierError {
     /// X509 certificate not yet valid
     CertificateNotYetValid,

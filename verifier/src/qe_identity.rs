@@ -37,17 +37,20 @@
 
 #![allow(dead_code)]
 
-use crate::advisories::AdvisoryStatus;
-use crate::{Accessor, Advisories, Error, VerificationMessage, VerificationOutput, Verifier};
-use alloc::boxed::Box;
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
+use crate::{
+    advisories::AdvisoryStatus, Accessor, Advisories, Error, VerificationMessage,
+    VerificationOutput, Verifier,
+};
+use alloc::{
+    boxed::Box,
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::fmt::Formatter;
 use der::DateTime;
 use mc_sgx_core_sys_types::sgx_attributes_t;
 use mc_sgx_core_types::{Attributes, IsvProductId, IsvSvn, MiscellaneousSelect, MrSigner};
-use p256::ecdsa::signature::Verifier as SignatureVerifier;
-use p256::ecdsa::{Signature, VerifyingKey};
+use p256::ecdsa::{signature::Verifier as SignatureVerifier, Signature, VerifyingKey};
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
@@ -348,10 +351,8 @@ mod test {
     use alloc::{format, vec};
     use assert_matches::assert_matches;
     use der::DateTime;
-    use p256::ecdsa::signature::Signer;
-    use p256::ecdsa::{SigningKey, VerifyingKey};
-    use x509_cert::der::DecodePem;
-    use x509_cert::Certificate;
+    use p256::ecdsa::{signature::Signer, SigningKey, VerifyingKey};
+    use x509_cert::{der::DecodePem, Certificate};
     use yare::parameterized;
 
     fn qe_verifying_key() -> VerifyingKey {

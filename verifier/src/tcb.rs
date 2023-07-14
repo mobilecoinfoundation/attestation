@@ -29,16 +29,15 @@
 
 #![allow(dead_code)]
 
-use crate::advisories::{Advisories, AdvisoryStatus};
-use crate::{Accessor, Error, VerificationMessage, VerificationOutput, Verifier};
-use alloc::boxed::Box;
-use alloc::string::String;
-use alloc::vec::Vec;
+use crate::{
+    advisories::{Advisories, AdvisoryStatus},
+    Accessor, Error, VerificationMessage, VerificationOutput, Verifier,
+};
+use alloc::{boxed::Box, string::String, vec::Vec};
 use core::fmt::Formatter;
 use der::DateTime;
 use mc_sgx_dcap_types::{TcbInfo as PckTcb, COMPONENT_SVN_COUNT, FMSPC_SIZE};
-use p256::ecdsa::signature::Verifier as SignatureVerifier;
-use p256::ecdsa::{Signature, VerifyingKey};
+use p256::ecdsa::{signature::Verifier as SignatureVerifier, Signature, VerifyingKey};
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
@@ -342,8 +341,7 @@ mod tests {
     use crate::VerificationTreeDisplay;
     use alloc::{format, vec};
     use assert_matches::assert_matches;
-    use p256::ecdsa::signature::Signer;
-    use p256::ecdsa::{SigningKey, VerifyingKey};
+    use p256::ecdsa::{signature::Signer, SigningKey, VerifyingKey};
     use x509_cert::{der::DecodePem, Certificate};
     use yare::parameterized;
 

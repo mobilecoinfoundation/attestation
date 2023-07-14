@@ -14,7 +14,7 @@ repository = { workspace = true }
 rust-version = { workspace = true }
 
 [features]
-x509 = ["dep:mbedtls"]
+mbedtls = ["dep:mbedtls"]
 
 [dependencies]
 der = { version = "0.7.7", default-features = false }

@@ -2,14 +2,13 @@
 
 //! The full set of evidence needed for attesting a quote
 
-use crate::identity::TrustedIdentityValue;
-use crate::qe_report_body::QeReportBodyValue;
 use crate::{
-    choice_to_status_message, Accessor, Advisories, CertificateChainVerifier,
-    CertificateChainVerifierError, Error, QeIdentity, QeReportBody, QeReportBodyVerifier,
-    Quote3Verifier, SignedQeIdentity, SignedQeIdentityVerifier, SignedTcbInfo,
-    SignedTcbInfoVerifier, TcbInfo, TrustedIdentitiesVerifier, TrustedIdentity,
-    VerificationMessage, VerificationOutput, Verifier, MESSAGE_INDENT,
+    choice_to_status_message, identity::TrustedIdentityValue, qe_report_body::QeReportBodyValue,
+    Accessor, Advisories, CertificateChainVerifier, CertificateChainVerifierError, Error,
+    QeIdentity, QeReportBody, QeReportBodyVerifier, Quote3Verifier, SignedQeIdentity,
+    SignedQeIdentityVerifier, SignedTcbInfo, SignedTcbInfoVerifier, TcbInfo,
+    TrustedIdentitiesVerifier, TrustedIdentity, VerificationMessage, VerificationOutput, Verifier,
+    MESSAGE_INDENT,
 };
 use alloc::vec::Vec;
 use core::fmt::Formatter;
@@ -20,8 +19,7 @@ use mc_sgx_core_types::{
 };
 use mc_sgx_dcap_types::{CertificationData, Collateral, Quote3, TcbInfo as QuoteTcbInfo};
 use p256::ecdsa::VerifyingKey;
-use x509_cert::crl::CertificateList;
-use x509_cert::Certificate;
+use x509_cert::{crl::CertificateList, Certificate};
 
 /// The full set of evidence needed for verifying a quote
 ///
@@ -445,9 +443,13 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
+    #[cfg(feature = "mbedtls")]
+    use crate::{MbedTlsCertificateChainVerifier, TrustAnchor};
     use crate::{TrustedMrEnclaveIdentity, VerificationTreeDisplay, Verifier};
-    use alloc::format;
-    use alloc::string::{String, ToString};
+    use alloc::{
+        format,
+        string::{String, ToString},
+    };
     use assert_matches::assert_matches;
     use core::mem;
     use mc_sgx_dcap_sys_types::{sgx_ql_ecdsa_sig_data_t, sgx_ql_qve_collateral_t, sgx_quote3_t};
@@ -968,6 +970,47 @@ mod test {
                 - [x] The expected attributes is Flags: INITTED | PROVISION_KEY Xfrm: (none) with mask Flags: 0xFFFF_FFFF_FFFF_FFFB Xfrm: (none)
                 - [x] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [TcbLevel { tcb: Tcb { isv_svn: 8 }, tcb_date: "2023-02-15T00:00:00Z", tcb_status: UpToDate, advisory_ids: [] }, TcbLevel { tcb: Tcb { isv_svn: 6 }, tcb_date: "2021-11-10T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 5 }, tcb_date: "2020-11-11T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 4 }, tcb_date: "2019-11-13T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 2 }, tcb_date: "2019-05-15T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00219", "INTEL-SA-00293", "INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "2018-08-15T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00202", "INTEL-SA-00219", "INTEL-SA-00293", "INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }]
               - [ ] The quote signature did not match provided key
+              - [x] Both of the following must be true:
+                - [x] The MRENCLAVE should be 840d61b0585dc8b4dc90f53af293c760fda06bee75978a6a86263ffb296423f4
+                - [x] The allowed advisories are IDs: {"INTEL-SA-00334", "INTEL-SA-00615"} Status: SWHardeningNeeded"#;
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
+    }
+
+    #[cfg(feature = "mbedtls")]
+    #[test]
+    fn evidence_verifier_succeeds_with_mbedtls_x509_verifier() {
+        let time = valid_test_time();
+        let root_ca = include_str!("../data/tests/root_ca.pem");
+        let trust_anchor = TrustAnchor::try_from_pem(root_ca).expect("Failed to parse root CA");
+        let certificate_verifier = MbedTlsCertificateChainVerifier::new(trust_anchor);
+        let identities = [valid_test_trusted_identity()];
+        let verifier = EvidenceVerifier::new(&certificate_verifier, identities, time);
+        let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
+        let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
+        let collateral = collateral(TCB_INFO_JSON, QE_IDENTITY_JSON);
+        let evidence: Evidence<Vec<u8>> = Evidence::new(quote, collateral)
+            .expect("Failed to create evidence")
+            .into();
+
+        let verification = verifier.verify(&evidence);
+
+        assert_eq!(verification.is_success().unwrap_u8(), 1);
+
+        let displayable = VerificationTreeDisplay::new(&verifier, verification);
+        let expected = r#"
+            - [x] all of the following must be true:
+              - [x] The TCB issuer chain was verified.
+              - [x] The QE identity issuer chain was verified.
+              - [x] The Quote issuer chain was verified.
+              - [x] The TCB info was verified for the provided key
+              - [x] The QE identity was verified for the provided key
+              - [x] QE Report Body all of the following must be true:
+                - [x] The MRSIGNER key hash should be 8c4f5775d796503e96137f77c68a829a0056ac8ded70140b081b094490c57bff
+                - [x] The ISV product ID should be 1
+                - [x] The expected miscellaneous select is 0x0000_0000 with mask 0xFFFF_FFFF
+                - [x] The expected attributes is Flags: INITTED | PROVISION_KEY Xfrm: (none) with mask Flags: 0xFFFF_FFFF_FFFF_FFFB Xfrm: (none)
+                - [x] The ISV SVN should correspond to an `UpToDate` level with no advisories, from: [TcbLevel { tcb: Tcb { isv_svn: 8 }, tcb_date: "2023-02-15T00:00:00Z", tcb_status: UpToDate, advisory_ids: [] }, TcbLevel { tcb: Tcb { isv_svn: 6 }, tcb_date: "2021-11-10T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 5 }, tcb_date: "2020-11-11T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 4 }, tcb_date: "2019-11-13T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 2 }, tcb_date: "2019-05-15T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00219", "INTEL-SA-00293", "INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }, TcbLevel { tcb: Tcb { isv_svn: 1 }, tcb_date: "2018-08-15T00:00:00Z", tcb_status: OutOfDate, advisory_ids: ["INTEL-SA-00202", "INTEL-SA-00219", "INTEL-SA-00293", "INTEL-SA-00334", "INTEL-SA-00477", "INTEL-SA-00615"] }]
+              - [x] The quote was signed with the provided key
               - [x] Both of the following must be true:
                 - [x] The MRENCLAVE should be 840d61b0585dc8b4dc90f53af293c760fda06bee75978a6a86263ffb296423f4
                 - [x] The allowed advisories are IDs: {"INTEL-SA-00334", "INTEL-SA-00615"} Status: SWHardeningNeeded"#;

@@ -1,8 +1,10 @@
 // Copyright (c) 2023 The MobileCoin Foundation
 
 use crate::{Accessor, SpacedStructName, VerificationOutput, Verifier};
-use alloc::collections::BTreeSet;
-use alloc::string::{String, ToString};
+use alloc::{
+    collections::BTreeSet,
+    string::{String, ToString},
+};
 use core::fmt::{Display, Formatter};
 use serde::Deserialize;
 
