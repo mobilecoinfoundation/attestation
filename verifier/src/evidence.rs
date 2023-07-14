@@ -2,14 +2,13 @@
 
 //! The full set of evidence needed for attesting a quote
 
-use crate::identity::TrustedIdentityValue;
-use crate::qe_report_body::QeReportBodyValue;
 use crate::{
-    choice_to_status_message, Accessor, Advisories, CertificateChainVerifier,
-    CertificateChainVerifierError, Error, QeIdentity, QeReportBody, QeReportBodyVerifier,
-    Quote3Verifier, SignedQeIdentity, SignedQeIdentityVerifier, SignedTcbInfo,
-    SignedTcbInfoVerifier, TcbInfo, TrustedIdentitiesVerifier, TrustedIdentity,
-    VerificationMessage, VerificationOutput, Verifier, MESSAGE_INDENT,
+    choice_to_status_message, identity::TrustedIdentityValue, qe_report_body::QeReportBodyValue,
+    Accessor, Advisories, CertificateChainVerifier, CertificateChainVerifierError, Error,
+    QeIdentity, QeReportBody, QeReportBodyVerifier, Quote3Verifier, SignedQeIdentity,
+    SignedQeIdentityVerifier, SignedTcbInfo, SignedTcbInfoVerifier, TcbInfo,
+    TrustedIdentitiesVerifier, TrustedIdentity, VerificationMessage, VerificationOutput, Verifier,
+    MESSAGE_INDENT,
 };
 use alloc::vec::Vec;
 use core::fmt::Formatter;
@@ -20,8 +19,7 @@ use mc_sgx_core_types::{
 };
 use mc_sgx_dcap_types::{CertificationData, Collateral, Quote3, TcbInfo as QuoteTcbInfo};
 use p256::ecdsa::VerifyingKey;
-use x509_cert::crl::CertificateList;
-use x509_cert::Certificate;
+use x509_cert::{crl::CertificateList, Certificate};
 
 /// The full set of evidence needed for verifying a quote
 ///
@@ -445,11 +443,13 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    #[cfg(feature = "x509")]
-    use crate::{TrustAnchor, X509CertificateChainVerifier};
+    #[cfg(feature = "mbedtls")]
+    use crate::{MbedTlsCertificateChainVerifier, TrustAnchor};
     use crate::{TrustedMrEnclaveIdentity, VerificationTreeDisplay, Verifier};
-    use alloc::format;
-    use alloc::string::{String, ToString};
+    use alloc::{
+        format,
+        string::{String, ToString},
+    };
     use assert_matches::assert_matches;
     use core::mem;
     use mc_sgx_dcap_sys_types::{sgx_ql_ecdsa_sig_data_t, sgx_ql_qve_collateral_t, sgx_quote3_t};
@@ -976,13 +976,13 @@ mod test {
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
-    #[cfg(feature = "x509")]
+    #[cfg(feature = "mbedtls")]
     #[test]
     fn evidence_verifier_succeeds_with_mbedtls_x509_verifier() {
         let time = valid_test_time();
         let root_ca = include_str!("../data/tests/root_ca.pem");
         let trust_anchor = TrustAnchor::try_from_pem(root_ca).expect("Failed to parse root CA");
-        let certificate_verifier = X509CertificateChainVerifier::new(trust_anchor);
+        let certificate_verifier = MbedTlsCertificateChainVerifier::new(trust_anchor);
         let identities = [valid_test_trusted_identity()];
         let verifier = EvidenceVerifier::new(&certificate_verifier, identities, time);
         let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");

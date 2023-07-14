@@ -11,14 +11,14 @@ mod certificate_chain;
 mod error;
 mod evidence;
 mod identity;
+#[cfg(feature = "mbedtls")]
+mod mbedtls;
 mod qe_identity;
 mod qe_report_body;
 mod quote;
 mod report_body;
 mod struct_name;
 mod tcb;
-#[cfg(feature = "x509")]
-mod x509;
 
 pub use advisories::{Advisories, AdvisoriesVerifier, AdvisoryStatus};
 pub use certificate_chain::{CertificateChainVerifier, CertificateChainVerifierError};
@@ -41,12 +41,14 @@ pub use report_body::{
 
 pub use tcb::{SignedTcbInfo, SignedTcbInfoVerifier, TcbInfo};
 
-#[cfg(feature = "x509")]
-pub use x509::{Error as X509Error, TrustAnchor, X509CertificateChainVerifier};
+#[cfg(feature = "mbedtls")]
+pub use crate::mbedtls::{Error as MbedTlsError, MbedTlsCertificateChainVerifier, TrustAnchor};
 
 use crate::struct_name::SpacedStructName;
-use core::fmt::{Debug, Display, Formatter};
-use core::ops::BitAnd;
+use core::{
+    fmt::{Debug, Display, Formatter},
+    ops::BitAnd,
+};
 use subtle::Choice;
 
 /// Number of spaces to indent nested messages.

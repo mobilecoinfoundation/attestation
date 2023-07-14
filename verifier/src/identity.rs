@@ -7,16 +7,16 @@
 //! [Intel SGX ECDSA QuoteLibReference DCAP API](https://download.01.org/intel-sgx/sgx-dcap/1.16/linux/docs/Intel_SGX_ECDSA_QuoteLibReference_DCAP_API.pdf#%5B%7B%22num%22%3A63%2C%22gen%22%3A0%7D%2C%7B%22name%22%3A%22XYZ%22%7D%2C69%2C468%2C0%5D)
 //! documents the identity types, Strict Policy and Security Policy.
 
-use crate::report_body::MrSignerValue;
-use crate::struct_name::SpacedStructName;
 use crate::{
-    Accessor, Advisories, AdvisoriesVerifier, AdvisoryStatus, And, AndOutput, MrEnclaveVerifier,
-    MrSignerVerifier, VerificationMessage, VerificationOutput, Verifier, MESSAGE_INDENT,
+    report_body::MrSignerValue, struct_name::SpacedStructName, Accessor, Advisories,
+    AdvisoriesVerifier, AdvisoryStatus, And, AndOutput, MrEnclaveVerifier, MrSignerVerifier,
+    VerificationMessage, VerificationOutput, Verifier, MESSAGE_INDENT,
 };
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
-use core::fmt::Formatter;
-use core::ops::Not;
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
+use core::{fmt::Formatter, ops::Not};
 use mc_sgx_core_types::{IsvProductId, IsvSvn, MrEnclave, MrSigner};
 use serde::{Deserialize, Serialize};
 

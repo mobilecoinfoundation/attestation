@@ -226,8 +226,7 @@ pub type ReportDataVerifier = MaskedVerifier<ReportData>;
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::struct_name::SpacedStructName;
-    use crate::{And, VerificationTreeDisplay};
+    use crate::{struct_name::SpacedStructName, And, VerificationTreeDisplay};
     use alloc::{format, string::ToString};
     use mc_sgx_core_sys_types::{
         sgx_attributes_t, sgx_cpu_svn_t, sgx_measurement_t, sgx_report_body_t, sgx_report_data_t,

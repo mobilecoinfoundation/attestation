@@ -2,13 +2,14 @@
 
 //! Verification of a QE(Quoting Enclave) report body.
 
-use crate::qe_identity::{QeIdentity, TcbLevel};
-use crate::report_body::MrSignerKeyVerifier;
-use crate::struct_name::SpacedStructName;
 use crate::{
-    choice_to_status_message, Accessor, Advisories, AdvisoriesVerifier, AdvisoryStatus,
-    AttributesVerifier, IsvProductIdVerifier, MiscellaneousSelectVerifier, VerificationMessage,
-    VerificationOutput, Verifier, MESSAGE_INDENT,
+    choice_to_status_message,
+    qe_identity::{QeIdentity, TcbLevel},
+    report_body::MrSignerKeyVerifier,
+    struct_name::SpacedStructName,
+    Accessor, Advisories, AdvisoriesVerifier, AdvisoryStatus, AttributesVerifier,
+    IsvProductIdVerifier, MiscellaneousSelectVerifier, VerificationMessage, VerificationOutput,
+    Verifier, MESSAGE_INDENT,
 };
 use alloc::vec::Vec;
 use core::fmt::{Display, Formatter};
@@ -274,10 +275,11 @@ impl VerificationMessage<(IsvSvn, Option<TcbLevel>)> for QeIsvSvnVerifier {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::qe_identity::{SignedQeIdentity, Tcb};
-    use crate::VerificationTreeDisplay;
-    use alloc::format;
-    use alloc::string::ToString;
+    use crate::{
+        qe_identity::{SignedQeIdentity, Tcb},
+        VerificationTreeDisplay,
+    };
+    use alloc::{format, string::ToString};
     use mc_sgx_core_sys_types::sgx_report_body_t;
     use mc_sgx_core_types::AttributeFlags;
     use mc_sgx_dcap_types::Quote3;
