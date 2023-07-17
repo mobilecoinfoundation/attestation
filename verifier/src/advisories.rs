@@ -6,7 +6,7 @@ use alloc::{
     string::{String, ToString},
 };
 use core::fmt::{Display, Formatter};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// The status of a set of advisories
 ///
@@ -19,7 +19,7 @@ use serde::Deserialize;
 /// use mc_attestation_verifier::AdvisoryStatus;
 /// assert!(AdvisoryStatus::UpToDate > AdvisoryStatus::SWHardeningNeeded);
 /// ```
-#[derive(Debug, PartialEq, Eq, PartialOrd, Hash, Copy, Clone, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum AdvisoryStatus {
     /// TCB level of SGX platform is revoked. The platform is not trustworthy.
     Revoked,
@@ -44,7 +44,7 @@ pub enum AdvisoryStatus {
 }
 
 /// The advisories pertaining to a TCB(Trusted Computing Base).
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, Clone, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct Advisories {
     ids: BTreeSet<String>,
     status: AdvisoryStatus,
