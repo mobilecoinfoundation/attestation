@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 /// use mc_attestation_verifier::AdvisoryStatus;
 /// assert!(AdvisoryStatus::UpToDate > AdvisoryStatus::SWHardeningNeeded);
 /// ```
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub enum AdvisoryStatus {
     /// TCB level of SGX platform is revoked. The platform is not trustworthy.
     Revoked,
@@ -40,11 +40,12 @@ pub enum AdvisoryStatus {
     /// enclaves may be needed.
     SWHardeningNeeded,
     /// TCB level of the SGX platform is up-to-date.
+    #[default]
     UpToDate,
 }
 
 /// The advisories pertaining to a TCB(Trusted Computing Base).
-#[derive(Debug, Clone, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct Advisories {
     ids: BTreeSet<String>,
     status: AdvisoryStatus,
