@@ -45,7 +45,7 @@ pub enum AdvisoryStatus {
 }
 
 /// The advisories pertaining to a TCB(Trusted Computing Base).
-#[derive(Debug, Default, Clone, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Debug, Default, Clone, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct Advisories {
     ids: BTreeSet<String>,
     status: AdvisoryStatus,
