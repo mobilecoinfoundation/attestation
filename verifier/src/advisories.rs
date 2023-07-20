@@ -19,7 +19,9 @@ use serde::{Deserialize, Serialize};
 /// use mc_attestation_verifier::AdvisoryStatus;
 /// assert!(AdvisoryStatus::UpToDate > AdvisoryStatus::SWHardeningNeeded);
 /// ```
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(
+    Clone, Copy, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
+)]
 pub enum AdvisoryStatus {
     /// TCB level of SGX platform is revoked. The platform is not trustworthy.
     Revoked,
