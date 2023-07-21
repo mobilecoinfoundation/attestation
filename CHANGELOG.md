@@ -12,9 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
- - Added `Serialize` and `Default` traits to `AdvisoryStatus` and `Advisories`
- - Added `Deserialize` trait to `Advisories`
- - Added `Ord` trait to `AdvisoryStatus`
+- Added `Serialize` and `Default` traits to `AdvisoryStatus` and `Advisories`
+- Added `Deserialize` trait to `Advisories`
+- Added `Ord` trait to `AdvisoryStatus`
 
 ## [0.1.0] - 2023-07-13
 
