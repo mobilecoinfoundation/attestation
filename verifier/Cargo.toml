@@ -28,7 +28,7 @@ p256 = { version = "0.13.0", default-features = false, features = ["ecdsa"] }
 serde = { version = "1.0.162", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.103", default-features = false, features = ["alloc", "raw_value"] }
 subtle = { version = "2.4.0", default-features = false }
-x509-cert = { version = "0.2.3", default-features = false, features = ["pem"] }
+x509-cert = { version = "0.2.4", default-features = false, features = ["pem"] }
 
 [dev-dependencies]
 assert_matches = "1.5.0"
