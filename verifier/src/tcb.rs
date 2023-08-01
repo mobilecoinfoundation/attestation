@@ -38,7 +38,7 @@ use core::fmt::Formatter;
 use der::DateTime;
 use mc_sgx_dcap_types::{TcbInfo as PckTcb, COMPONENT_SVN_COUNT, FMSPC_SIZE};
 use p256::ecdsa::{signature::Verifier as SignatureVerifier, Signature, VerifyingKey};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
 const TCB_INFO_VERSION: u32 = 3;
@@ -223,7 +223,7 @@ pub struct TcbComponent {
 /// <https://api.trustedservices.intel.com/sgx/certification/v4/tcb?fmspc={}>
 ///
 /// Due to the way the TCB info is signed the contents should be provided as is.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignedTcbInfo {
     tcb_info: Box<RawValue>,

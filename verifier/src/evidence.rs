@@ -19,6 +19,7 @@ use mc_sgx_core_types::{
 };
 use mc_sgx_dcap_types::{CertificationData, Collateral, Quote3, TcbInfo as QuoteTcbInfo};
 use p256::ecdsa::VerifyingKey;
+use serde::{Deserialize, Serialize};
 use x509_cert::{crl::CertificateList, Certificate};
 
 /// The full set of evidence needed for verifying a quote
@@ -30,8 +31,8 @@ use x509_cert::{crl::CertificateList, Certificate};
 ///
 /// Importantly this will derive the [`Advisories`] related to the provided
 /// `quote` and `collateral`, so that one can verify the allowed advisories.
-#[derive(Debug, Clone)]
-pub struct Evidence<Q> {
+#[derive(Debug, Deserialize, Clone, Serialize)]
+pub struct Evidence<Q: AsRef<[u8]>> {
     quote: Quote3<Q>,
     signed_tcb_info: SignedTcbInfo,
     signed_qe_identity: SignedQeIdentity,
@@ -76,25 +77,25 @@ impl From<Evidence<&[u8]>> for Evidence<Vec<u8>> {
     }
 }
 
-impl<Q> Accessor<SignedQeIdentity> for Evidence<Q> {
+impl<Q: AsRef<[u8]>> Accessor<SignedQeIdentity> for Evidence<Q> {
     fn get(&self) -> SignedQeIdentity {
         self.signed_qe_identity.clone()
     }
 }
 
-impl<Q> Accessor<SignedTcbInfo> for Evidence<Q> {
+impl<Q: AsRef<[u8]>> Accessor<SignedTcbInfo> for Evidence<Q> {
     fn get(&self) -> SignedTcbInfo {
         self.signed_tcb_info.clone()
     }
 }
 
-impl<Q: Clone> Accessor<Quote3<Q>> for Evidence<Q> {
+impl<Q: AsRef<[u8]> + Clone> Accessor<Quote3<Q>> for Evidence<Q> {
     fn get(&self) -> Quote3<Q> {
         self.quote.clone()
     }
 }
 
-impl<Q> Accessor<Advisories> for Evidence<Q> {
+impl<Q: AsRef<[u8]>> Accessor<Advisories> for Evidence<Q> {
     fn get(&self) -> Advisories {
         self.advisories.clone()
     }

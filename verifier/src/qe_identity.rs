@@ -51,7 +51,7 @@ use der::DateTime;
 use mc_sgx_core_sys_types::sgx_attributes_t;
 use mc_sgx_core_types::{Attributes, IsvProductId, IsvSvn, MiscellaneousSelect, MrSigner};
 use p256::ecdsa::{signature::Verifier as SignatureVerifier, Signature, VerifyingKey};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 
 const QE_IDENTITY_VERSION: u32 = 2;
@@ -64,7 +64,7 @@ const UNIX_TIME_STR: &str = "1970-01-01T00:00:00Z";
 ///
 /// The identity can be retrieved from,
 /// <https://api.trustedservices.intel.com/sgx/certification/v4/qe/identity?update=standard>
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QeIdentity {
     id: String,
@@ -175,7 +175,7 @@ impl TryFrom<&SignedQeIdentity> for QeIdentity {
     }
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TcbLevel {
     tcb: Tcb,
@@ -208,7 +208,7 @@ impl TcbLevel {
     }
 }
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Clone, PartialEq, Serialize)]
 pub struct Tcb {
     #[serde(rename = "isvsvn")]
     isv_svn: u16,
@@ -228,7 +228,7 @@ impl Tcb {
 /// <https://api.portal.trustedservices.intel.com/documentation#pcs-enclave-identity-v4>
 /// The `enclave_identity` field is kept as a raw JSON value to be able to verify the
 /// signature.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignedQeIdentity {
     enclave_identity: Box<RawValue>,

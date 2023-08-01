@@ -21,6 +21,11 @@ lto = "thin"
 # mbedtls patched to allow certificate verification with a profile
 mbedtls = { git = "https://github.com/mobilecoinfoundation/rust-mbedtls.git", rev = "6d8fe323a3292f87a6bce4b35963d47139a583f9" }
 mbedtls-sys-auto = { git = "https://github.com/mobilecoinfoundation/rust-mbedtls.git", rev = "6d8fe323a3292f87a6bce4b35963d47139a583f9" }
+#TODO: release and remove patch
+mc-sgx-core-types = { git = "https://github.com/mobilecoinfoundation/sgx.git", rev = "9b40ceb60ba78da7a608d842656848e8f6f36b8b" }
+mc-sgx-core-sys-types = { git = "https://github.com/mobilecoinfoundation/sgx.git", rev = "9b40ceb60ba78da7a608d842656848e8f6f36b8b" }
+mc-sgx-dcap-types = { git = "https://github.com/mobilecoinfoundation/sgx.git", rev = "9b40ceb60ba78da7a608d842656848e8f6f36b8b" }
+mc-sgx-dcap-sys-types = { git = "https://github.com/mobilecoinfoundation/sgx.git", rev = "9b40ceb60ba78da7a608d842656848e8f6f36b8b" }
 
 [workspace.metadata.release]
 shared-version = true
