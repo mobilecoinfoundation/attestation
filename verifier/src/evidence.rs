@@ -360,6 +360,10 @@ impl<'a, C: CertificateChainVerifier, E: Accessor<Evidence<Vec<u8>>>> Verifier<E
     }
 }
 
+/// The result of verifying [`Evidence`].
+///
+/// This will normally be provided in a `VerificationOutput`. Use the `VerificationTreeDisplay` to
+/// interpret the contents.
 #[derive(Debug)]
 pub struct EvidenceValue {
     tcb_signing_key: VerificationOutput<Option<CertificateChainVerifierError>>,

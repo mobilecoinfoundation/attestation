@@ -23,7 +23,7 @@ mod tcb;
 pub use advisories::{Advisories, AdvisoriesVerifier, AdvisoryStatus};
 pub use certificate_chain::{CertificateChainVerifier, CertificateChainVerifierError};
 pub use error::Error;
-pub use evidence::{Evidence, EvidenceVerifier};
+pub use evidence::{Evidence, EvidenceValue, EvidenceVerifier};
 
 pub use identity::{
     TrustedIdentitiesVerifier, TrustedIdentity, TrustedMrEnclaveIdentity, TrustedMrSignerIdentity,
