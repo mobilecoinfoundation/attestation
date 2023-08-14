@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- `EvidenceValue` is exposed as a public type.
+
+### Changed
+
+- `EvidenceVerifier` now takes ownership of the provided `CertificateChainVerifier`.
+
 ## [0.2.0] - 2023-07-21
 
 ### Added
