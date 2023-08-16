@@ -17,5 +17,5 @@ SGX Enclave Attestation Report Verification
 [crate-link]: https://crates.io/crates/mc-attestation-verifier
 [docs-image]: https://img.shields.io/docsrs/mc-attestation-verifier?style=flat-square
 [docs-link]: https://docs.rs/crate/mc-attestation-verifier
-[deps-image]: https://deps.rs/crate/mc-attestation-verifier/0.1.0/status.svg?style=flat-square
-[deps-link]: https://deps.rs/crate/mc-attestation-verifier/0.1.0
+[deps-image]: https://deps.rs/crate/mc-attestation-verifier/0.3.0/status.svg?style=flat-square
+[deps-link]: https://deps.rs/crate/mc-attestation-verifier/0.3.0
