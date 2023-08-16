@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+## [0.3.1] - 2023-08-16
+
 ### Added
 
 - Export constructs to assist in using custom `Verifier`s with
@@ -52,7 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Initial release of attestation verifier crate
 
 <!-- next-url -->
-[Unreleased]: https://github.com/mobilecoinfoundation/attestation/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/mobilecoinfoundation/attestation/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/mobilecoinfoundation/attestation/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/mobilecoinfoundation/attestation/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/mobilecoinfoundation/attestation/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mobilecoinfoundation/sgx/compare/v0.1.0
