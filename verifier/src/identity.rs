@@ -9,8 +9,8 @@
 
 use crate::{
     report_body::MrSignerValue, struct_name::SpacedStructName, Accessor, Advisories,
-    AdvisoriesVerifier, AdvisoryStatus, And, AndOutput, MrEnclaveVerifier, MrSignerVerifier,
-    VerificationMessage, VerificationOutput, Verifier, MESSAGE_INDENT,
+    AdvisoriesVerifier, AdvisoryStatus, AlwaysTrue, And, AndOutput, MrEnclaveVerifier,
+    MrSignerVerifier, VerificationMessage, VerificationOutput, Verifier, MESSAGE_INDENT,
 };
 use alloc::{
     string::{String, ToString},
@@ -193,6 +193,12 @@ pub enum TrustedIdentity {
     MrEnclave(TrustedMrEnclaveIdentity),
     /// MRSIGNER identity type
     MrSigner(TrustedMrSignerIdentity),
+    /// Use with caution, indicates that identity is allowed.
+    /// The same as ignoring the identity when verifying the enclave quote.
+    // We skip with serde to prevent defaulting to `Any`.
+    // Unfortunately `serde(rename = "Any")` doesn't work here.
+    #[serde(skip)]
+    Any,
 }
 
 impl From<&TrustedIdentity> for TrustedIdentity {
@@ -329,6 +335,7 @@ impl VerificationMessage<TrustedIdentityValue> for TrustedIdentitiesVerifier {
 enum TrustedIdentityVerifier {
     MrEnclave(And<MrEnclaveVerifier, AdvisoriesVerifier>),
     MrSigner(And<MrSignerVerifier, AdvisoriesVerifier>),
+    Any(AlwaysTrue),
 }
 
 impl TrustedIdentityVerifier {
@@ -347,6 +354,16 @@ impl TrustedIdentityVerifier {
             Self::MrSigner(verifier) => {
                 let result = verifier.verify(identity);
                 verifier.fmt_padded(f, pad, &result)
+            }
+            Self::Any(_) => {
+                let status = crate::choice_to_status_message(1.into());
+                writeln!(
+                    f,
+                    "{:pad$}{status} Any enclave identity is allowed. Enclave identity is:",
+                    ""
+                )?;
+                let pad = pad + MESSAGE_INDENT;
+                identity.fmt_padded(f, pad)
             }
         }
     }
@@ -367,6 +384,7 @@ impl From<TrustedIdentity> for TrustedIdentityVerifier {
                 ),
                 AdvisoriesVerifier::new(mr_signer.advisories()),
             )),
+            TrustedIdentity::Any => Self::Any(AlwaysTrue),
         }
     }
 }
@@ -399,6 +417,11 @@ where
                     is_success,
                 )
             }
+            Self::Any(verifier) => {
+                let result = verifier.verify(evidence);
+                let is_success = result.is_success();
+                VerificationOutput::new(TrustedIdentityValue::Any(evidence.into()), is_success)
+            }
         }
     }
 }
@@ -414,6 +437,7 @@ pub enum TrustedIdentityValue {
         And<MrSignerVerifier, AdvisoriesVerifier>,
         VerificationOutput<AndOutput<MrSignerValue, Advisories>>,
     ),
+    Any(IdentityOutput),
 }
 
 impl TrustedIdentityValue {
@@ -422,6 +446,9 @@ impl TrustedIdentityValue {
             Self::Identity(identity) => identity.fmt_padded(f, pad),
             Self::MrEnclave(verifier, value) => verifier.fmt_padded(f, pad, value),
             Self::MrSigner(verifier, value) => verifier.fmt_padded(f, pad, value),
+            Self::Any(identity) => {
+                TrustedIdentityVerifier::Any(AlwaysTrue).fmt_padded(f, pad, identity)
+            }
         }
     }
 }
@@ -526,6 +553,8 @@ mod test {
     use super::*;
     use crate::VerificationTreeDisplay;
     use alloc::format;
+    use assert_matches::assert_matches;
+    use yare::parameterized;
 
     /// An identity for use in tests.
     ///
@@ -833,5 +862,35 @@ mod test {
                 - [x] The MRENCLAVE should be 0101010101010101010101010101010101010101010101010101010101010101
                 - [ ] The allowed advisories are IDs: {"one", "three", "two"} Status: ConfigurationAndSWHardeningNeeded, but the actual advisories was IDs: {"four", "one", "three", "two"} Status: ConfigurationAndSWHardeningNeeded"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
+    }
+
+    #[test]
+    fn any_identity_matches() {
+        let identity = identity();
+        let allowed_identities: &[TrustedIdentity] = &[TrustedIdentity::Any];
+        let verifier = TrustedIdentitiesVerifier::new(allowed_identities);
+        let verification = verifier.verify(&identity);
+        assert_eq!(verification.is_success().unwrap_u8(), 1);
+
+        let displayable = VerificationTreeDisplay::new(&verifier, verification);
+        let expected = r#"
+            - [x] Any enclave identity is allowed. Enclave identity is:
+              - MRENCLAVE: 0101010101010101010101010101010101010101010101010101010101010101
+              - MRSIGNER key hash: 0202020202020202020202020202020202020202020202020202020202020202
+              - ISV product ID: 3
+              - ISV SVN: 4
+              - advisories: IDs: {"four", "one", "three", "two"} Status: ConfigurationAndSWHardeningNeeded"#;
+
+        assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
+    }
+
+    #[parameterized(
+    // Without `#[serde(skip)]` on the `Any` variant, it came back as `null`
+    null = { "null" },
+    empty = {""}
+    )]
+    fn defaults_do_not_serialize_to_the_any_identity(json: &str) {
+        let result = serde_json::from_slice::<TrustedIdentity>(json.as_bytes());
+        assert_matches!(result, Err(_));
     }
 }
