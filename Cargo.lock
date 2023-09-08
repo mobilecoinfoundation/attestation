@@ -245,6 +245,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "darling"
+version = "0.20.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0209d94da627ab5605dcccf08bb18afa5009cfbef48d8a8b7d7bdbc79be25c5e"
+dependencies = [
+ "darling_core",
+ "darling_macro",
+]
+
+[[package]]
+name = "darling_core"
+version = "0.20.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "177e3443818124b357d8e76f53be906d60937f0d3a90773a664fa63fa253e621"
+dependencies = [
+ "fnv",
+ "ident_case",
+ "proc-macro2",
+ "quote",
+ "strsim",
+ "syn 2.0.25",
+]
+
+[[package]]
+name = "darling_macro"
+version = "0.20.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "836a9bbc7ad63342d6d6e7b815ccab164bc77a2d95d84bc3117a8c0d5c98e2d5"
+dependencies = [
+ "darling_core",
+ "quote",
+ "syn 2.0.25",
+]
+
+[[package]]
 name = "der"
 version = "0.7.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -346,6 +381,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cda653ca797810c02f7ca4b804b40b8b95ae046eb989d356bce17919a8c25499"
 
 [[package]]
+name = "fnv"
+version = "1.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
+
+[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -442,6 +483,12 @@ checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
 dependencies = [
  "cc",
 ]
+
+[[package]]
+name = "ident_case"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "itoa"
@@ -549,9 +596,9 @@ dependencies = [
 
 [[package]]
 name = "mc-sgx-core-build"
-version = "0.7.1"
+version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a29ce004d8e863037cf466e91b5fb7785359cff14878b3f1f5b6ed6ac0a392ca"
+checksum = "0c2cb4f96865f22afd3125d60d9640ba91f50f3eb1bfba5cc1742d28f952d161"
 dependencies = [
  "bindgen 0.66.1",
  "cargo-emit",
@@ -559,21 +606,22 @@ dependencies = [
 
 [[package]]
 name = "mc-sgx-core-sys-types"
-version = "0.7.1"
+version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bac9ad99ac0bc9cf3d201ae691158b73b5a3c3db4b1a1c32cfd78dbf678fc891"
+checksum = "61e974f10ecf0d0c644e62a44ba8ffb679b0f4c16db3d57662e6ce04adf786a3"
 dependencies = [
  "bindgen 0.66.1",
  "cargo-emit",
  "mc-sgx-core-build",
  "serde",
+ "serde_with",
 ]
 
 [[package]]
 name = "mc-sgx-core-types"
-version = "0.7.1"
+version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "366cab7056886ffbeddf1010136e866aaaafe3accc141ff5de56daaf1be625c2"
+checksum = "a784b4f08b8eecfb178b45ef151ba0a398b184bf11169f07cce6835381ff57eb"
 dependencies = [
  "bitflags 2.3.3",
  "displaydoc",
@@ -584,13 +632,14 @@ dependencies = [
  "nom",
  "rand_core",
  "serde",
+ "subtle",
 ]
 
 [[package]]
 name = "mc-sgx-dcap-sys-types"
-version = "0.7.1"
+version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edd2aa476ecf1405aa70bea9a2aa5afd1635003048e7b788b1495afc8df18abc"
+checksum = "f3c431199bc5e06a88b859aeecabe752e77f2da7583d3675ae27566e68291b64"
 dependencies = [
  "bindgen 0.66.1",
  "mc-sgx-core-build",
@@ -599,9 +648,9 @@ dependencies = [
 
 [[package]]
 name = "mc-sgx-dcap-types"
-version = "0.7.1"
+version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3223a9cd6b52fc88facf3f6ff7c04503cafe9864a7bbb1e5a032b5c7d96b1246"
+checksum = "cc432f849d882455b2ba51b33face35f96e25929179e9327375b9ab0d0abcd7e"
 dependencies = [
  "const-oid",
  "displaydoc",
@@ -620,9 +669,9 @@ dependencies = [
 
 [[package]]
 name = "mc-sgx-util"
-version = "0.7.1"
+version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "736b6f06a9a76c1a73c5ab42e2f8e22e0ca3948e19c6cc3a79852652cc61cda5"
+checksum = "3f913f943bb5a925308f4e741d85234d2d8090dc6fc35ed9eae7cd885891b383"
 
 [[package]]
 name = "memchr"
@@ -879,6 +928,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_with"
+version = "3.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ca3b16a3d82c4088f343b7480a93550b3eabe1a358569c2dfe38bbcead07237"
+dependencies = [
+ "serde",
+ "serde_with_macros",
+]
+
+[[package]]
+name = "serde_with_macros"
+version = "3.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e6be15c453eb305019bfa438b1593c731f36a289a7853f7707ee29e870b3b3c"
+dependencies = [
+ "darling",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.25",
+]
+
+[[package]]
 name = "sha2"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -932,6 +1003,12 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
+name = "strsim"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
 name = "subtle"
