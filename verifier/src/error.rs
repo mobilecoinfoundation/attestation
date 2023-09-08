@@ -2,15 +2,17 @@
 
 //! Errors that can occur during verification
 
+use alloc::string::{String, ToString};
 use mc_sgx_dcap_types::TcbError;
+use serde::{Deserialize, Serialize};
 
 /// Error working with quote evidence
-#[derive(displaydoc::Display, Debug)]
+#[derive(displaydoc::Display, Debug, Clone, Serialize, Deserialize)]
 pub enum Error {
     /// Error converting from DER {0}
-    Der(der::Error),
+    Der(String),
     /// Error parsing TCB(Trusted Computing Base) json info: {0}
-    Serde(serde_json::Error),
+    Serde(String),
     /// Error decoding the signature in the TCB data
     SignatureDecodeError,
     /// Error verifying the signature
@@ -43,13 +45,13 @@ pub enum Error {
 
 impl From<der::Error> for Error {
     fn from(e: der::Error) -> Self {
-        Error::Der(e)
+        Error::Der(e.to_string())
     }
 }
 
 impl From<serde_json::Error> for Error {
     fn from(e: serde_json::Error) -> Self {
-        Error::Serde(e)
+        Error::Serde(e.to_string())
     }
 }
 
