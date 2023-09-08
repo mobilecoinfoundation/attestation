@@ -60,3 +60,26 @@ impl From<TcbError> for Error {
         Error::Quote3TcbInfo(e)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use assert_matches::assert_matches;
+
+    #[test]
+    fn serde_error_to_string() {
+        let bad_json = "not json";
+        let e = serde_json::from_str::<serde_json::Value>(bad_json).unwrap_err();
+        let serde_error_message = e.to_string();
+        let err = Error::from(e);
+        assert_matches!(err, Error::Serde(message) if message.contains(&serde_error_message));
+    }
+
+    #[test]
+    fn der_error_to_string() {
+        let e = der::Error::incomplete(1u8.into());
+        let der_error_message = e.to_string();
+        let err = Error::from(e);
+        assert_matches!(err, Error::Der(message) if message.contains(&der_error_message));
+    }
+}
