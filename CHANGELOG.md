@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- `Clone`, `PartialEq`, `Serialize`, and `Deserialize` to `Error`.
+
+### Changed
+
+- `Error::Der` and `Error::Serde` variants now contain an inner `String`. This
+  allows the `Error` type to be serializable, cloneable, and compared for
+equivalence.
+
 ## [0.3.1] - 2023-08-16
 
 ### Added
