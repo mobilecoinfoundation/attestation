@@ -23,7 +23,7 @@ mod tcb;
 pub use advisories::{Advisories, AdvisoriesVerifier, AdvisoryStatus};
 pub use certificate_chain::{CertificateChainVerifier, CertificateChainVerifierError};
 pub use error::Error;
-pub use evidence::{Evidence, EvidenceVerifier};
+pub use evidence::{Evidence, EvidenceValue, EvidenceVerifier};
 
 pub use identity::{
     TrustedIdentitiesVerifier, TrustedIdentity, TrustedMrEnclaveIdentity, TrustedMrSignerIdentity,
@@ -51,8 +51,8 @@ use core::{
 };
 use subtle::Choice;
 
-/// Number of spaces to indent nested messages.
-const MESSAGE_INDENT: usize = 2;
+/// Number of spaces to indent nested [`VerificationMessage`]s.
+pub const MESSAGE_INDENT: usize = 2;
 
 /// Success checkbox indicator
 const SUCCESS_MESSAGE_INDICATOR: &str = "- [x]";
@@ -60,7 +60,29 @@ const SUCCESS_MESSAGE_INDICATOR: &str = "- [x]";
 /// Failure checkbox indicator
 const FAILURE_MESSAGE_INDICATOR: &str = "- [ ]";
 
-pub(crate) fn choice_to_status_message(choice: Choice) -> &'static str {
+/// Provides a success/fail indicator to [`VerificationMessage`] implementations
+///
+/// ```
+/// use core::fmt::{Display, Formatter};
+/// use mc_attestation_verifier::choice_to_status_message;
+/// use subtle::Choice;
+///
+/// pub struct Foo(Choice);
+///
+/// impl Display for Foo {
+///     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+///         let status = choice_to_status_message(self.0);
+///         write!(f, "{status} some message here")
+///     }
+/// }
+///
+/// let fail = Foo(0.into());
+/// assert_eq!(fail.to_string(), "- [ ] some message here");
+///
+/// let success = Foo(1.into());
+/// assert_eq!(success.to_string(), "- [x] some message here");
+/// ```
+pub fn choice_to_status_message(choice: Choice) -> &'static str {
     if choice.into() {
         SUCCESS_MESSAGE_INDICATOR
     } else {
@@ -137,7 +159,42 @@ impl<'a, V: VerificationMessage<O>, O> Display for VerificationTreeDisplay<'a, V
     }
 }
 
-trait VerificationMessage<O> {
+/// An interface for displaying the result of a verification step via the
+/// [`VerificationTreeDisplay`].
+///
+/// Implementations should make use [`choice_to_status_message`] and [`MESSAGE_INDENT`] for
+/// consistency.
+/// The [`choice_to_status_message`] should be used to provide a prefix that communicates success
+/// or failure.
+/// The [`MESSAGE_INDENT`] should be used to increase `pad` for any nested verification steps that
+/// are to be included in the verification message.
+///
+/// ```ignore
+///
+/// pub struct SomeVerifier {
+///     nested_field: AnotherVerifierType,
+/// }
+///
+/// pub struct SomeOutputType {
+///     nested_result: VerificationOutput<AnotherOutputType>,
+/// }
+///
+/// impl VerificationMessage<SomeOutputType> for SomeVerifier
+/// {                                                                   
+///     fn fmt_padded(                                                  
+///         &self,                                                      
+///         f: &mut Formatter<'_>,                                      
+///         pad: usize,                                                 
+///         result: &VerificationOutput<SomeOutputType>,                  
+///     ) -> core::fmt::Result {                                        
+///         let status = choice_to_status_message(result.is_success());
+///         writeln!(f, "{:pad$}{status} {self}:", "")?;                  
+///         let pad = pad + MESSAGE_INDENT;                             
+///         self.nested_field.fmt_padded(f, pad, &result.value.nested_result)       
+///     }                                                               
+/// }                                                                   
+/// ```
+pub trait VerificationMessage<O> {
     /// Format this verification phase.
     ///
     /// # Arguments

@@ -171,13 +171,13 @@ quote_application_report_body_field_accessor! {
 /// - verifying the signature of the Quote
 /// - verifying the [`TrustedIdentity`] of the application enclave
 #[derive(Debug)]
-pub struct EvidenceVerifier<'a, C> {
-    certificate_verifier: &'a C,
+pub struct EvidenceVerifier<C> {
+    certificate_verifier: C,
     trusted_identities: Vec<TrustedIdentity>,
     time: Option<DateTime>,
 }
 
-impl<'a, C> EvidenceVerifier<'a, C>
+impl<C> EvidenceVerifier<C>
 where
     C: CertificateChainVerifier,
 {
@@ -192,7 +192,7 @@ where
     /// * `time` - The time to use for verifying the evidence. In particular the TCB Info and QE
     ///   identity have expiry times that need to be verified. Note: that the `certificate_verifier`
     ///   will also be passed this time.
-    pub fn new<I, ID>(certificate_verifier: &'a C, trusted_identities: I, time: Option<DateTime>) -> Self
+    pub fn new<I, ID>(certificate_verifier: C, trusted_identities: I, time: Option<DateTime>) -> Self
     where
         I: IntoIterator<Item = ID>,
         ID: Into<TrustedIdentity>,
@@ -218,10 +218,10 @@ where
     //      5: Concatenated PCK Cert Chain (PEM formatted).
     //      PCK Leaf Cert||Intermediate CA Cert||Root CA Cert
     //
-    fn verify_certificate_chain<'c, 'd>(
+    fn verify_certificate_chain<'c>(
         &self,
         chain: &[Certificate],
-        crls: impl IntoIterator<Item = &'d CertificateList>,
+        crls: impl IntoIterator<Item = &'c CertificateList>,
     ) -> (
         Option<VerifyingKey>,
         VerificationOutput<Option<CertificateChainVerifierError>>,
@@ -306,8 +306,8 @@ fn key_from_certificate(cert: &Certificate) -> Option<VerifyingKey> {
     VerifyingKey::from_sec1_bytes(key_bytes).ok()
 }
 
-impl<'a, C: CertificateChainVerifier, E: Accessor<Evidence<Vec<u8>>>> Verifier<E>
-    for EvidenceVerifier<'a, C>
+impl<C: CertificateChainVerifier, E: Accessor<Evidence<Vec<u8>>>> Verifier<E>
+    for EvidenceVerifier<C>
 {
     type Value = EvidenceValue;
 
@@ -360,6 +360,10 @@ impl<'a, C: CertificateChainVerifier, E: Accessor<Evidence<Vec<u8>>>> Verifier<E
     }
 }
 
+/// The result of verifying [`Evidence`].
+///
+/// This will normally be provided in a `VerificationOutput`. Use the `VerificationTreeDisplay` to
+/// interpret the contents.
 #[derive(Debug)]
 pub struct EvidenceValue {
     tcb_signing_key: VerificationOutput<Option<CertificateChainVerifierError>>,
@@ -396,7 +400,7 @@ fn fmt_chain_verification_result_padded(
     }
 }
 
-impl<'a, C> VerificationMessage<EvidenceValue> for EvidenceVerifier<'a, C>
+impl<C> VerificationMessage<EvidenceValue> for EvidenceVerifier<C>
 where
     C: CertificateChainVerifier,
 {
@@ -711,7 +715,7 @@ mod test {
         let time = valid_test_time();
         let certificate_verifier = TestDoubleChainVerifier::default();
         let identities = [valid_test_trusted_identity()];
-        let verifier = EvidenceVerifier::new(&certificate_verifier, identities, time);
+        let verifier = EvidenceVerifier::new(certificate_verifier, identities, time);
         let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
         let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
         let collateral = collateral(TCB_INFO_JSON, QE_IDENTITY_JSON);
@@ -752,7 +756,7 @@ mod test {
         let time = Some(time);
         let identities = [valid_test_trusted_identity()];
         let certificate_verifier = TestDoubleChainVerifier::fail_at_certificate("CN=Intel SGX PCK Certificate,O=Intel Corporation,L=Santa Clara,STATEORPROVINCENAME=CA,C=US", CertificateChainVerifierError::CertificateExpired);
-        let verifier = EvidenceVerifier::new(&certificate_verifier, identities, time);
+        let verifier = EvidenceVerifier::new(certificate_verifier, identities, time);
         let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
         let quote = Quote3::try_from(quote_bytes.to_vec()).expect("Failed to parse quote");
         let collateral = collateral(TCB_INFO_JSON, QE_IDENTITY_JSON);
@@ -789,7 +793,7 @@ mod test {
         let identities = [valid_test_trusted_identity()];
         let certificate_verifier = TestDoubleChainVerifier::fail_at_certificate("CN=Intel SGX TCB Signing,O=Intel Corporation,L=Santa Clara,STATEORPROVINCENAME=CA,C=US",
          CertificateChainVerifierError::CertificateRevoked);
-        let verifier = EvidenceVerifier::new(&certificate_verifier, identities, time);
+        let verifier = EvidenceVerifier::new(certificate_verifier, identities, time);
         let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
         let quote = Quote3::try_from(quote_bytes.to_vec()).expect("Failed to parse quote");
         let collateral = collateral(TCB_INFO_JSON, QE_IDENTITY_JSON);
@@ -830,7 +834,7 @@ mod test {
         let time = Some(time);
         let identities = [valid_test_trusted_identity()];
         let certificate_verifier = TestDoubleChainVerifier::default();
-        let verifier = EvidenceVerifier::new(&certificate_verifier, identities, time);
+        let verifier = EvidenceVerifier::new(certificate_verifier, identities, time);
         let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
         let quote = Quote3::try_from(quote_bytes.to_vec()).expect("Failed to parse quote");
         let collateral = collateral(TCB_INFO_JSON, QE_IDENTITY_JSON);
@@ -869,7 +873,7 @@ mod test {
         let time = Some(time);
         let identities = [valid_test_trusted_identity()];
         let certificate_verifier = TestDoubleChainVerifier::default();
-        let verifier = EvidenceVerifier::new(&certificate_verifier, identities, time);
+        let verifier = EvidenceVerifier::new(certificate_verifier, identities, time);
         let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
         let quote = Quote3::try_from(quote_bytes.to_vec()).expect("Failed to parse quote");
         let collateral = collateral(TCB_INFO_JSON, QE_IDENTITY_JSON);
@@ -905,7 +909,7 @@ mod test {
         let time = valid_test_time();
         let identities = [] as [TrustedIdentity; 0];
         let certificate_verifier = TestDoubleChainVerifier::default();
-        let verifier = EvidenceVerifier::new(&certificate_verifier, identities, time);
+        let verifier = EvidenceVerifier::new(certificate_verifier, identities, time);
         let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
         let quote = Quote3::try_from(quote_bytes.to_vec()).expect("Failed to parse quote");
         let collateral = collateral(TCB_INFO_JSON, QE_IDENTITY_JSON);
@@ -945,7 +949,7 @@ mod test {
         let time = valid_test_time();
         let identities = [valid_test_trusted_identity()];
         let certificate_verifier = TestDoubleChainVerifier::default();
-        let verifier = EvidenceVerifier::new(&certificate_verifier, identities, time);
+        let verifier = EvidenceVerifier::new(certificate_verifier, identities, time);
         let mut quote_bytes = include_bytes!("../data/tests/hw_quote.dat").to_vec();
 
         // Skip the first 2 bytes. The first 2 bytes are the version, modifying either will result
@@ -989,7 +993,7 @@ mod test {
         let trust_anchor = TrustAnchor::try_from_pem(root_ca).expect("Failed to parse root CA");
         let certificate_verifier = MbedTlsCertificateChainVerifier::new(trust_anchor);
         let identities = [valid_test_trusted_identity()];
-        let verifier = EvidenceVerifier::new(&certificate_verifier, identities, time);
+        let verifier = EvidenceVerifier::new(certificate_verifier, identities, time);
         let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
         let quote = Quote3::try_from(quote_bytes.as_ref()).expect("Failed to parse quote");
         let collateral = collateral(TCB_INFO_JSON, QE_IDENTITY_JSON);
