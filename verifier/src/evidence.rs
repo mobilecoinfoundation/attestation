@@ -174,7 +174,7 @@ quote_application_report_body_field_accessor! {
 pub struct EvidenceVerifier<'a, C> {
     certificate_verifier: &'a C,
     trusted_identities: Vec<TrustedIdentity>,
-    time: DateTime,
+    time: Option<DateTime>,
 }
 
 impl<'a, C> EvidenceVerifier<'a, C>
@@ -192,7 +192,7 @@ where
     /// * `time` - The time to use for verifying the evidence. In particular the TCB Info and QE
     ///   identity have expiry times that need to be verified. Note: that the `certificate_verifier`
     ///   will also be passed this time.
-    pub fn new<I, ID>(certificate_verifier: &'a C, trusted_identities: I, time: DateTime) -> Self
+    pub fn new<I, ID>(certificate_verifier: &'a C, trusted_identities: I, time: Option<DateTime>) -> Self
     where
         I: IntoIterator<Item = ID>,
         ID: Into<TrustedIdentity>,
@@ -503,10 +503,10 @@ mod test {
     }
 
     // Valid time for the TCB_INFO_JSON and QE_IDENTITY_JSON
-    fn valid_test_time() -> DateTime {
-        "2023-07-12T20:48:25Z"
+    fn valid_test_time() -> Option<DateTime> {
+        Some("2023-07-12T20:48:25Z"
             .parse::<DateTime>()
-            .expect("Failed to parse time")
+            .expect("Failed to parse time"))
     }
 
     // Valid MrEnclave identity for the hw_quote.dat file
@@ -657,16 +657,18 @@ mod test {
             }
         }
 
-        fn verify_crl_time_is_valid(&self, crl: &CertificateList, time: DateTime) {
-            let start_time = crl.tbs_cert_list.this_update.to_unix_duration();
-            let end_time = crl
-                .tbs_cert_list
-                .next_update
-                .expect("No next update time")
-                .to_unix_duration();
-            let time = time.unix_duration();
-            if !(start_time <= time && time < end_time) {
-                panic!("Time not valid");
+        fn verify_crl_time_is_valid(&self, crl: &CertificateList, time: Option<DateTime>) {
+            if let Some(date_time) = time {
+                let start_time = crl.tbs_cert_list.this_update.to_unix_duration();
+                let end_time = crl
+                    .tbs_cert_list
+                    .next_update
+                    .expect("No next update time")
+                    .to_unix_duration();
+                let time = date_time.unix_duration();
+                if !(start_time <= time && time < end_time) {
+                    panic!("Time not valid");
+                }
             }
         }
     }
@@ -684,7 +686,7 @@ mod test {
             &self,
             certificate_chain: impl IntoIterator<Item = &'a Certificate>,
             crls: impl IntoIterator<Item = &'b CertificateList>,
-            time: DateTime,
+            time: Option<DateTime>,
         ) -> Result<(), CertificateChainVerifierError> {
             let certificate_chain = certificate_chain.into_iter().collect::<Vec<_>>();
             let subject_names = certificate_chain
@@ -747,6 +749,7 @@ mod test {
         let time = "2023-07-12T20:48:25Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
+        let time = Some(time);
         let identities = [valid_test_trusted_identity()];
         let certificate_verifier = TestDoubleChainVerifier::fail_at_certificate("CN=Intel SGX PCK Certificate,O=Intel Corporation,L=Santa Clara,STATEORPROVINCENAME=CA,C=US", CertificateChainVerifierError::CertificateExpired);
         let verifier = EvidenceVerifier::new(&certificate_verifier, identities, time);
@@ -824,6 +827,7 @@ mod test {
         let time = "2023-08-11T19:56:44Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
+        let time = Some(time);
         let identities = [valid_test_trusted_identity()];
         let certificate_verifier = TestDoubleChainVerifier::default();
         let verifier = EvidenceVerifier::new(&certificate_verifier, identities, time);
@@ -862,6 +866,7 @@ mod test {
         let time = "2023-07-12T19:56:44Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
+        let time = Some(time);
         let identities = [valid_test_trusted_identity()];
         let certificate_verifier = TestDoubleChainVerifier::default();
         let verifier = EvidenceVerifier::new(&certificate_verifier, identities, time);

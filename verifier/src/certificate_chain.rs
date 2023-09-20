@@ -38,6 +38,6 @@ pub trait CertificateChainVerifier {
         &self,
         certificate_chain: impl IntoIterator<Item = &'a Certificate>,
         crls: impl IntoIterator<Item = &'b CertificateList>,
-        time: DateTime,
+        time: Option<DateTime>,
     ) -> Result<(), CertificateChainVerifierError>;
 }
