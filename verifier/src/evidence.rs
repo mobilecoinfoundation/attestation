@@ -192,7 +192,11 @@ where
     /// * `time` - The time to use for verifying the evidence. In particular the TCB Info and QE
     ///   identity have expiry times that need to be verified. Note: that the `certificate_verifier`
     ///   will also be passed this time.
-    pub fn new<I, ID>(certificate_verifier: C, trusted_identities: I, time: Option<DateTime>) -> Self
+    pub fn new<I, ID>(
+        certificate_verifier: C,
+        trusted_identities: I,
+        time: Option<DateTime>
+    ) -> Self
     where
         I: IntoIterator<Item = ID>,
         ID: Into<TrustedIdentity>,
