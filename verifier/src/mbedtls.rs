@@ -322,7 +322,7 @@ mod test {
             .collect::<Vec<_>>();
         let verifier = MbedTlsCertificateChainVerifier::new(trust_anchor);
         assert!(verifier
-            .verify_certificate_chain(chain.iter(), crls.iter(), DateTime::INFINITY)
+            .verify_certificate_chain(chain.iter(), crls.iter(), None)
             .is_ok());
     }
 
@@ -339,7 +339,7 @@ mod test {
             .collect::<Vec<_>>();
         let verifier = MbedTlsCertificateChainVerifier::new(trust_anchor);
         assert_eq!(
-            verifier.verify_certificate_chain(chain.iter(), crls.iter(), DateTime::INFINITY),
+            verifier.verify_certificate_chain(chain.iter(), crls.iter(), None),
             Err(CertificateChainVerifierError::SignatureVerification)
         );
     }
@@ -357,7 +357,7 @@ mod test {
             .collect::<Vec<_>>();
         let verifier = MbedTlsCertificateChainVerifier::new(trust_anchor);
         assert!(verifier
-            .verify_certificate_chain(chain.iter(), crls.iter(), DateTime::INFINITY)
+            .verify_certificate_chain(chain.iter(), crls.iter(), None)
             .is_ok());
     }
 
@@ -406,7 +406,7 @@ mod test {
         // > Skip validation if no CRL for the given CA is present.
         let verifier = MbedTlsCertificateChainVerifier::new(trust_anchor);
         assert!(verifier
-            .verify_certificate_chain(chain.iter(), crls.iter(), DateTime::INFINITY)
+            .verify_certificate_chain(chain.iter(), crls.iter(), None)
             .is_ok());
     }
 
@@ -437,7 +437,7 @@ mod test {
         let verifier = MbedTlsCertificateChainVerifier::new(trust_anchor);
 
         assert_eq!(
-            verifier.verify_certificate_chain(chain.iter(), crls.iter(), DateTime::INFINITY),
+            verifier.verify_certificate_chain(chain.iter(), crls.iter(), None),
             Err(CertificateChainVerifierError::SignatureVerification)
         );
     }
@@ -464,7 +464,7 @@ mod test {
         let verifier = MbedTlsCertificateChainVerifier::new(trust_anchor);
 
         assert_eq!(
-            verifier.verify_certificate_chain(chain.iter(), crls.iter(), Some(DateTime::INFINITY)),
+            verifier.verify_certificate_chain(chain.iter(), crls.iter(), None),
             Err(CertificateChainVerifierError::SignatureVerification)
         );
     }
