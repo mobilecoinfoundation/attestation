@@ -191,7 +191,8 @@ where
     ///   of the identities needs to match to succeed for the identity verification portion.
     /// * `time` - The time to use for verifying the evidence. In particular the TCB Info and QE
     ///   identity have expiry times that need to be verified. Note: that the `certificate_verifier`
-    ///   will also be passed this time.
+    ///   will also be passed this time. A None value for time can be used in cases where the calling
+    ///   code is unable to provide time. In such cases, time validation must be skipped.
     pub fn new<I, ID>(
         certificate_verifier: C,
         trusted_identities: I,
