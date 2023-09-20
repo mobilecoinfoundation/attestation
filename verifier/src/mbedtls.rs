@@ -73,7 +73,7 @@ impl CertificateChainVerifier for MbedTlsCertificateChainVerifier {
         &self,
         certificate_chain: impl IntoIterator<Item = &'a Certificate>,
         crls: impl IntoIterator<Item = &'b CertificateList>,
-        _time: DateTime,
+        _time: Option<DateTime>,
     ) -> core::result::Result<(), CertificateChainVerifierError> {
         let unverified = UnverifiedCertChain::try_from_certificates(certificate_chain)
             .map_err(|_| CertificateChainVerifierError::GeneralCertificateError)?;
@@ -464,7 +464,7 @@ mod test {
         let verifier = MbedTlsCertificateChainVerifier::new(trust_anchor);
 
         assert_eq!(
-            verifier.verify_certificate_chain(chain.iter(), crls.iter(), DateTime::INFINITY),
+            verifier.verify_certificate_chain(chain.iter(), crls.iter(), Some(DateTime::INFINITY)),
             Err(CertificateChainVerifierError::SignatureVerification)
         );
     }
