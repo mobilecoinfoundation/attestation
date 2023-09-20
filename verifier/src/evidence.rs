@@ -508,9 +508,11 @@ mod test {
 
     // Valid time for the TCB_INFO_JSON and QE_IDENTITY_JSON
     fn valid_test_time() -> Option<DateTime> {
-        Some("2023-07-12T20:48:25Z"
-            .parse::<DateTime>()
-            .expect("Failed to parse time"))
+        Some(
+            "2023-07-12T20:48:25Z"
+                .parse::<DateTime>()
+                .expect("Failed to parse time"),
+        )
     }
 
     // Valid MrEnclave identity for the hw_quote.dat file
