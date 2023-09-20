@@ -249,7 +249,7 @@ impl SignedQeIdentity {
     ///     let time = DateTime::from_system_time(SystemTime::now()).unwrap();
     ///     ```
     ///   or equivalent
-    pub fn verify(self, key: Option<&VerifyingKey>, time: Option<DateTime>) -> Result<(), Error> {
+    pub fn verify(self, key: Option<&VerifyingKey>, time: impl Into<Option<DateTime>>) -> Result<(), Error> {
         self.verify_signature(key)?;
         let qe_identity = QeIdentity::try_from(&self)?;
         qe_identity.verify(time)?;
@@ -304,7 +304,7 @@ impl SignedQeIdentityVerifier {
     ///     let time = DateTime::from_system_time(SystemTime::now()).unwrap();
     ///     ```
     ///   or equivalent
-    pub fn new(key: Option<VerifyingKey>, time: Option<DateTime>) -> Self {
+    pub fn new(key: Option<VerifyingKey>, time: impl Into<Option<DateTime>>) -> Self {
         Self { key, time }
     }
 }
@@ -617,20 +617,7 @@ mod test {
     }
 
     #[test]
-    fn qe_identity_verifier_passes_at_next_update_ignoring_time() {
-        let json = include_str!("../data/tests/qe_identity.json");
-        let signed_qe_identity =
-            SignedQeIdentity::try_from(json).expect("Failed to parse signed identity");
-        let key = qe_verifying_key();
-        let verifier = SignedQeIdentityVerifier::new(Some(key), None);
-
-        let verification = verifier.verify(&signed_qe_identity);
-
-        assert_eq!(verification.is_success().unwrap_u8(), 1);
-    }
-
-    #[test]
-    fn qe_identity_verifier_passes_before_issue_date_ignoring_time() {
+    fn qe_identity_verifier_passes_ignoring_time() {
         let json = include_str!("../data/tests/qe_identity.json");
         let signed_qe_identity =
             SignedQeIdentity::try_from(json).expect("Failed to parse signed identity");

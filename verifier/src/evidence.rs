@@ -196,7 +196,7 @@ where
     pub fn new<I, ID>(
         certificate_verifier: C,
         trusted_identities: I,
-        time: Option<DateTime>,
+        time: impl Into<Option<DateTime>>,
     ) -> Self
     where
         I: IntoIterator<Item = ID>,

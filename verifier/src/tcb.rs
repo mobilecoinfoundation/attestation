@@ -683,17 +683,7 @@ mod tests {
     }
 
     #[test]
-    fn passes_before_issue_date_ignoring_time() {
-        let key = tcb_verifying_key();
-        let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_07_12.json");
-        let signed_tcb_info =
-            SignedTcbInfo::try_from(tcb_json).expect("Failed to parse signed TCB");
-
-        assert!(signed_tcb_info.verify(Some(&key), None).is_ok());
-    }
-
-    #[test]
-    fn passes_at_next_update_ignoring_time() {
+    fn passes_ignoring_time() {
         let key = tcb_verifying_key();
         let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_07_12.json");
         let signed_tcb_info =
