@@ -7,7 +7,7 @@ use mc_sgx_dcap_types::TcbError;
 use serde::{Deserialize, Serialize};
 
 /// Error working with quote evidence
-#[derive(displaydoc::Display, Debug, Clone, Serialize, Deserialize)]
+#[derive(displaydoc::Display, Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Error {
     /// Error converting from DER {0}
     Der(String),
