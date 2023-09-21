@@ -174,7 +174,7 @@ quote_application_report_body_field_accessor! {
 pub struct EvidenceVerifier<C> {
     certificate_verifier: C,
     trusted_identities: Vec<TrustedIdentity>,
-    time: DateTime,
+    time: Option<DateTime>,
 }
 
 impl<C> EvidenceVerifier<C>
@@ -191,8 +191,13 @@ where
     ///   of the identities needs to match to succeed for the identity verification portion.
     /// * `time` - The time to use for verifying the evidence. In particular the TCB Info and QE
     ///   identity have expiry times that need to be verified. Note: that the `certificate_verifier`
-    ///   will also be passed this time.
-    pub fn new<I, ID>(certificate_verifier: C, trusted_identities: I, time: DateTime) -> Self
+    ///   will also be passed this time. A None value for time can be used in cases where the calling
+    ///   code is unable to provide time. In such cases, time validation will be skipped.
+    pub fn new<I, ID>(
+        certificate_verifier: C,
+        trusted_identities: I,
+        time: impl Into<Option<DateTime>>,
+    ) -> Self
     where
         I: IntoIterator<Item = ID>,
         ID: Into<TrustedIdentity>,
@@ -200,7 +205,7 @@ where
         Self {
             certificate_verifier,
             trusted_identities: trusted_identities.into_iter().map(Into::into).collect(),
-            time,
+            time: time.into(),
         }
     }
 
@@ -661,16 +666,18 @@ mod test {
             }
         }
 
-        fn verify_crl_time_is_valid(&self, crl: &CertificateList, time: DateTime) {
-            let start_time = crl.tbs_cert_list.this_update.to_unix_duration();
-            let end_time = crl
-                .tbs_cert_list
-                .next_update
-                .expect("No next update time")
-                .to_unix_duration();
-            let time = time.unix_duration();
-            if !(start_time <= time && time < end_time) {
-                panic!("Time not valid");
+        fn verify_crl_time_is_valid(&self, crl: &CertificateList, time: Option<DateTime>) {
+            if let Some(date_time) = time {
+                let start_time = crl.tbs_cert_list.this_update.to_unix_duration();
+                let end_time = crl
+                    .tbs_cert_list
+                    .next_update
+                    .expect("No next update time")
+                    .to_unix_duration();
+                let time = date_time.unix_duration();
+                if !(start_time <= time && time < end_time) {
+                    panic!("Time not valid");
+                }
             }
         }
     }
@@ -688,7 +695,7 @@ mod test {
             &self,
             certificate_chain: impl IntoIterator<Item = &'a Certificate>,
             crls: impl IntoIterator<Item = &'b CertificateList>,
-            time: DateTime,
+            time: impl Into<Option<DateTime>>,
         ) -> Result<(), CertificateChainVerifierError> {
             let certificate_chain = certificate_chain.into_iter().collect::<Vec<_>>();
             let subject_names = certificate_chain
@@ -702,7 +709,7 @@ mod test {
             Self::verify_all_crls_present(&subject_names, &crls);
 
             // Loose assurance that time was passed through
-            self.verify_crl_time_is_valid(&crls[0], time);
+            self.verify_crl_time_is_valid(&crls[0], time.into());
 
             Ok(())
         }

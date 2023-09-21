@@ -33,11 +33,13 @@ pub trait CertificateChainVerifier {
     /// * `crls` - The certificate revocation lists to use when verifying the certificate chain.
     /// * `time` - The time to use when verifying the certificate chain. Due to implementation
     ///   details, some implementations may ignore this value and use the system time directly.
+    ///   A None value for time can be used in cases where the caller is unable to provide time. In
+    ///   such cases, time validation will be skipped.
     ///
     fn verify_certificate_chain<'a, 'b>(
         &self,
         certificate_chain: impl IntoIterator<Item = &'a Certificate>,
         crls: impl IntoIterator<Item = &'b CertificateList>,
-        time: DateTime,
+        time: impl Into<Option<DateTime>>,
     ) -> Result<(), CertificateChainVerifierError>;
 }

@@ -106,21 +106,22 @@ impl TcbInfo {
         Err(Error::UnsupportedTcbLevel)
     }
 
-    fn verify(&self, time: DateTime) -> Result<(), Error> {
+    fn verify(&self, time: Option<DateTime>) -> Result<(), Error> {
         self.verify_version()?.verify_time(time)?;
         Ok(())
     }
 
-    fn verify_time(&self, time: DateTime) -> Result<&Self, Error> {
-        let issue_date = self.issue_date.parse::<DateTime>()?;
-        let next_update = self.next_update.parse::<DateTime>()?;
-        if time < issue_date {
-            Err(Error::TcbInfoNotYetValid)
-        } else if time >= next_update {
-            Err(Error::TcbInfoExpired)
-        } else {
-            Ok(self)
+    fn verify_time(&self, time: Option<DateTime>) -> Result<&Self, Error> {
+        if let Some(date_time) = time {
+            let issue_date = self.issue_date.parse::<DateTime>()?;
+            let next_update = self.next_update.parse::<DateTime>()?;
+            if date_time < issue_date {
+                return Err(Error::TcbInfoNotYetValid);
+            } else if date_time >= next_update {
+                return Err(Error::TcbInfoExpired);
+            }
         }
+        Ok(self)
     }
     fn verify_version(&self) -> Result<&Self, Error> {
         if self.version != TCB_INFO_VERSION {
@@ -243,7 +244,7 @@ impl SignedTcbInfo {
     ///     let time = DateTime::from_system_time(SystemTime::now()).unwrap();
     ///     ```
     ///   or equivalent
-    pub fn verify(self, key: Option<&VerifyingKey>, time: DateTime) -> Result<(), Error> {
+    pub fn verify(self, key: Option<&VerifyingKey>, time: Option<DateTime>) -> Result<(), Error> {
         self.verify_signature(key)?;
         let tcb_info = TcbInfo::try_from(&self)?;
         tcb_info.verify(time)?;
@@ -274,7 +275,7 @@ impl TryFrom<&str> for SignedTcbInfo {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SignedTcbInfoVerifier {
     key: Option<VerifyingKey>,
-    time: DateTime,
+    time: Option<DateTime>,
 }
 
 impl SignedTcbInfoVerifier {
@@ -296,7 +297,7 @@ impl SignedTcbInfoVerifier {
     ///     let time = DateTime::from_system_time(SystemTime::now()).unwrap();
     ///     ```
     ///   or equivalent
-    pub fn new(key: Option<VerifyingKey>, time: DateTime) -> Self {
+    pub fn new(key: Option<VerifyingKey>, time: Option<DateTime>) -> Self {
         Self { key, time }
     }
 }
@@ -640,7 +641,7 @@ mod tests {
         let signed_tcb_info =
             SignedTcbInfo::try_from(tcb_json).expect("Failed to parse signed TCB");
 
-        let time = time.parse::<DateTime>().expect("Failed to parse time");
+        let time = Some(time.parse::<DateTime>().expect("Failed to parse time"));
 
         assert_eq!(signed_tcb_info.verify(Some(&key), time).is_ok(), true);
     }
@@ -655,6 +656,7 @@ mod tests {
         let time = "2023-05-10T13:43:26Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
+        let time = Some(time);
 
         assert_matches!(
             signed_tcb_info.verify(Some(&key), time),
@@ -672,11 +674,22 @@ mod tests {
         let time = "2023-08-11T19:56:44Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
+        let time = Some(time);
 
         assert_matches!(
             signed_tcb_info.verify(Some(&key), time),
             Err(Error::TcbInfoExpired)
         );
+    }
+
+    #[test]
+    fn passes_ignoring_time() {
+        let key = tcb_verifying_key();
+        let tcb_json = include_str!("../data/tests/fmspc_00906ED50000_2023_07_12.json");
+        let signed_tcb_info =
+            SignedTcbInfo::try_from(tcb_json).expect("Failed to parse signed TCB");
+
+        assert!(signed_tcb_info.verify(Some(&key), None).is_ok());
     }
 
     #[test]
@@ -686,6 +699,7 @@ mod tests {
         let time = "2023-07-12T19:56:44Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
+        let time = Some(time);
         let mut signed_tcb_info =
             SignedTcbInfo::try_from(tcb_json).expect("Failed to parse signed TCB");
 
@@ -705,6 +719,7 @@ mod tests {
         let time = "2023-07-12T19:56:44Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
+        let time = Some(time);
         let mut signed_tcb_info =
             SignedTcbInfo::try_from(tcb_json).expect("Failed to parse signed TCB");
 
@@ -722,6 +737,7 @@ mod tests {
         let time = "2023-07-12T19:56:44Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
+        let time = Some(time);
 
         let verifier = SignedTcbInfoVerifier::new(Some(key), time);
         let verification = verifier.verify(&signed_tcb_info);
@@ -739,6 +755,7 @@ mod tests {
         let time = "2023-07-12T19:56:44Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
+        let time = Some(time);
 
         let verifier = SignedTcbInfoVerifier::new(Some(key), time);
         let verification = verifier.verify(&signed_tcb_info);
@@ -753,6 +770,7 @@ mod tests {
         let time = "2023-07-12T19:56:44Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
+        let time = Some(time);
 
         let verifier = SignedTcbInfoVerifier::new(Some(key), time);
         let verification = verifier.verify(&signed_tcb_info);
@@ -895,6 +913,7 @@ mod tests {
         let time = "2023-07-12T19:56:44Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
+        let time = Some(time);
 
         let verifier = SignedTcbInfoVerifier::new(Some(key), time);
         let verification = verifier.verify(&signed_tcb_info);
@@ -917,6 +936,7 @@ mod tests {
         let time = "2023-08-11T19:56:44Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
+        let time = Some(time);
 
         let verifier = SignedTcbInfoVerifier::new(Some(key), time);
         let verification = verifier.verify(&signed_tcb_info);
@@ -939,6 +959,7 @@ mod tests {
         let time = "2023-06-09T13:43:26Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
+        let time = Some(time);
 
         let verifier = SignedTcbInfoVerifier::new(Some(key), time);
         let verification = verifier.verify(&signed_tcb_info);
@@ -959,6 +980,7 @@ mod tests {
         let time = "2023-07-12T19:56:44Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
+        let time = Some(time);
 
         let verifier = SignedTcbInfoVerifier::new(None, time);
         let verification = verifier.verify(&signed_tcb_info);
