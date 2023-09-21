@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- `Clone`, `PartialEq`, `Serialize`, and `Deserialize` to `Error`.
+
+### Changed
+
+- `Error::Der` and `Error::Serde` variants now contain an inner `String`. This
+  allows the `Error` type to be serializable, cloneable, and compared for
+equivalence.
+- Time-based certificate validation is now optional. `DateTime` parameters have been replaced with `Into<Option<DateTime>>`. If a `None` value is provided to the APIs, time validation will be skipped.
+- Updated SGX crates to `0.8.0`.
+
 ## [0.3.1] - 2023-08-16
 
 ### Added
