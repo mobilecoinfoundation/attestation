@@ -205,7 +205,7 @@ where
         Self {
             certificate_verifier,
             trusted_identities: trusted_identities.into_iter().map(Into::into).collect(),
-            time,
+            time: time.into(),
         }
     }
 
@@ -512,12 +512,10 @@ mod test {
     }
 
     // Valid time for the TCB_INFO_JSON and QE_IDENTITY_JSON
-    fn valid_test_time() -> Option<DateTime> {
-        Some(
-            "2023-07-12T20:48:25Z"
-                .parse::<DateTime>()
-                .expect("Failed to parse time"),
-        )
+    fn valid_test_time() -> DateTime {
+        "2023-07-12T20:48:25Z"
+            .parse::<DateTime>()
+            .expect("Failed to parse time")
     }
 
     // Valid MrEnclave identity for the hw_quote.dat file
@@ -697,7 +695,7 @@ mod test {
             &self,
             certificate_chain: impl IntoIterator<Item = &'a Certificate>,
             crls: impl IntoIterator<Item = &'b CertificateList>,
-            time: Option<DateTime>,
+            time: impl Into<Option<DateTime>>,
         ) -> Result<(), CertificateChainVerifierError> {
             let certificate_chain = certificate_chain.into_iter().collect::<Vec<_>>();
             let subject_names = certificate_chain
@@ -711,7 +709,7 @@ mod test {
             Self::verify_all_crls_present(&subject_names, &crls);
 
             // Loose assurance that time was passed through
-            self.verify_crl_time_is_valid(&crls[0], time);
+            self.verify_crl_time_is_valid(&crls[0], time.into());
 
             Ok(())
         }
@@ -760,7 +758,6 @@ mod test {
         let time = "2023-07-12T20:48:25Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
-        let time = Some(time);
         let identities = [valid_test_trusted_identity()];
         let certificate_verifier = TestDoubleChainVerifier::fail_at_certificate("CN=Intel SGX PCK Certificate,O=Intel Corporation,L=Santa Clara,STATEORPROVINCENAME=CA,C=US", CertificateChainVerifierError::CertificateExpired);
         let verifier = EvidenceVerifier::new(certificate_verifier, identities, time);
@@ -838,7 +835,6 @@ mod test {
         let time = "2023-08-11T19:56:44Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
-        let time = Some(time);
         let identities = [valid_test_trusted_identity()];
         let certificate_verifier = TestDoubleChainVerifier::default();
         let verifier = EvidenceVerifier::new(certificate_verifier, identities, time);
@@ -877,7 +873,6 @@ mod test {
         let time = "2023-07-12T19:56:44Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
-        let time = Some(time);
         let identities = [valid_test_trusted_identity()];
         let certificate_verifier = TestDoubleChainVerifier::default();
         let verifier = EvidenceVerifier::new(certificate_verifier, identities, time);

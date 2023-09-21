@@ -249,10 +249,14 @@ impl SignedQeIdentity {
     ///     let time = DateTime::from_system_time(SystemTime::now()).unwrap();
     ///     ```
     ///   or equivalent
-    pub fn verify(self, key: Option<&VerifyingKey>, time: impl Into<Option<DateTime>>) -> Result<(), Error> {
+    pub fn verify(
+        self,
+        key: Option<&VerifyingKey>,
+        time: impl Into<Option<DateTime>>,
+    ) -> Result<(), Error> {
         self.verify_signature(key)?;
         let qe_identity = QeIdentity::try_from(&self)?;
-        qe_identity.verify(time)?;
+        qe_identity.verify(time.into())?;
         Ok(())
     }
 
@@ -305,7 +309,10 @@ impl SignedQeIdentityVerifier {
     ///     ```
     ///   or equivalent
     pub fn new(key: Option<VerifyingKey>, time: impl Into<Option<DateTime>>) -> Self {
-        Self { key, time }
+        Self {
+            key,
+            time: time.into(),
+        }
     }
 }
 
@@ -557,7 +564,7 @@ mod test {
         let signed_qe_identity =
             SignedQeIdentity::try_from(json).expect("Failed to parse signed identity");
         let key = qe_verifying_key();
-        let time = Some(time.parse::<DateTime>().expect("Failed to parse time"));
+        let time = time.parse::<DateTime>().expect("Failed to parse time");
         let verifier = SignedQeIdentityVerifier::new(Some(key), time);
 
         let verification = verifier.verify(&signed_qe_identity);
@@ -579,7 +586,6 @@ mod test {
         let time = "2023-08-11T20:48:25Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
-        let time = Some(time);
         let verifier = SignedQeIdentityVerifier::new(Some(key), time);
 
         let verification = verifier.verify(&signed_qe_identity);
@@ -604,7 +610,6 @@ mod test {
         let time = "2023-06-14T15:55:14Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
-        let time = Some(time);
         let verifier = SignedQeIdentityVerifier::new(Some(key), time);
 
         let verification = verifier.verify(&signed_qe_identity);
@@ -635,7 +640,6 @@ mod test {
         let time = "2023-07-12T20:48:25Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
-        let time = Some(time);
         let verifier = SignedQeIdentityVerifier::new(Some(key), time);
 
         let verification = verifier.verify(&signed_qe_identity);
@@ -650,7 +654,6 @@ mod test {
         let time = "2023-07-12T20:48:25Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
-        let time = Some(time);
         let verifier = SignedQeIdentityVerifier::new(Some(key), time);
 
         let verification = verifier.verify(&signed_qe_identity);
@@ -665,7 +668,6 @@ mod test {
         let time = "2023-07-12T20:48:25Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
-        let time = Some(time);
         let verifier = SignedQeIdentityVerifier::new(Some(key), time);
 
         let verification = verifier.verify(&signed_qe_identity);
@@ -689,7 +691,6 @@ mod test {
         let time = "2023-07-12T20:48:25Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
-        let time = Some(time);
         let verifier = SignedQeIdentityVerifier::new(Some(key), time);
 
         let verification = verifier.verify(&signed_qe_identity);
@@ -714,7 +715,6 @@ mod test {
         let time = "2023-07-12T20:48:25Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
-        let time = Some(time);
         let verifier = SignedQeIdentityVerifier::new(Some(key), time);
 
         let verification = verifier.verify(&signed_qe_identity);
@@ -736,7 +736,6 @@ mod test {
         let time = "2023-07-12T20:48:25Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
-        let time = Some(time);
         let verifier = SignedQeIdentityVerifier::new(Some(key), time);
 
         let verification = verifier.verify(&signed_qe_identity);
@@ -756,7 +755,6 @@ mod test {
         let time = "2023-07-12T20:48:25Z"
             .parse::<DateTime>()
             .expect("Failed to parse time");
-        let time = Some(time);
         let verifier = SignedQeIdentityVerifier::new(None, time);
 
         let verification = verifier.verify(&signed_qe_identity);
