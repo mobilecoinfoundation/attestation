@@ -35,7 +35,7 @@ assert_matches = "1.5.0"
 mc-sgx-dcap-sys-types = "0.9.0"
 rand = "0.8.5"
 textwrap = "0.16.0"
-yare = "1.0.2"
+yare = "2.0.0"
 
 # At least one crate must have this configuration
 [package.metadata.release]
