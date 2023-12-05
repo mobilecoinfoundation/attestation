@@ -21,9 +21,9 @@ der = { version = "0.7.7", default-features = false }
 displaydoc = { version = "0.2.1", default-features = false }
 hex = { version = "0.4.3", default-features = false, features = ["serde", "alloc"] }
 mbedtls = { version = "0.8.1", default-features = false, features = ["no_std_deps"], optional = true }
-mc-sgx-core-sys-types = "0.9.0"
-mc-sgx-core-types = "0.9.0"
-mc-sgx-dcap-types = { version = "0.9.0", default-features = false, features = ["tcb"] }
+mc-sgx-core-sys-types = "0.10.0"
+mc-sgx-core-types = "0.10.0"
+mc-sgx-dcap-types = { version = "0.10.0", default-features = false, features = ["tcb"] }
 p256 = { version = "0.13.0", default-features = false, features = ["ecdsa"] }
 serde = { version = "1.0.162", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.103", default-features = false, features = ["alloc", "raw_value"] }
@@ -32,7 +32,7 @@ x509-cert = { version = "0.2.3", default-features = false, features = ["pem"] }
 
 [dev-dependencies]
 assert_matches = "1.5.0"
-mc-sgx-dcap-sys-types = "0.9.0"
+mc-sgx-dcap-sys-types = "0.10.0"
 rand = "0.8.5"
 textwrap = "0.16.0"
 yare = "2.0.0"
