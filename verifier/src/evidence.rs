@@ -1,4 +1,4 @@
-// Copyright (c) 2023 The MobileCoin Foundation
+// Copyright (c) 2023-2024 The MobileCoin Foundation
 
 //! The full set of evidence needed for attesting a quote
 
