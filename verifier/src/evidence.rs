@@ -617,24 +617,27 @@ mod test {
     }
 
     struct TestDoubleChainVerifier {
-        failed_certificate_subject: String,
+        failed_certificate_common_name: String,
         error: CertificateChainVerifierError,
     }
 
     impl Default for TestDoubleChainVerifier {
         fn default() -> Self {
             Self {
-                failed_certificate_subject: String::new(),
+                failed_certificate_common_name: String::new(),
                 error: CertificateChainVerifierError::GeneralCertificateError,
             }
         }
     }
 
     impl TestDoubleChainVerifier {
-        // Cause certificate chain verification to fail at the subject certificate with `error`
-        fn fail_at_certificate(subject: &str, error: CertificateChainVerifierError) -> Self {
+        // Cause certificate chain verification to fail at the certificate with the `common_name`.
+        // The failure will be the provided `error`.
+        //
+        // The `common_name` should not have the `CN=` prefix.
+        fn fail_at_certificate(common_name: &str, error: CertificateChainVerifierError) -> Self {
             Self {
-                failed_certificate_subject: String::from(subject),
+                failed_certificate_common_name: String::from(common_name),
                 error,
             }
         }
@@ -643,7 +646,15 @@ mod test {
             &self,
             subject_names: &[String],
         ) -> Result<(), CertificateChainVerifierError> {
-            if subject_names.contains(&self.failed_certificate_subject) {
+            if self.failed_certificate_common_name.is_empty() {
+                return Ok(());
+            }
+
+            let common_name = format!("CN={}", self.failed_certificate_common_name);
+            if subject_names
+                .iter()
+                .any(|subject_name| subject_name.contains(&common_name))
+            {
                 Err(self.error.clone())
             } else {
                 Ok(())
@@ -686,7 +697,7 @@ mod test {
         // This is a test verifier, it does not verify the certificate chains, but instead verifies
         // that the `CertificateChainVerifier` is correctly used by the `EvidenceVerifier`
         //
-        // If constructed with the `fail_at_certificate` method, it will fail if the subject of a
+        // If constructed with the `fail_at_certificate` method, it will fail if the common name of a
         // certificate in the `certificate_chain` matches.
         //
         // For test verification, the `time` provided should be within range of the first CRL.
@@ -759,7 +770,10 @@ mod test {
             .parse::<DateTime>()
             .expect("Failed to parse time");
         let identities = [valid_test_trusted_identity()];
-        let certificate_verifier = TestDoubleChainVerifier::fail_at_certificate("CN=Intel SGX PCK Certificate,O=Intel Corporation,L=Santa Clara,STATEORPROVINCENAME=CA,C=US", CertificateChainVerifierError::CertificateExpired);
+        let certificate_verifier = TestDoubleChainVerifier::fail_at_certificate(
+            "Intel SGX PCK Certificate",
+            CertificateChainVerifierError::CertificateExpired,
+        );
         let verifier = EvidenceVerifier::new(certificate_verifier, identities, time);
         let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
         let quote = Quote3::try_from(quote_bytes.to_vec()).expect("Failed to parse quote");
@@ -795,8 +809,10 @@ mod test {
     fn evidence_verifier_fails_for_tcb_certificate_revoked() {
         let time = valid_test_time();
         let identities = [valid_test_trusted_identity()];
-        let certificate_verifier = TestDoubleChainVerifier::fail_at_certificate("CN=Intel SGX TCB Signing,O=Intel Corporation,L=Santa Clara,STATEORPROVINCENAME=CA,C=US",
-         CertificateChainVerifierError::CertificateRevoked);
+        let certificate_verifier = TestDoubleChainVerifier::fail_at_certificate(
+            "Intel SGX TCB Signing",
+            CertificateChainVerifierError::CertificateRevoked,
+        );
         let verifier = EvidenceVerifier::new(certificate_verifier, identities, time);
         let quote_bytes = include_bytes!("../data/tests/hw_quote.dat");
         let quote = Quote3::try_from(quote_bytes.to_vec()).expect("Failed to parse quote");
