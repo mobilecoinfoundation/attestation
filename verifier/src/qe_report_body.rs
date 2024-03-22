@@ -282,7 +282,6 @@ mod test {
     use alloc::{format, string::ToString};
     use mc_sgx_core_sys_types::sgx_report_body_t;
     use mc_sgx_core_types::AttributeFlags;
-    use mc_sgx_dcap_types::Quote3;
 
     #[test]
     fn no_tcb_levels_for_qe_isv_svn_fails() {

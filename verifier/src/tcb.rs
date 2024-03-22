@@ -342,7 +342,7 @@ mod tests {
     use crate::VerificationTreeDisplay;
     use alloc::{format, vec};
     use assert_matches::assert_matches;
-    use p256::ecdsa::{signature::Signer, SigningKey, VerifyingKey};
+    use p256::ecdsa::{signature::Signer, SigningKey};
     use x509_cert::{der::DecodePem, Certificate};
     use yare::parameterized;
 

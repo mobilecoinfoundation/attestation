@@ -454,7 +454,7 @@ mod test {
     use super::*;
     #[cfg(feature = "mbedtls")]
     use crate::{MbedTlsCertificateChainVerifier, TrustAnchor};
-    use crate::{TrustedMrEnclaveIdentity, VerificationTreeDisplay, Verifier};
+    use crate::{TrustedMrEnclaveIdentity, VerificationTreeDisplay};
     use alloc::{
         format,
         string::{String, ToString},
