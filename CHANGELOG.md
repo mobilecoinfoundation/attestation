@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- Updated SGX crates to `0.11.0`.
+
 ## [0.4.2] - 2023-12-05
 
 ### Changed
