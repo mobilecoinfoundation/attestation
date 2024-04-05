@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+## [0.4.3] - 2024-04-05
+
 ### Changed
 
 - Updated SGX crates to `0.11.0`.
@@ -84,7 +86,8 @@ equivalence.
 - Initial release of attestation verifier crate
 
 <!-- next-url -->
-[Unreleased]: https://github.com/mobilecoinfoundation/attestation/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/mobilecoinfoundation/attestation/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/mobilecoinfoundation/attestation/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/mobilecoinfoundation/attestation/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/mobilecoinfoundation/attestation/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/mobilecoinfoundation/attestation/compare/v0.3.1...v0.4.0
