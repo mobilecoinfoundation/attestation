@@ -25,7 +25,7 @@ jobs:
       - uses: r7kamura/rust-problem-matchers@v1
       - run: cargo fmt --all -- --check
       - uses: xt0rted/markdownlint-problem-matcher@v2
-      - uses: DavidAnson/markdownlint-cli2-action@v15
+      - uses: DavidAnson/markdownlint-cli2-action@v16
         with:
           globs: "**/*.md"
       # FIXME: Add yamllint problem matcher
