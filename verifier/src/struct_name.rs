@@ -1,4 +1,4 @@
-// Copyright (c) 2023-2024 The MobileCoin Foundation
+// Copyright (c) 2023-2025 The MobileCoin Foundation
 
 //! Provides a trait that provides a textual friendly version of a struct name.
 //! The names are all lowercase and use spaces between the words.
