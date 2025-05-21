@@ -1,7 +1,5 @@
 [workspace]
-members = [
-    "verifier",
-]
+members = ["verifier"]
 
 # We need to explicitly specify resolver 2.
 # We shouldn't have to per https://doc.rust-lang.org/edition-guide/rust-2021/default-cargo-resolver.html, but that does not appear to be the case
@@ -24,9 +22,7 @@ mbedtls-sys-auto = { git = "https://github.com/mobilecoinfoundation/rust-mbedtls
 
 [workspace.metadata.release]
 shared-version = true
-dev-version-ext = "beta.0"
 consolidate-commits = true
-consolidate-pushes = true
 tag-name = "v{{version}}"
 pre-release-replacements = [
     # Files listed here must exist in all crates in this workspace
