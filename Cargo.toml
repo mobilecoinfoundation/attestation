@@ -19,8 +19,8 @@ lto = "thin"
 
 [patch.crates-io]
 # mbedtls patched to allow certificate verification with a profile
-mbedtls = { git = "https://github.com/mobilecoinfoundation/rust-mbedtls.git", rev = "6d8fe323a3292f87a6bce4b35963d47139a583f9" }
-mbedtls-sys-auto = { git = "https://github.com/mobilecoinfoundation/rust-mbedtls.git", rev = "6d8fe323a3292f87a6bce4b35963d47139a583f9" }
+mbedtls = { git = "https://github.com/mobilecoinfoundation/rust-mbedtls.git", rev = "0bddacc981ac782ca2e2f8aa5ffa25ce0e3d8273" }
+mbedtls-sys-auto = { git = "https://github.com/mobilecoinfoundation/rust-mbedtls.git", rev = "0bddacc981ac782ca2e2f8aa5ffa25ce0e3d8273" }
 
 [workspace.metadata.release]
 shared-version = true

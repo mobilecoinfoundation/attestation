@@ -153,7 +153,7 @@ impl<'a, V, O> VerificationTreeDisplay<'a, V, O> {
     }
 }
 
-impl<'a, V: VerificationMessage<O>, O> Display for VerificationTreeDisplay<'a, V, O> {
+impl<V: VerificationMessage<O>, O> Display for VerificationTreeDisplay<'_, V, O> {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         self.verifier.fmt_padded(f, 0, &self.result)
     }
@@ -419,7 +419,7 @@ impl<L, R> And<L, R> {
     ///
     /// # Arguments:
     /// * `left` - The left, or first, [`Verifier`] to perform. If this
-    ///    fails the `right` will *still* be attempted.
+    ///   fails the `right` will *still* be attempted.
     /// * `right` - The right, or second, [`Verifier`] to perform.
     pub fn new(left: L, right: R) -> Self {
         Self { left, right }
@@ -496,7 +496,7 @@ impl<L, R> Or<L, R> {
     ///
     /// # Arguments:
     /// * `left` - The left, or first, [`Verifier`] to perform. If this
-    ///    succeeds the `right` will *still* be attempted.
+    ///   succeeds the `right` will *still* be attempted.
     /// * `right` - The right, or second, [`Verifier`] to perform.
     pub fn new(left: L, right: R) -> Self {
         Self { left, right }

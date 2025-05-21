@@ -296,9 +296,9 @@ dependencies = [
 
 [[package]]
 name = "displaydoc"
-version = "0.2.4"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "487585f4d0c6655fe74905e2504d8ad6908e4db67f744eb140876906c2f3175d"
+checksum = "97369cbbc041bc366949bc74d34658d6cda5621039731c6310521892a3a20ae0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -511,7 +511,7 @@ checksum = "b06a4cde4c0f271a446782e3eff8de789548ce57dbc8eca9292c27f4a42004b4"
 [[package]]
 name = "mbedtls"
 version = "0.8.1"
-source = "git+https://github.com/mobilecoinfoundation/rust-mbedtls.git?rev=6d8fe323a3292f87a6bce4b35963d47139a583f9#6d8fe323a3292f87a6bce4b35963d47139a583f9"
+source = "git+https://github.com/mobilecoinfoundation/rust-mbedtls.git?rev=0bddacc981ac782ca2e2f8aa5ffa25ce0e3d8273#0bddacc981ac782ca2e2f8aa5ffa25ce0e3d8273"
 dependencies = [
  "bitflags 2.3.3",
  "byteorder",
@@ -528,7 +528,7 @@ dependencies = [
 [[package]]
 name = "mbedtls-sys-auto"
 version = "2.26.1"
-source = "git+https://github.com/mobilecoinfoundation/rust-mbedtls.git?rev=6d8fe323a3292f87a6bce4b35963d47139a583f9#6d8fe323a3292f87a6bce4b35963d47139a583f9"
+source = "git+https://github.com/mobilecoinfoundation/rust-mbedtls.git?rev=0bddacc981ac782ca2e2f8aa5ffa25ce0e3d8273#0bddacc981ac782ca2e2f8aa5ffa25ce0e3d8273"
 dependencies = [
  "bindgen 0.64.0",
  "cc",
