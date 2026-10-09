@@ -553,8 +553,7 @@ mod test {
     #[test]
     fn miscellaneous_select_fails() {
         let mut miscellaneous_select = MiscellaneousSelect::from(0xFFFF_FFFF);
-        let verifier =
-            MiscellaneousSelectVerifier::new(miscellaneous_select.clone(), 0xFFFF_FFFF.into());
+        let verifier = MiscellaneousSelectVerifier::new(miscellaneous_select, 0xFFFF_FFFF.into());
         *miscellaneous_select.as_mut() = 0xFFFF_FFFE;
 
         assert_eq!(
@@ -569,7 +568,7 @@ mod test {
     #[test]
     fn mr_encalve_success() {
         let mr_enclave = MrEnclave::from(REPORT_BODY_SRC.mr_enclave);
-        let verifier = MrEnclaveVerifier::new(mr_enclave.clone());
+        let verifier = MrEnclaveVerifier::new(mr_enclave);
 
         assert_eq!(verifier.verify(&mr_enclave).is_success().unwrap_u8(), 1);
     }
@@ -577,7 +576,7 @@ mod test {
     #[test]
     fn mr_enclave_fails() {
         let mut mr_enclave = MrEnclave::from(REPORT_BODY_SRC.mr_enclave);
-        let verifier = MrEnclaveVerifier::new(mr_enclave.clone());
+        let verifier = MrEnclaveVerifier::new(mr_enclave);
         let bytes: &mut [u8] = mr_enclave.as_mut();
         bytes[0] = 0;
 
@@ -587,7 +586,7 @@ mod test {
     #[test]
     fn mr_signer_key_success() {
         let mr_signer = MrSigner::from(REPORT_BODY_SRC.mr_signer);
-        let verifier = MrSignerKeyVerifier::new(mr_signer.clone());
+        let verifier = MrSignerKeyVerifier::new(mr_signer);
 
         assert_eq!(verifier.verify(&mr_signer).is_success().unwrap_u8(), 1);
     }
@@ -595,7 +594,7 @@ mod test {
     #[test]
     fn mr_signer_key_fails() {
         let mut mr_signer = MrSigner::from(REPORT_BODY_SRC.mr_signer);
-        let verifier = MrSignerKeyVerifier::new(mr_signer.clone());
+        let verifier = MrSignerKeyVerifier::new(mr_signer);
         let bytes: &mut [u8] = mr_signer.as_mut();
         bytes[0] = 1;
 
@@ -797,7 +796,7 @@ mod test {
     #[test]
     fn isv_product_id_succeeds() {
         let isv_product_id = IsvProductId::from(REPORT_BODY_SRC.isv_prod_id);
-        let verifier = IsvProductIdVerifier::new(isv_product_id.clone());
+        let verifier = IsvProductIdVerifier::new(isv_product_id);
 
         assert_eq!(verifier.verify(&isv_product_id).is_success().unwrap_u8(), 1);
     }
@@ -805,7 +804,7 @@ mod test {
     #[test]
     fn isv_product_id_fails() {
         let mut isv_product_id = IsvProductId::from(REPORT_BODY_SRC.isv_prod_id);
-        let verifier = IsvProductIdVerifier::new(isv_product_id.clone());
+        let verifier = IsvProductIdVerifier::new(isv_product_id);
 
         *isv_product_id.as_mut() += 1;
 
@@ -908,7 +907,7 @@ mod test {
         let inner = Attributes::from(REPORT_BODY_SRC.attributes);
         let verifier = AttributesVerifier::new(inner, ALL_ATTRIBUTE_BITS.into());
 
-        assert_eq!(verifier.to_string(), "The expected attributes is Flags: 0x0102_0304_0506_0708 Xfrm: 0x0807_0605_0403_0201 with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | AMX | RESERVED");
+        assert_eq!(verifier.to_string(), "The expected attributes is Flags: 0x0102_0304_0506_0708 Xfrm: PKRU | 0x0807_0605_0403_0001 with mask Flags: 0xFFFF_FFFF_FFFF_FFFF Xfrm: LEGACY | AVX | AVX_512 | MPX | PKRU | AMX | RESERVED");
     }
 
     #[test]
@@ -924,7 +923,7 @@ mod test {
     #[test]
     fn config_svn_verifier_display() {
         let inner = ConfigSvn::from(REPORT_BODY_SRC.config_svn);
-        let verifier = ConfigSvnVerifier::new(inner.clone());
+        let verifier = ConfigSvnVerifier::new(inner);
 
         let expected = format!(
             "The {} should be at least {inner}",
@@ -973,7 +972,7 @@ mod test {
     #[test]
     fn isv_product_id_verifier_display() {
         let inner = IsvProductId::from(REPORT_BODY_SRC.isv_prod_id);
-        let verifier = IsvProductIdVerifier::new(inner.clone());
+        let verifier = IsvProductIdVerifier::new(inner);
 
         let expected = format!(
             "The {} should be {inner}",
@@ -986,7 +985,7 @@ mod test {
     #[test]
     fn isv_svn_verifier_display() {
         let inner = IsvSvn::from(REPORT_BODY_SRC.isv_svn);
-        let verifier = IsvSvnVerifier::new(inner.clone());
+        let verifier = IsvSvnVerifier::new(inner);
 
         let expected = format!(
             "The {} should be at least {inner}",
@@ -999,7 +998,7 @@ mod test {
     #[test]
     fn miscellaneous_select_verifier_display() {
         let inner = MiscellaneousSelect::from(REPORT_BODY_SRC.misc_select);
-        let verifier = MiscellaneousSelectVerifier::new(inner.clone(), 0xFFFFFFFF.into());
+        let verifier = MiscellaneousSelectVerifier::new(inner, 0xFFFFFFFF.into());
 
         assert_eq!(
             verifier.to_string(),
@@ -1010,7 +1009,7 @@ mod test {
     #[test]
     fn mr_enclave_verifier_display() {
         let inner = MrEnclave::from(REPORT_BODY_SRC.mr_enclave);
-        let verifier = MrEnclaveVerifier::new(inner.clone());
+        let verifier = MrEnclaveVerifier::new(inner);
 
         let expected = format!("The {} should be {inner}", MrEnclave::spaced_struct_name());
 

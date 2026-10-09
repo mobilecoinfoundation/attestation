@@ -13,30 +13,6 @@ readme = "README.md"
 repository = { workspace = true }
 rust-version = { workspace = true }
 
-[features]
-mbedtls = ["dep:mbedtls"]
-
-[dependencies]
-der = { version = "0.7.7", default-features = false }
-displaydoc = { version = "0.2.1", default-features = false }
-hex = { version = "0.4.3", default-features = false, features = ["serde", "alloc"] }
-mbedtls = { version = "0.8.1", default-features = false, features = ["no_std_deps"], optional = true }
-mc-sgx-core-sys-types = "0.12"
-mc-sgx-core-types = "0.12"
-mc-sgx-dcap-types = { version = "0.12", default-features = false, features = ["tcb"] }
-p256 = { version = "0.13.0", default-features = false, features = ["ecdsa"] }
-serde = { version = "1.0.162", default-features = false, features = ["derive"] }
-serde_json = { version = "1.0.103", default-features = false, features = ["alloc", "raw_value"] }
-subtle = { version = "2.4.0", default-features = false }
-x509-cert = { version = "0.2.3", default-features = false, features = ["pem"] }
-
-[dev-dependencies]
-assert_matches = "1.5.0"
-mc-sgx-dcap-sys-types = "0.12"
-rand = "0.8.5"
-textwrap = "0.16.0"
-yare = "2.0.0"
-
 # At least one crate must have this configuration
 [package.metadata.release]
 pre-release-replacements = [
@@ -47,3 +23,27 @@ pre-release-replacements = [
     { file = "../CHANGELOG.md", search = "<!-- next-url -->", replace="<!-- next-url -->\n[Unreleased]: https://github.com/mobilecoinfoundation/attestation/compare/{{tag_name}}...HEAD", exactly = 1 },
     { file = "README.md", search = "mc-attestation-[a-z-]+/[0-9.]+", replace = "{{crate_name}}/{{version}}" },
 ]
+
+[features]
+mbedtls = ["dep:mbedtls"]
+
+[dependencies]
+der = { version = "0.8", default-features = false }
+displaydoc = { version = "0.2", default-features = false }
+hex = { version = "0.4", default-features = false, features = ["serde", "alloc"] }
+mbedtls = { version = "0.8", default-features = false, features = ["no_std_deps"], optional = true }
+mc-sgx-core-sys-types = "0.13"
+mc-sgx-core-types = "0.13"
+mc-sgx-dcap-types = { version = "0.13", default-features = false, features = ["tcb"] }
+p256 = { version = "0.14", default-features = false, features = ["ecdsa"] }
+serde = { version = "1", default-features = false, features = ["derive"] }
+serde_json = { version = "1", default-features = false, features = ["alloc", "raw_value"] }
+subtle = { version = "2", default-features = false }
+x509-cert = { version = "0.3", default-features = false, features = ["pem"] }
+
+[dev-dependencies]
+assert_matches = "1"
+mc-sgx-dcap-sys-types = "0.13"
+rand = "0.10"
+textwrap = "0.16"
+yare = "3"

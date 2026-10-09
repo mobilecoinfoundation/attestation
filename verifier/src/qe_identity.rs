@@ -360,7 +360,10 @@ mod test {
     use alloc::{format, vec};
     use assert_matches::assert_matches;
     use der::DateTime;
-    use p256::ecdsa::{signature::Signer, SigningKey};
+    use p256::{
+        ecdsa::{signature::Signer, SigningKey},
+        elliptic_curve::Generate,
+    };
     use x509_cert::{der::DecodePem, Certificate};
     use yare::parameterized;
 
@@ -370,8 +373,8 @@ mod test {
         let certificate = Certificate::from_pem(pem).expect("failed to parse PEM");
         let key = VerifyingKey::from_sec1_bytes(
             certificate
-                .tbs_certificate
-                .subject_public_key_info
+                .tbs_certificate()
+                .subject_public_key_info()
                 .subject_public_key
                 .as_bytes()
                 .expect("Failed to parse public key"),
@@ -392,8 +395,8 @@ mod test {
             SignedQeIdentity::try_from(bad_json.as_ref()).expect("Failed to parse signed identity");
 
         // Since the signature is based on the original contents we must re-sign
-        let mut rng = rand::thread_rng();
-        let signing_key = SigningKey::random(&mut rng);
+        let mut rng = rand::rng();
+        let signing_key = SigningKey::generate_from_rng(&mut rng);
         let (signature, _) = signing_key.sign(
             signed_qe_identity
                 .enclave_identity
@@ -403,7 +406,7 @@ mod test {
         );
         signed_qe_identity.signature = signature.to_bytes().to_vec();
 
-        let key = signing_key.verifying_key().clone();
+        let key = *signing_key.verifying_key();
 
         (signed_qe_identity, key)
     }

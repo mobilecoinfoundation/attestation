@@ -1,34 +1,24 @@
+[graph]
+all-features = true
 targets = []
 
 [advisories]
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
-vulnerability = "deny"
-unmaintained = "deny"
-unsound = "deny"
+unmaintained = "all"
+unsound = "all"
 yanked = "deny"
-notice = "warn"
-ignore = [
-    # This comes via mbedtls, but only when
-    # `[target.x86_64-fortanix-unknown-sgx.dependencies]`
-    # which we don't use
-    "RUSTSEC-2020-0071",
-]
+ignore = []
 
 [licenses]
-unlicensed = "deny"
 allow = [
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
     "BSD-3-Clause",
     "ISC",
     "MIT",
-    "Unicode-DFS-2016",
+    "Unicode-3.0",
 ]
-deny = []
-copyleft = "deny"
-allow-osi-fsf-free = "neither"
-default = "deny"
 confidence-threshold = 0.8
 exceptions = []
 
@@ -50,7 +40,7 @@ highlight = "all"
 allow = []
 deny = [
     # https://github.com/briansmith/ring/issues/774
-    { name = "ring" },
+    { crate = "ring" },
 ]
 skip = [
 
@@ -69,6 +59,7 @@ unknown-git = "warn"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = [
     "https://github.com/mobilecoinfoundation/rust-mbedtls.git",
+    "https://github.com/mobilecoinfoundation/sgx.git",
 ]
 
 [sources.allow-org]

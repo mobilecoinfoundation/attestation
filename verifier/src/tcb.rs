@@ -342,7 +342,10 @@ mod tests {
     use crate::VerificationTreeDisplay;
     use alloc::{format, vec};
     use assert_matches::assert_matches;
-    use p256::ecdsa::{signature::Signer, SigningKey};
+    use p256::{
+        ecdsa::{signature::Signer, SigningKey},
+        elliptic_curve::Generate,
+    };
     use x509_cert::{der::DecodePem, Certificate};
     use yare::parameterized;
 
@@ -351,8 +354,8 @@ mod tests {
         let certificate = Certificate::from_pem(pem).expect("failed to parse PEM");
         let key = VerifyingKey::from_sec1_bytes(
             certificate
-                .tbs_certificate
-                .subject_public_key_info
+                .tbs_certificate()
+                .subject_public_key_info()
                 .subject_public_key
                 .as_bytes()
                 .expect("Failed to parse public key"),
@@ -375,12 +378,12 @@ mod tests {
             SignedTcbInfo::try_from(bad_json.as_ref()).expect("Failed to parse signed TCB info");
 
         // Since the signature is based on the original contents we must re-sign
-        let mut rng = rand::thread_rng();
-        let signing_key = SigningKey::random(&mut rng);
+        let mut rng = rand::rng();
+        let signing_key = SigningKey::generate_from_rng(&mut rng);
         let (signature, _) = signing_key.sign(signed_tcb_info.tcb_info.as_ref().get().as_bytes());
         signed_tcb_info.signature = signature.to_bytes().to_vec();
 
-        let key = signing_key.verifying_key().clone();
+        let key = *signing_key.verifying_key();
 
         (signed_tcb_info, key)
     }
@@ -643,7 +646,7 @@ mod tests {
 
         let time = Some(time.parse::<DateTime>().expect("Failed to parse time"));
 
-        assert_eq!(signed_tcb_info.verify(Some(&key), time).is_ok(), true);
+        assert!(signed_tcb_info.verify(Some(&key), time).is_ok());
     }
 
     #[test]
@@ -793,7 +796,7 @@ mod tests {
         let tcb = PckTcb::new(
             svns.try_into().expect("Not enough svns"),
             pce_svn,
-            tcb_info.fmspc.clone(),
+            tcb_info.fmspc,
         );
         let expected_advisories = Advisories::new(ids, status);
 
@@ -814,7 +817,7 @@ mod tests {
         let tcb = PckTcb::new(
             svns.try_into().expect("Not enough svns"),
             pce_svn,
-            tcb_info.fmspc.clone(),
+            tcb_info.fmspc,
         );
 
         assert_matches!(tcb_info.advisories(&tcb), Err(Error::UnsupportedTcbLevel));
@@ -833,7 +836,7 @@ mod tests {
             .map(|c| c.svn)
             .collect::<Vec<_>>();
 
-        let mut fmspc = tcb_info.fmspc.clone();
+        let mut fmspc = tcb_info.fmspc;
         fmspc[0] += 1;
 
         let tcb = PckTcb::new(
@@ -858,7 +861,7 @@ mod tests {
         let tcb = PckTcb::new(
             svns.try_into().expect("Not enough svns"),
             pce_svn,
-            tcb_info.fmspc.clone(),
+            tcb_info.fmspc,
         );
         let expected_advisories = Advisories::new::<[&str; 0], str>([], status);
 
@@ -891,7 +894,7 @@ mod tests {
             r#type: None,
         });
         let tcb = Tcb {
-            sgx_tcb_components: components.try_into().expect("Not enough components"),
+            sgx_tcb_components: components,
             pce_svn: 5,
         };
 

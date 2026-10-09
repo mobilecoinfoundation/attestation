@@ -304,8 +304,8 @@ where
 
 fn key_from_certificate(cert: &Certificate) -> Option<VerifyingKey> {
     let key_bytes = cert
-        .tbs_certificate
-        .subject_public_key_info
+        .tbs_certificate()
+        .subject_public_key_info()
         .subject_public_key
         .as_bytes()?;
     VerifyingKey::from_sec1_bytes(key_bytes).ok()
@@ -670,7 +670,7 @@ mod test {
             // We take advantage that certificate chains are ordered from the subject to the root
             // and skip the leaf since it won't have a CRL.
             if !subject_names[1..]
-                .into_iter()
+                .iter()
                 .all(|name| crl_subject_names.contains(name))
             {
                 panic!("Missing a CRL for the certificate chain");
@@ -711,7 +711,7 @@ mod test {
             let certificate_chain = certificate_chain.into_iter().collect::<Vec<_>>();
             let subject_names = certificate_chain
                 .iter()
-                .map(|cert| cert.tbs_certificate.subject.to_string())
+                .map(|cert| cert.tbs_certificate().subject().to_string())
                 .collect::<Vec<_>>();
 
             self.try_forced_failure(&subject_names)?;
@@ -720,7 +720,7 @@ mod test {
             Self::verify_all_crls_present(&subject_names, &crls);
 
             // Loose assurance that time was passed through
-            self.verify_crl_time_is_valid(&crls[0], time.into());
+            self.verify_crl_time_is_valid(crls[0], time.into());
 
             Ok(())
         }

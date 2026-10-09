@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+### Changed
+
+- Updated SGX crates to the `0.13.0` development revision from
+  [mobilecoinfoundation/sgx#504].
+- Updated the shared cryptography, certificate, and test dependencies to match
+  the SGX `0.13.0` dependency graph.
+- Modernized CI actions, the Rust nightly baseline, and cargo-deny configuration.
+- Raised the minimum supported Rust version to `1.99`.
+
 ## [0.4.4] - 2025-05-21
 
 ### Changed
@@ -102,3 +111,4 @@ equivalence.
 [0.3.0]: https://github.com/mobilecoinfoundation/attestation/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/mobilecoinfoundation/attestation/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mobilecoinfoundation/sgx/compare/v0.1.0
+[mobilecoinfoundation/sgx#504]: https://github.com/mobilecoinfoundation/sgx/pull/504
