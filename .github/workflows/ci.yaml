@@ -46,9 +46,10 @@ jobs:
         with:
           submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: taiki-e/install-action@v2
         with:
-          command: check ${{ matrix.checks }}
+          tool: cargo-deny@0.20.2
+      - run: cargo deny check ${{ matrix.checks }}
 
   sort:
     runs-on: ubuntu-24.04
