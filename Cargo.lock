@@ -755,7 +755,7 @@ dependencies = [
 [[package]]
 name = "mc-sgx-core-build"
 version = "0.13.0"
-source = "git+https://github.com/mobilecoinfoundation/sgx.git?rev=2e4b90132a6f2a71a4d76ad2ca5c29ee8a7100d1#2e4b90132a6f2a71a4d76ad2ca5c29ee8a7100d1"
+source = "git+https://github.com/mobilecoinfoundation/sgx.git?rev=c8900e5ee5bc58c37aecb44ab97412986d972898#c8900e5ee5bc58c37aecb44ab97412986d972898"
 dependencies = [
  "bindgen 0.66.1",
  "cargo-emit",
@@ -764,7 +764,7 @@ dependencies = [
 [[package]]
 name = "mc-sgx-core-sys-types"
 version = "0.13.0"
-source = "git+https://github.com/mobilecoinfoundation/sgx.git?rev=2e4b90132a6f2a71a4d76ad2ca5c29ee8a7100d1#2e4b90132a6f2a71a4d76ad2ca5c29ee8a7100d1"
+source = "git+https://github.com/mobilecoinfoundation/sgx.git?rev=c8900e5ee5bc58c37aecb44ab97412986d972898#c8900e5ee5bc58c37aecb44ab97412986d972898"
 dependencies = [
  "bindgen 0.66.1",
  "cargo-emit",
@@ -776,7 +776,7 @@ dependencies = [
 [[package]]
 name = "mc-sgx-core-types"
 version = "0.13.0"
-source = "git+https://github.com/mobilecoinfoundation/sgx.git?rev=2e4b90132a6f2a71a4d76ad2ca5c29ee8a7100d1#2e4b90132a6f2a71a4d76ad2ca5c29ee8a7100d1"
+source = "git+https://github.com/mobilecoinfoundation/sgx.git?rev=c8900e5ee5bc58c37aecb44ab97412986d972898#c8900e5ee5bc58c37aecb44ab97412986d972898"
 dependencies = [
  "bitflags 2.13.2",
  "displaydoc",
@@ -792,7 +792,7 @@ dependencies = [
 [[package]]
 name = "mc-sgx-dcap-sys-types"
 version = "0.13.0"
-source = "git+https://github.com/mobilecoinfoundation/sgx.git?rev=2e4b90132a6f2a71a4d76ad2ca5c29ee8a7100d1#2e4b90132a6f2a71a4d76ad2ca5c29ee8a7100d1"
+source = "git+https://github.com/mobilecoinfoundation/sgx.git?rev=c8900e5ee5bc58c37aecb44ab97412986d972898#c8900e5ee5bc58c37aecb44ab97412986d972898"
 dependencies = [
  "bindgen 0.66.1",
  "mc-sgx-core-build",
@@ -802,7 +802,7 @@ dependencies = [
 [[package]]
 name = "mc-sgx-dcap-types"
 version = "0.13.0"
-source = "git+https://github.com/mobilecoinfoundation/sgx.git?rev=2e4b90132a6f2a71a4d76ad2ca5c29ee8a7100d1#2e4b90132a6f2a71a4d76ad2ca5c29ee8a7100d1"
+source = "git+https://github.com/mobilecoinfoundation/sgx.git?rev=c8900e5ee5bc58c37aecb44ab97412986d972898#c8900e5ee5bc58c37aecb44ab97412986d972898"
 dependencies = [
  "const-oid",
  "displaydoc",
@@ -822,7 +822,7 @@ dependencies = [
 [[package]]
 name = "mc-sgx-util"
 version = "0.13.0"
-source = "git+https://github.com/mobilecoinfoundation/sgx.git?rev=2e4b90132a6f2a71a4d76ad2ca5c29ee8a7100d1#2e4b90132a6f2a71a4d76ad2ca5c29ee8a7100d1"
+source = "git+https://github.com/mobilecoinfoundation/sgx.git?rev=c8900e5ee5bc58c37aecb44ab97412986d972898#c8900e5ee5bc58c37aecb44ab97412986d972898"
 
 [[package]]
 name = "memchr"
