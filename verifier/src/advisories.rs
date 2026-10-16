@@ -149,10 +149,7 @@ mod test {
 
     #[test]
     fn verifying_advisories_the_same() {
-        let advisories = Advisories::new(
-            ["123".into(), "345".into()],
-            AdvisoryStatus::SWHardeningNeeded,
-        );
+        let advisories = Advisories::new(["123", "345"], AdvisoryStatus::SWHardeningNeeded);
         let verifier = AdvisoriesVerifier::new(advisories.clone());
         let verification = verifier.verify(&advisories);
         assert_eq!(verification.is_success().unwrap_u8(), 1);
@@ -165,10 +162,7 @@ mod test {
 
     #[test]
     fn advisories_have_one_more_when_verifying() {
-        let mut advisories = Advisories::new(
-            ["123".into(), "345".into()],
-            AdvisoryStatus::SWHardeningNeeded,
-        );
+        let mut advisories = Advisories::new(["123", "345"], AdvisoryStatus::SWHardeningNeeded);
         let verifier = AdvisoriesVerifier::new(advisories.clone());
 
         advisories.ids.insert("678".into());

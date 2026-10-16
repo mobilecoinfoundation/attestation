@@ -16,7 +16,7 @@ impl<T> Quote3Verifier<T> {
     /// Create a new instance.
     ///
     /// The `key` should be retrieved from the leaf certificate of the quote's
-    /// [`mc-sgx-dcap-types::CertificationData`].
+    /// [`mc_sgx_dcap_types::CertificationData`].
     pub fn new(key: Option<VerifyingKey>) -> Self {
         Self {
             key,
@@ -84,8 +84,8 @@ mod test {
 
         let key = VerifyingKey::from_sec1_bytes(
             certificate
-                .tbs_certificate
-                .subject_public_key_info
+                .tbs_certificate()
+                .subject_public_key_info()
                 .subject_public_key
                 .as_bytes()
                 .expect("Failed to parse public key"),

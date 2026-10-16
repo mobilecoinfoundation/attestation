@@ -273,7 +273,7 @@ mod test {
 
     #[test]
     fn trust_anchor_from_der() {
-        assert!(TrustAnchor::try_from_der(&TRUST_ANCHOR_ROOT_CERTIFICATE).is_ok());
+        assert!(TrustAnchor::try_from_der(TRUST_ANCHOR_ROOT_CERTIFICATE).is_ok());
     }
 
     #[test]
