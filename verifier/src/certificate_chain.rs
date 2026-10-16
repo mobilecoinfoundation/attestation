@@ -18,6 +18,14 @@ pub enum CertificateChainVerifierError {
     GeneralCertificateError,
     /// Error verifying the signature
     SignatureVerification,
+    /// A validation time is required for certificate and collateral verification
+    MissingValidationTime,
+    /// A certificate revocation list is not yet valid at the validation time
+    CrlNotYetValid,
+    /// A certificate revocation list has expired at the validation time
+    CrlExpired,
+    /// Certificate revocation status could not be determined from the supplied CRLs
+    UnknownRevocationStatus,
 }
 
 /// A trait whose implementation will verify multiple certificate chains which all use the same
@@ -26,15 +34,14 @@ pub trait CertificateChainVerifier {
     /// Verify a certificate chain.
     ///
     /// # Returns
-    /// The public signing key from the leaf certificate.
+    /// `Ok(())` if the chain satisfies the implementation's validation policy.
     ///
     /// # Arguments
     /// * `certificate_chain` - The certificate chain to verify.
     /// * `crls` - The certificate revocation lists to use when verifying the certificate chain.
     /// * `time` - The time to use when verifying the certificate chain. Due to implementation
     ///   details, some implementations may ignore this value and use the system time directly.
-    ///   A None value for time can be used in cases where the caller is unable to provide time. In
-    ///   such cases, time validation will be skipped.
+    ///   A None value may skip time validation or fail verification, depending on the backend.
     ///
     fn verify_certificate_chain<'a, 'b>(
         &self,

@@ -1,0 +1,15 @@
+{
+  "endpoint": "https://fog.prod.mobilecoinww.com/report.ReportAPI/GetReports",
+  "capture_time": "2026-10-19T20:00:36Z",
+  "response_sha256": "1af5e4cd1563d8f430d8acc06643cff1f9946770ecb60ad9f31d23667c5861c6",
+  "quote_sha256": "6ba0b5e76d1a87f1b2279c2c01f78505f91870d3e7761eda4bb50bdf61af8123",
+  "fog_report_id": "",
+  "pubkey_expiry": 5684510,
+  "report_data": {
+    "nonce": "b1a6044d67e21063582ecc6d483a58ba",
+    "key": "e06798ab1e0305f83932f1cd3c0a6a58652d9ee3c05401e10a697cbaf152d815",
+    "custom_identity": "969bee1727ee7c8244a25d7d453ec799431e8734893732b53393ca5eed633219"
+  },
+  "mr_enclave": "0578f62dd30d92e31cb8d2df8e84ca216aaf12a5ffdea011042282b53a9e9a7a",
+  "mr_signer": "2c1a561c4ab64cbc04bfa445cdf7bed9b2ad6f6b04d38d3137f3622b29fdb30e"
+}

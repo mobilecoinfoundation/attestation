@@ -191,8 +191,10 @@ where
     ///   of the identities needs to match to succeed for the identity verification portion.
     /// * `time` - The time to use for verifying the evidence. In particular the TCB Info and QE
     ///   identity have expiry times that need to be verified. Note: that the `certificate_verifier`
-    ///   will also be passed this time. A None value for time can be used in cases where the calling
-    ///   code is unable to provide time. In such cases, time validation will be skipped.
+    ///   will also be passed this time. A `None` value skips the TCB info and QE identity
+    ///   time checks, but certificate-chain behavior depends on the backend. The WebPKI
+    ///   backend requires an explicit time and fails verification when time is `None`.
+    ///   Host-supplied time does not establish freshness against an untrusted host.
     pub fn new<I, ID>(
         certificate_verifier: C,
         trusted_identities: I,
@@ -302,7 +304,7 @@ where
     }
 }
 
-fn key_from_certificate(cert: &Certificate) -> Option<VerifyingKey> {
+pub(crate) fn key_from_certificate(cert: &Certificate) -> Option<VerifyingKey> {
     let key_bytes = cert
         .tbs_certificate()
         .subject_public_key_info()
@@ -450,7 +452,7 @@ where
 }
 
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
     use super::*;
     #[cfg(feature = "mbedtls")]
     use crate::{MbedTlsCertificateChainVerifier, TrustAnchor};
@@ -467,48 +469,76 @@ mod test {
     const QE_IDENTITY_JSON: &str = include_str!("../data/tests/qe_identity.json");
 
     fn collateral(tcb_info: &str, qe_identity: &str) -> Collateral {
-        let mut sgx_collateral = sgx_ql_qve_collateral_t::default();
+        let signer = include_str!("../data/tests/tcb_signer.pem");
+        collateral_with_certificates(
+            tcb_info,
+            qe_identity,
+            signer,
+            signer,
+            [
+                include_str!("../data/tests/processor_ca.pem"),
+                include_str!("../data/tests/root_ca.pem"),
+            ],
+            include_bytes!("../data/tests/root_crl.der"),
+            include_bytes!("../data/tests/processor_crl.der"),
+        )
+    }
 
-        // SAFETY: Version is a union which is inherently unsafe
+    pub(crate) fn collateral_with_certificates(
+        tcb_info: &str,
+        qe_identity: &str,
+        tcb_signer: &str,
+        qe_signer: &str,
+        pck_crl_issuer_chain: [&str; 2],
+        root_crl: &[u8],
+        pck_crl: &[u8],
+    ) -> Collateral {
+        let [_, root_cert] = pck_crl_issuer_chain;
+        let pck_chain = pck_crl_issuer_chain.join("\n");
+        let tcb_chain = [tcb_signer, root_cert].join("\n");
+        let qe_chain = [qe_signer, root_cert].join("\n");
+        collateral_from_bytes([
+            pck_chain.as_bytes(),
+            root_crl,
+            pck_crl,
+            tcb_chain.as_bytes(),
+            tcb_info.as_bytes(),
+            qe_chain.as_bytes(),
+            qe_identity.as_bytes(),
+        ])
+    }
+
+    // Shared FFI conversion for generated collateral and captured server data.
+    // Own the null-terminated buffers until Collateral has copied their contents.
+    fn collateral_from_bytes(fields: [&[u8]; 7]) -> Collateral {
+        let fields = fields.map(|bytes| {
+            let mut bytes = bytes.to_vec();
+            bytes.push(0);
+            bytes
+        });
+        let mut raw = sgx_ql_qve_collateral_t {
+            pck_crl_issuer_chain: fields[0].as_ptr() as _,
+            pck_crl_issuer_chain_size: fields[0].len() as u32,
+            root_ca_crl: fields[1].as_ptr() as _,
+            root_ca_crl_size: fields[1].len() as u32,
+            pck_crl: fields[2].as_ptr() as _,
+            pck_crl_size: fields[2].len() as u32,
+            tcb_info_issuer_chain: fields[3].as_ptr() as _,
+            tcb_info_issuer_chain_size: fields[3].len() as u32,
+            tcb_info: fields[4].as_ptr() as _,
+            tcb_info_size: fields[4].len() as u32,
+            qe_identity_issuer_chain: fields[5].as_ptr() as _,
+            qe_identity_issuer_chain_size: fields[5].len() as u32,
+            qe_identity: fields[6].as_ptr() as _,
+            qe_identity_size: fields[6].len() as u32,
+            ..Default::default()
+        };
+        // SAFETY: Select the version fields of the collateral version union.
         #[allow(unsafe_code)]
-        let version = unsafe { sgx_collateral.__bindgen_anon_1.__bindgen_anon_1.as_mut() };
+        let version = unsafe { raw.__bindgen_anon_1.__bindgen_anon_1.as_mut() };
         version.major_version = 3;
         version.minor_version = 1;
-
-        let pck_issuer_cert = include_str!("../data/tests/processor_ca.pem");
-        let root_cert = include_str!("../data/tests/root_ca.pem");
-        let mut pck_crl_chain = [pck_issuer_cert, root_cert].join("\n").as_bytes().to_vec();
-        pck_crl_chain.push(0);
-        sgx_collateral.pck_crl_issuer_chain = pck_crl_chain.as_ptr() as _;
-        sgx_collateral.pck_crl_issuer_chain_size = pck_crl_chain.len() as u32;
-
-        let mut root_crl = include_bytes!("../data/tests/root_crl.der").to_vec();
-        root_crl.push(0);
-        sgx_collateral.root_ca_crl = root_crl.as_ptr() as _;
-        sgx_collateral.root_ca_crl_size = root_crl.len() as u32;
-
-        let mut pck_crl = include_bytes!("../data/tests/processor_crl.der").to_vec();
-        pck_crl.push(0);
-        sgx_collateral.pck_crl = pck_crl.as_ptr() as _;
-        sgx_collateral.pck_crl_size = pck_crl.len() as u32;
-
-        let tcb_cert = include_str!("../data/tests/tcb_signer.pem");
-        let mut tcb_chain = [tcb_cert, root_cert].join("\n").as_bytes().to_vec();
-        tcb_chain.push(0);
-        sgx_collateral.tcb_info_issuer_chain = tcb_chain.as_ptr() as _;
-        sgx_collateral.tcb_info_issuer_chain_size = tcb_chain.len() as u32;
-
-        sgx_collateral.tcb_info = tcb_info.as_ptr() as _;
-        sgx_collateral.tcb_info_size = tcb_info.len() as u32;
-
-        // For live data the QE identity uses the same chain as the TCB info
-        sgx_collateral.qe_identity_issuer_chain = tcb_chain.as_ptr() as _;
-        sgx_collateral.qe_identity_issuer_chain_size = tcb_chain.len() as u32;
-
-        sgx_collateral.qe_identity = qe_identity.as_ptr() as _;
-        sgx_collateral.qe_identity_size = qe_identity.len() as u32;
-
-        Collateral::try_from(&sgx_collateral).expect("Failed to parse collateral")
+        Collateral::try_from(&raw).expect("Failed to parse collateral")
     }
 
     // Valid time for the TCB_INFO_JSON and QE_IDENTITY_JSON
@@ -1001,6 +1031,257 @@ mod test {
                 - [x] The MRENCLAVE should be 840d61b0585dc8b4dc90f53af293c760fda06bee75978a6a86263ffb296423f4
                 - [x] The allowed advisories are IDs: {"INTEL-SA-00334", "INTEL-SA-00615"} Status: SWHardeningNeeded"#;
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
+    }
+
+    #[cfg(any(feature = "webpki", feature = "mbedtls"))]
+    #[test]
+    fn mainnet_fog_evidence_verifies_at_capture_time() {
+        let json: serde_json::Value =
+            serde_json::from_str(include_str!("../data/tests/mainnet_fog/collateral.json"))
+                .unwrap();
+        // The fixture preserves the response's PEM chains and signed JSON;
+        // DER CRLs are hex encoded only for storage in the fixture JSON.
+        let fields = [
+            "pck_crl_issuer_chain",
+            "root_ca_crl",
+            "pck_crl",
+            "tcb_info_issuer_chain",
+            "tcb_info",
+            "qe_identity_issuer_chain",
+            "qe_identity",
+        ]
+        .map(|field| {
+            let value = json[field].as_str().unwrap();
+            if matches!(field, "root_ca_crl" | "pck_crl") {
+                hex::decode(value).unwrap()
+            } else {
+                value.as_bytes().to_vec()
+            }
+        });
+        let collateral = collateral_from_bytes(fields.each_ref().map(Vec::as_slice));
+        let quote =
+            Quote3::try_from(include_bytes!("../data/tests/mainnet_fog/quote.dat").to_vec())
+                .unwrap();
+        let capture: serde_json::Value =
+            serde_json::from_str(include_str!("../data/tests/mainnet_fog/capture.json")).unwrap();
+        let measurement: [u8; 32] = hex::decode(capture["mr_enclave"].as_str().unwrap())
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let identity = TrustedMrEnclaveIdentity::new(
+            MrEnclave::from(measurement),
+            [] as [&str; 0],
+            ["INTEL-SA-00334", "INTEL-SA-00615", "INTEL-SA-00657"],
+        );
+        let time = capture["capture_time"]
+            .as_str()
+            .unwrap()
+            .parse::<DateTime>()
+            .unwrap();
+        let evidence = Evidence::new(quote, collateral).unwrap();
+        // Check the captured bytes and the nonce/key/custom-identity binding
+        // carried by the signed application report, not just the certificate path.
+        use sha2::{Digest, Sha256};
+        assert_eq!(
+            hex::encode(Sha256::digest(evidence.quote.as_ref())),
+            capture["quote_sha256"].as_str().unwrap()
+        );
+        let mut binding = Sha256::new();
+        for field in ["nonce", "key", "custom_identity"] {
+            binding.update(hex::decode(capture["report_data"][field].as_str().unwrap()).unwrap());
+        }
+        let expected_binding = binding.finalize();
+        let body = evidence.quote.app_report_body();
+        let report_data = body.report_data();
+        let report_data_bytes: &[u8] = report_data.as_ref();
+        assert_eq!(&report_data_bytes[..32], expected_binding.as_slice());
+
+        let root = include_str!("../data/tests/root_ca.pem");
+
+        fn assert_verified<C: CertificateChainVerifier>(
+            backend: C,
+            evidence: &Evidence<Vec<u8>>,
+            identity: TrustedMrEnclaveIdentity,
+            time: DateTime,
+        ) {
+            let verifier = EvidenceVerifier::new(backend, [identity], time);
+            let result = verifier.verify(evidence);
+            assert!(
+                bool::from(result.is_success()),
+                "{}",
+                VerificationTreeDisplay::new(&verifier, result)
+            );
+        }
+        #[cfg(feature = "webpki")]
+        assert_verified(
+            crate::WebPkiCertificateChainVerifier::from_pem(root).unwrap(),
+            &evidence,
+            identity.clone(),
+            time,
+        );
+        #[cfg(feature = "mbedtls")]
+        assert_verified(
+            MbedTlsCertificateChainVerifier::new(TrustAnchor::try_from_pem(root).unwrap()),
+            &evidence,
+            identity.clone(),
+            time,
+        );
+        #[cfg(feature = "webpki")]
+        for (invalid_time, expected_error) in [
+            (None, CertificateChainVerifierError::MissingValidationTime),
+            (
+                Some("2026-10-17T20:00:36Z".parse::<DateTime>().unwrap()),
+                CertificateChainVerifierError::CrlNotYetValid,
+            ),
+            (
+                Some("2026-11-18T20:00:36Z".parse::<DateTime>().unwrap()),
+                CertificateChainVerifierError::CrlExpired,
+            ),
+        ] {
+            let verifier = EvidenceVerifier::new(
+                crate::WebPkiCertificateChainVerifier::from_pem(root).unwrap(),
+                [identity.clone()],
+                invalid_time,
+            );
+            let result = verifier.verify(&evidence);
+            assert!(bool::from(result.is_failure()));
+            let quote_chain = &result.value().quote_signing_key;
+            assert!(bool::from(quote_chain.is_failure()));
+            assert_eq!(quote_chain.value(), &Some(expected_error.clone()));
+            if invalid_time.is_none() {
+                for chain in [
+                    &result.value().tcb_signing_key,
+                    &result.value().qe_identity_signing_key,
+                ] {
+                    assert!(bool::from(chain.is_failure()));
+                    assert_eq!(chain.value(), &Some(expected_error.clone()));
+                }
+            }
+            assert!(
+                format!("{}", VerificationTreeDisplay::new(&verifier, result))
+                    .contains(&expected_error.to_string())
+            );
+        }
+    }
+
+    #[cfg(feature = "webpki")]
+    #[test]
+    fn evidence_verifier_rejects_stale_crls_with_webpki() {
+        let quote =
+            Quote3::try_from(include_bytes!("../data/tests/hw_quote.dat").to_vec()).unwrap();
+        let identity = TrustedMrEnclaveIdentity::new(
+            quote.app_report_body().mr_enclave(),
+            [] as [&str; 0],
+            ["INTEL-SA-00334", "INTEL-SA-00615"],
+        );
+        let verifier = EvidenceVerifier::new(
+            crate::WebPkiCertificateChainVerifier::from_pem(include_str!(
+                "../data/tests/root_ca.pem"
+            ))
+            .unwrap(),
+            [identity],
+            valid_test_time(),
+        );
+        let evidence = Evidence::new(quote, collateral(TCB_INFO_JSON, QE_IDENTITY_JSON)).unwrap();
+        // The July TCB data was issued after the processor CRL expired in May.
+        // Every issuer chain must pass the backend's strict CRL policy.
+        let result = verifier.verify(&evidence);
+        assert!(bool::from(result.is_failure()));
+        let value = result.value();
+        assert!(bool::from(value.tcb_signing_key.is_success()));
+        assert_eq!(value.tcb_signing_key.value(), &None);
+        assert!(bool::from(value.qe_identity_signing_key.is_success()));
+        assert_eq!(value.qe_identity_signing_key.value(), &None);
+        assert!(bool::from(value.quote_signing_key.is_failure()));
+        assert_eq!(
+            value.quote_signing_key.value(),
+            &Some(CertificateChainVerifierError::CrlExpired)
+        );
+        assert!(bool::from(value.tcb_info.1.is_success()));
+        assert!(bool::from(value.qe_identity.1.is_success()));
+        assert!(bool::from(value.qe_report_body.1.is_success()));
+        assert!(bool::from(value.quote.1.is_success()));
+        assert!(bool::from(value.trusted_identities.1.is_success()));
+    }
+
+    #[cfg(feature = "webpki")]
+    #[test]
+    fn evidence_verifier_rejects_outdated_platform_with_current_intel_collateral() {
+        // The quote's signatures are timeless. Pair this historical quote with
+        // current, independently signed Intel collateral at its fixed test time.
+        let quote =
+            Quote3::try_from(include_bytes!("../data/tests/hw_quote.dat").to_vec()).unwrap();
+        let collateral = collateral_with_certificates(
+            include_str!("../data/tests/current_tcb_info.json"),
+            include_str!("../data/tests/current_qe_identity.json"),
+            include_str!("../data/tests/current_tcb_signer.pem"),
+            include_str!("../data/tests/current_qe_signer.pem"),
+            [
+                include_str!("../data/tests/processor_ca.pem"),
+                include_str!("../data/tests/root_ca.pem"),
+            ],
+            include_bytes!("../data/tests/current_root_crl.der"),
+            include_bytes!("../data/tests/current_processor_crl.der"),
+        );
+        let evidence = Evidence::new(quote, collateral).unwrap();
+        let verifier = EvidenceVerifier::new(
+            crate::WebPkiCertificateChainVerifier::from_pem(include_str!(
+                "../data/tests/root_ca.pem"
+            ))
+            .unwrap(),
+            [valid_test_trusted_identity()],
+            "2026-10-16T21:00:00Z".parse::<DateTime>().unwrap(),
+        );
+        let result = verifier.verify(&evidence);
+        let value = result.value();
+        // The current Intel data verifies cryptographically, but marks this
+        // historical platform OutOfDate. Do not relax identity policy to accept it.
+        assert!(bool::from(result.is_failure()));
+        for chain in [
+            &value.tcb_signing_key,
+            &value.qe_identity_signing_key,
+            &value.quote_signing_key,
+        ] {
+            assert!(bool::from(chain.is_success()));
+            assert_eq!(chain.value(), &None);
+        }
+        assert!(bool::from(value.tcb_info.1.is_success()));
+        assert!(bool::from(value.qe_identity.1.is_success()));
+        assert!(bool::from(value.qe_report_body.1.is_success()));
+        assert!(bool::from(value.quote.1.is_success()));
+        assert_eq!(
+            evidence.advisories,
+            Advisories::new(
+                [
+                    "INTEL-SA-00219",
+                    "INTEL-SA-00289",
+                    "INTEL-SA-00334",
+                    "INTEL-SA-00615",
+                    "INTEL-SA-00828",
+                    "INTEL-SA-01153"
+                ],
+                crate::AdvisoryStatus::OutOfDate,
+            )
+        );
+        assert!(bool::from(value.trusted_identities.1.is_failure()));
+
+        #[cfg(feature = "mbedtls")]
+        {
+            let anchor =
+                TrustAnchor::try_from_pem(include_str!("../data/tests/root_ca.pem")).unwrap();
+            let verifier = EvidenceVerifier::new(
+                MbedTlsCertificateChainVerifier::new(anchor),
+                [valid_test_trusted_identity()],
+                "2026-10-16T21:00:00Z".parse::<DateTime>().unwrap(),
+            );
+            let result = verifier.verify(&evidence);
+            assert!(bool::from(result.is_failure()));
+            let value = result.value();
+            assert!(bool::from(value.tcb_signing_key.is_success()));
+            assert!(bool::from(value.qe_identity_signing_key.is_success()));
+            assert!(bool::from(value.quote_signing_key.is_success()));
+            assert!(bool::from(value.trusted_identities.1.is_failure()));
+        }
     }
 
     #[cfg(feature = "mbedtls")]

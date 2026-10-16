@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+### Added
+
+- Optional `webpki` certificate-chain verification backend using RustCrypto
+  P-256/SHA-256, with explicit-time validation and full-chain CRL enforcement.
+- `MissingValidationTime`, `CrlNotYetValid`, `CrlExpired`, and
+  `UnknownRevocationStatus` variants on `CertificateChainVerifierError` for
+  specific validation diagnostics. Exhaustive downstream matches must handle
+  the new variants.
+
 ## [0.5.0] - 2026-10-16
 
 ### Changed
