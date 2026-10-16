@@ -28,8 +28,3 @@ lto = "thin"
 # mbedtls patched to allow certificate verification with a profile
 mbedtls = { git = "https://github.com/mobilecoinfoundation/rust-mbedtls.git", rev = "0bddacc981ac782ca2e2f8aa5ffa25ce0e3d8273" }
 mbedtls-sys-auto = { git = "https://github.com/mobilecoinfoundation/rust-mbedtls.git", rev = "0bddacc981ac782ca2e2f8aa5ffa25ce0e3d8273" }
-# Use SGX SDK 2.30.1 / DCAP 1.27.1 from mobilecoinfoundation/sgx#505.
-mc-sgx-core-sys-types = { git = "https://github.com/mobilecoinfoundation/sgx.git", rev = "c8900e5ee5bc58c37aecb44ab97412986d972898" }
-mc-sgx-core-types = { git = "https://github.com/mobilecoinfoundation/sgx.git", rev = "c8900e5ee5bc58c37aecb44ab97412986d972898" }
-mc-sgx-dcap-sys-types = { git = "https://github.com/mobilecoinfoundation/sgx.git", rev = "c8900e5ee5bc58c37aecb44ab97412986d972898" }
-mc-sgx-dcap-types = { git = "https://github.com/mobilecoinfoundation/sgx.git", rev = "c8900e5ee5bc58c37aecb44ab97412986d972898" }

@@ -1,6 +1,6 @@
 [package]
 name = "mc-attestation-verifier"
-version = "0.4.4"
+version = "0.5.0"
 authors = { workspace = true }
 # See https://crates.io/category_slugs for valid categories
 categories = ["authentication", "no-std"]
@@ -32,9 +32,9 @@ der = { version = "0.8", default-features = false }
 displaydoc = { version = "0.2", default-features = false }
 hex = { version = "0.4", default-features = false, features = ["serde", "alloc"] }
 mbedtls = { version = "0.8", default-features = false, features = ["no_std_deps"], optional = true }
-mc-sgx-core-sys-types = "0.13"
-mc-sgx-core-types = "0.13"
-mc-sgx-dcap-types = { version = "0.13", default-features = false, features = ["tcb"] }
+mc-sgx-core-sys-types = "0.14"
+mc-sgx-core-types = "0.14"
+mc-sgx-dcap-types = { version = "0.14", default-features = false, features = ["tcb"] }
 p256 = { version = "0.14", default-features = false, features = ["ecdsa"] }
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = { version = "1", default-features = false, features = ["alloc", "raw_value"] }
@@ -43,7 +43,7 @@ x509-cert = { version = "0.3", default-features = false, features = ["pem"] }
 
 [dev-dependencies]
 assert_matches = "1"
-mc-sgx-dcap-sys-types = "0.13"
+mc-sgx-dcap-sys-types = "0.14"
 rand = "0.10"
 textwrap = "0.16"
 yare = "3"

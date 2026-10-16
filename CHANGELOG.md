@@ -8,13 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <!-- next-header -->
 ## [Unreleased] - ReleaseDate
 
+## [0.5.0] - 2026-10-16
+
 ### Changed
 
-- Updated SGX crates to the `0.13.0` development revision from
-  [mobilecoinfoundation/sgx#505], including SGX SDK 2.30.1 and DCAP 1.27.1
-  vendored headers.
+- Updated SGX crates to the published `0.14.0` release, including SGX SDK 2.30.1
+  and DCAP 1.27.1 vendored headers.
 - Updated the shared cryptography, certificate, and test dependencies to match
-  the SGX `0.13.0` dependency graph.
+  the SGX `0.14.0` dependency graph.
 - Modernized CI actions, the Rust nightly baseline, and cargo-deny configuration.
 - Raised the minimum supported Rust version to `1.99`.
 
@@ -102,7 +103,8 @@ equivalence.
 - Initial release of attestation verifier crate
 
 <!-- next-url -->
-[Unreleased]: https://github.com/mobilecoinfoundation/attestation/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/mobilecoinfoundation/attestation/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/mobilecoinfoundation/attestation/compare/v0.4.4...v0.5.0
 [0.4.4]: https://github.com/mobilecoinfoundation/attestation/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/mobilecoinfoundation/attestation/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/mobilecoinfoundation/attestation/compare/v0.4.1...v0.4.2
@@ -112,4 +114,3 @@ equivalence.
 [0.3.0]: https://github.com/mobilecoinfoundation/attestation/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/mobilecoinfoundation/attestation/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mobilecoinfoundation/sgx/compare/v0.1.0
-[mobilecoinfoundation/sgx#505]: https://github.com/mobilecoinfoundation/sgx/pull/505
