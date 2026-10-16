@@ -59,7 +59,6 @@ unknown-git = "warn"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = [
     "https://github.com/mobilecoinfoundation/rust-mbedtls.git",
-    "https://github.com/mobilecoinfoundation/sgx.git",
 ]
 
 [sources.allow-org]
