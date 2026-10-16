@@ -19,6 +19,8 @@ mod quote;
 mod report_body;
 mod struct_name;
 mod tcb;
+#[cfg(feature = "webpki")]
+mod webpki;
 
 pub use advisories::{Advisories, AdvisoriesVerifier, AdvisoryStatus};
 pub use certificate_chain::{CertificateChainVerifier, CertificateChainVerifierError};
@@ -43,6 +45,9 @@ pub use tcb::{SignedTcbInfo, SignedTcbInfoVerifier, TcbInfo};
 
 #[cfg(feature = "mbedtls")]
 pub use crate::mbedtls::{Error as MbedTlsError, MbedTlsCertificateChainVerifier, TrustAnchor};
+
+#[cfg(feature = "webpki")]
+pub use crate::webpki::WebPkiCertificateChainVerifier;
 
 use crate::struct_name::SpacedStructName;
 use core::{

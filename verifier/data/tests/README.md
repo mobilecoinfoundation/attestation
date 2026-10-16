@@ -42,3 +42,17 @@
 * `qe_identity.json` - A QE identity file from
   <https://api.trustedservices.intel.com/sgx/certification/v4/qe/identity?update=standard>.
 * `hw_quote.dat` - A quote from an Intel SGX enclave on hardware.
+
+## Current Intel collateral
+
+The `current_*` files were captured directly from Intel PCS on October 16,
+2026. They are unchanged response bodies (DER CRLs/JSON), with signing leaf
+certificates decoded from the percent-encoded issuer-chain HTTP headers:
+
+- https://api.trustedservices.intel.com/sgx/certification/v4/tcb?fmspc=00906ED50000
+- https://api.trustedservices.intel.com/sgx/certification/v4/qe/identity
+- https://api.trustedservices.intel.com/sgx/certification/v4/pckcrl?ca=processor&encoding=der
+- https://certificates.trustedservices.intel.com/IntelSGXRootCA.der
+
+The fixed test time is October 16, 2026 at 21:00 UTC, within all signed validity
+intervals. Tests require no network access.

@@ -127,6 +127,25 @@ jobs:
       - uses: r7kamura/rust-problem-matchers@v1
       - run: cargo +${{ matrix.rust }} test --release --all-features --locked
 
+  feature-isolation:
+    runs-on: ubuntu-24.04
+    needs:
+      - lint
+    strategy:
+      matrix:
+        features:
+          - ""
+          - "mbedtls"
+          - "webpki"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-08-15
+      - run: |
+          cargo check --locked --lib --no-default-features --features "${{ matrix.features }}"
+          cargo test --locked --no-default-features --features "${{ matrix.features }}"
+
   doc:
     runs-on: ubuntu-24.04
     needs:

@@ -1003,6 +1003,30 @@ mod test {
         assert_eq!(format!("\n{displayable}"), textwrap::dedent(expected));
     }
 
+    #[cfg(feature = "webpki")]
+    #[test]
+    fn evidence_verifier_rejects_stale_crls_with_webpki() {
+        let quote =
+            Quote3::try_from(include_bytes!("../data/tests/hw_quote.dat").to_vec()).unwrap();
+        let identity = TrustedMrEnclaveIdentity::new(
+            quote.app_report_body().mr_enclave(),
+            [] as [&str; 0],
+            ["INTEL-SA-00334", "INTEL-SA-00615"],
+        );
+        let verifier = EvidenceVerifier::new(
+            crate::WebPkiCertificateChainVerifier::from_pem(include_str!(
+                "../data/tests/root_ca.pem"
+            ))
+            .unwrap(),
+            [identity],
+            valid_test_time(),
+        );
+        let evidence = Evidence::new(quote, collateral(TCB_INFO_JSON, QE_IDENTITY_JSON)).unwrap();
+        // The July TCB data was issued after the processor CRL expired in May.
+        // Every issuer chain must pass the backend's strict CRL policy.
+        assert!(bool::from(verifier.verify(&evidence).is_failure()));
+    }
+
     #[cfg(feature = "mbedtls")]
     #[test]
     fn evidence_verifier_succeeds_with_mbedtls_x509_verifier() {

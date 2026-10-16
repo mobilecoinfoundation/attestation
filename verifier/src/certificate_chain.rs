@@ -26,15 +26,15 @@ pub trait CertificateChainVerifier {
     /// Verify a certificate chain.
     ///
     /// # Returns
-    /// The public signing key from the leaf certificate.
+    /// `Ok(())` if the chain satisfies the implementation's validation policy.
     ///
     /// # Arguments
     /// * `certificate_chain` - The certificate chain to verify.
     /// * `crls` - The certificate revocation lists to use when verifying the certificate chain.
     /// * `time` - The time to use when verifying the certificate chain. Due to implementation
     ///   details, some implementations may ignore this value and use the system time directly.
-    ///   A None value for time can be used in cases where the caller is unable to provide time. In
-    ///   such cases, time validation will be skipped.
+    ///   A None value may skip time validation or fail verification, depending on the backend.
+    ///   The WebPKI backend requires an explicit time and never skips time validation.
     ///
     fn verify_certificate_chain<'a, 'b>(
         &self,
